@@ -18,7 +18,7 @@ type
   public
     procedure ctrl_application_index_get;
     procedure view_application_index_html;
-
+    procedure ctrl_test_index_get(id: boolean);
   end;
 
 implementation
@@ -27,6 +27,11 @@ uses SysUtils, PDGDB, PDGService;
 { THTTPServer }
 
 procedure THTTPConnexion.ctrl_application_index_get;
+begin
+  beep;
+end;
+
+procedure THTTPConnexion.ctrl_test_index_get(id: boolean);
 begin
   beep;
 end;

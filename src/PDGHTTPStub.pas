@@ -10,7 +10,7 @@
     under the License.
 
     The Initial Developer of the Original Code is
-      Henri Gourvest <hgourvest@progdigy.com>.
+      Henri Gourvest <hgourvest@gmail.com>.
 *)
 
 unit PDGHTTPStub;
@@ -71,6 +71,16 @@ type
     destructor Destroy; override;
   end;
 
+implementation
+uses
+{$IFDEF MSWINDOWS}
+ windows,
+{$ENDIF}
+SysUtils, StrUtils, PDGOpenSSL, PDGLua, Rtti {$ifdef madExcept}, madexcept {$endif}
+{$IFDEF UNICODE}, AnsiStrings{$ENDIF}
+{$IFDEF UNIX}, baseunix{$ENDIF}
+;
+
 const
   CR = #13;
   LF = #10;
@@ -81,14 +91,13 @@ const
   PT = '.';
   CRLF = CR+LF;
 
-const
 (* default limit on bytes in Request-Line (Method+URI+HTTP-version) *)
   DEFAULT_LIMIT_REQUEST_LINE = 8190;
 (* default limit on bytes in any one header field  *)
   DEFAULT_LIMIT_REQUEST_FIELDSIZE = 8190;
 (* default limit on number of request header fields *)
   DEFAULT_LIMIT_REQUEST_FIELDS = 100;
-const
+
   DEFAULT_CP = 65001;
   DEFAULT_CHARSET = 'utf-8';
 
@@ -96,20 +105,35 @@ const
   COOKIE_NAME = 'PDGCookie';
   PASS_PHRASE: PAnsiChar = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
 
+function serialtoboolean(var value: TValue; const index: ISuperObject): ISuperObject;
+begin
+  Result := TSuperObject.Create(TValueData(value).FAsSLong <> 0);
+end;
 
-function HTTPInterprete(src: PSOChar; named: boolean = false; sep: SOChar = ';'; StrictSep: boolean = false; codepage: Integer = 0): ISuperObject;
-function HTTPDecode(const AStr: string; codepage: Integer = 0): string;
-function HttpResponseStrings(code: integer): RawByteString;
+function serialtodatetime(var value: TValue; const index: ISuperObject): ISuperObject;
+begin
+  Result := TSuperObject.Create(DelphiToJavaDateTime(TValueData(value).FAsDouble));
+end;
 
-implementation
-uses
-{$IFDEF MSWINDOWS}
- windows,
-{$ENDIF}
-SysUtils, StrUtils,PDGOpenSSL, PDGLua {$ifdef madExcept}, madexcept {$endif}
-{$IFDEF UNICODE}, AnsiStrings{$ENDIF}
-{$IFDEF UNIX}, baseunix{$ENDIF}
-;
+function serialfromboolean(const obj: ISuperObject; var Value: TValue): Boolean;
+begin
+  if ObjectIsType(obj, stBoolean) then
+  begin
+    TValueData(Value).FAsSLong := obj.AsInteger;
+    Result := True;
+  end else
+    Result := False;
+end;
+
+function serialfromdatetime(const obj: ISuperObject; var Value: TValue): Boolean;
+begin
+  if ObjectIsType(obj, stInt) then
+  begin
+    TValueData(Value).FAsDouble := JavaToDelphiDateTime(obj.AsInteger);
+    Result := True;
+  end else
+    Result := False;
+end;
 
 function lua_print(state: Plua_State): Integer; cdecl;
 var
@@ -215,7 +239,50 @@ begin
   end;
 end;
 
-function HTTPInterprete(src: PSOChar; named: boolean; sep: SOChar; StrictSep: boolean; codepage: Integer): ISuperObject;
+function HTTPDecode(const AStr: string; codepage: Integer = 0): String;
+var
+  Sp, Rp, Cp: PChar;
+  S: String;
+begin
+  SetLength(Result, Length(AStr));
+  Sp := PChar(AStr);
+  Rp := PChar(Result);
+  while Sp^ <> #0 do
+  begin
+    case Sp^ of
+      '+': Rp^ := ' ';
+      '%': begin
+             Inc(Sp);
+             if Sp^ = '%' then
+               Rp^ := '%'
+             else
+             begin
+               Cp := Sp;
+               Inc(Sp);
+               if (Cp^ <> #0) and (Sp^ <> #0) then
+               begin
+                 S := '$' + Cp^ + Sp^;
+                 Rp^ := chr(StrToInt(S));
+               end
+               else
+               begin
+                 Result := '';
+                 Exit;
+               end;
+             end;
+           end;
+    else
+      Rp^ := Sp^;
+    end;
+    Inc(Rp);
+    Inc(Sp);
+  end;
+  SetLength(Result, Rp - PChar(Result));
+  if (codepage > 0) then
+    Result := MBUDecode(RawByteString(Result), codepage)
+end;
+
+function HTTPInterprete(src: PSOChar; named: boolean = false; sep: SOChar = ';'; StrictSep: boolean = false; codepage: Integer = 0): ISuperObject;
 var
   P1: PSOChar;
   S: SOString;
@@ -284,49 +351,6 @@ begin
         until not (not StrictSep and {$IFDEF UNICODE}(src^ < #256) and {$ENDIF} (AnsiChar(src^) in [#1..' ']));
       end;
     end;
-end;
-
-function HTTPDecode(const AStr: string; codepage: Integer): String;
-var
-  Sp, Rp, Cp: PChar;
-  S: String;
-begin
-  SetLength(Result, Length(AStr));
-  Sp := PChar(AStr);
-  Rp := PChar(Result);
-  while Sp^ <> #0 do
-  begin
-    case Sp^ of
-      '+': Rp^ := ' ';
-      '%': begin
-             Inc(Sp);
-             if Sp^ = '%' then
-               Rp^ := '%'
-             else
-             begin
-               Cp := Sp;
-               Inc(Sp);
-               if (Cp^ <> #0) and (Sp^ <> #0) then
-               begin
-                 S := '$' + Cp^ + Sp^;
-                 Rp^ := chr(StrToInt(S));
-               end
-               else
-               begin
-                 Result := '';
-                 Exit;
-               end;
-             end;
-           end;
-    else
-      Rp^ := Sp^;
-    end;
-    Inc(Rp);
-    Inc(Sp);
-  end;
-  SetLength(Result, Rp - PChar(Result));
-  if (codepage > 0) then
-    Result := MBUDecode(RawByteString(Result), codepage)
 end;
 
 function EncodeObject(const obj: ISuperObject): SOString;
@@ -526,7 +550,7 @@ begin
                if (param <> '') and (str > marker) then
                begin
                  if not DecodeURI(marker, str - marker, value) then exit;
-                 Request.S['params.'+HTTPDecode(param)] := HTTPDecode(value);
+                 Request['params.'+HTTPDecode(param)] := TSuperObject.ParseString(PChar(HTTPDecode(value)), False);
                end;
                if {$IFDEF UNICODE}(str^ < #256) and {$ENDIF}(AnsiChar(str^) in [SP, NL]) then
                  Break;
@@ -595,7 +619,7 @@ function THTTPStub.Run: Cardinal;
 var
   buffer: string;
   cursor, line, len: integer;
-  c: char;
+  c: Char;
  // ctx: ISuperObject;
 {$IFDEF UNIX}
   FDSet: TFDSet;
@@ -607,8 +631,7 @@ begin
   cursor := 0;
   len := 0;
   line := 0;
-
-
+  c := #0;
   while not Stopped do
   begin
     inc(cursor);
@@ -702,6 +725,14 @@ begin
 
 
   FRttiContext := TSuperRttiContext.Create;
+
+  FRttiContext.SerialFromJson.Add(TypeInfo(Boolean), serialfromboolean);
+  FRttiContext.SerialFromJson.Add(TypeInfo(TDateTime), serialfromdatetime);
+  FRttiContext.SerialToJson.Add(TypeInfo(Boolean), serialtoboolean);
+  FRttiContext.SerialToJson.Add(TypeInfo(TDateTime), serialtodatetime);
+
+
+
   FFormats := TSuperObject.Create;
   FFormats.S['htm.content'] := 'text/html';
   FFormats.S['htm.charset'] := DEFAULT_CHARSET;
@@ -778,7 +809,7 @@ procedure THTTPStub.doBeforeProcessRequest(ctx: ISuperObject);
         ctx.S['params.format'] := p + 1;
         setlength(str, p - PChar(str));
       end;
-      ctx['params'].S[name] := PChar(str);
+      ctx['params'][name] := TSuperObject.ParseString(PChar(str), false);
       Result := true;
     end else
       Result := false
@@ -877,8 +908,6 @@ begin
   if Fctx['params.controller'] <> nil then
     with Fctx['params'] do
     begin
-      Writeln(FCtx.AsJSon(true));
-
       // controller
       TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'] + '_' + Request.S['method'], Fctx['params'], return);
 
@@ -921,6 +950,7 @@ begin
   end else
     Response.I['response'] :=  404;
 end;
+
 procedure THTTPStub.SendEmpty;
 begin
   WriteLine('Content-Length: 0');
