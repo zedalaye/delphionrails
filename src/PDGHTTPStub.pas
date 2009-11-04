@@ -44,7 +44,8 @@ type
   private
     FRequest: THTTPMessage;
     FResponse: THTTPMessage;
-    FCtx: ISuperObject;
+    FContext: ISuperObject;
+    FParams: ISuperObject;
     FFormats: ISuperObject;
     FRttiContext: TSuperRttiContext;
     function DecodeFields(str: PChar): boolean;
@@ -56,9 +57,12 @@ type
     procedure SendFile(const filename: string);
     procedure SendStream(Stream: TStream);
     function DecodeContent: boolean; virtual;
-    procedure doBeforeProcessRequest(ctx: ISuperObject); virtual;
-    procedure doAfterProcessRequest(ctx: ISuperObject); virtual;
+    procedure doBeforeProcessRequest; virtual;
+    procedure doAfterProcessRequest; virtual;
     procedure ProcessRequest; virtual;
+    function RenderInternal(const params: ISuperObject): Boolean;
+    function RenderScript(const params: ISuperObject): Boolean;
+    function RenderFile(const filename: string): Boolean;
   protected
     function Run: Cardinal; override;
     procedure HTTPOutput(const obj: ISuperObject; format: boolean); overload;
@@ -66,9 +70,9 @@ type
     procedure HTTPCompress(level: integer = 5);
     procedure HTTPRedirect(const location: string);
   public
-
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
     destructor Destroy; override;
+    property Context: ISuperObject read FContext;
   end;
 
 implementation
@@ -159,13 +163,47 @@ begin
   Result := 1;
 end;
 
-procedure lua_render(const This: THTTPStub; const script: string);
+function lua_render(state: Plua_State): Integer; cdecl;
+var
+  p: Pointer;
+  obj: ISuperObject;
+  str: string;
+begin
+  Result := 0;
+  lua_getglobal(state, '@this');
+  p := lua_touserdata(state, -1);
+  if (p <> nil) and (lua_gettop(state) = 2) then
+  with THTTPStub(p) do
+  begin
+    obj := lua_tosuperobject(state, 1);
+    case ObjectGetType(obj) of
+    stObject:
+      begin
+        with FParams.AsObject do
+        begin
+          if obj.AsObject['controller'] = nil then
+            obj.AsObject.S['controller'] := S['controller'];
+          obj.AsObject.S['format'] := S['format'];
+        end;
+
+        if not RenderInternal(obj) then
+        begin
+          with obj.AsObject do
+            str := ExtractFilePath(ParamStr(0)) + 'script/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+          if FileExists(str) then
+            lua_processsor_dofile(state, str);
+        end;
+      end;
+    end;
+  end;
+end;
+
+procedure lua_execute(const This: THTTPStub; const script: string);
 var
   state: Plua_State;
   ite: TSuperObjectIter;
 begin
   state := lua_newstate(@lua_app_alloc, nil);
-  This._AddRef;
   try
     luaL_openlibs(state);
     lua_pushlightuserdata(state, Pointer(This));
@@ -174,7 +212,9 @@ begin
     lua_setglobal(state, 'print');
     lua_pushcfunction(state, lua_gettickcount);
     lua_setglobal(state, 'gettickcount');
-    if ObjectFindFirst(This.FCtx, ite) then
+    lua_pushcfunction(state, lua_render);
+    lua_setglobal(state, 'render');
+    if ObjectFindFirst(This.FContext, ite) then
     repeat
       lua_pushsuperobject(state, ite.val);
       lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
@@ -182,7 +222,6 @@ begin
     ObjectFindClose(ite);
     lua_processsor_dofile(state, script);
   finally
-    This._Release;
     lua_close(state);
   end;
 end;
@@ -302,7 +341,8 @@ begin
             (StrictSep and (src^ <> #0))) and (src^ <> sep) do
         Inc(src);
       SetString(S, P1, src - P1);
-      S := HTTPDecode(S, codepage);
+      if codepage > 0 then
+        S := HTTPDecode(S, codepage);
       if named then
       begin
         i := pos('=', S);
@@ -517,7 +557,7 @@ begin
   result := false;
   marker := StrScan(str, SP);
   if marker = nil then exit;
-  Request.S['method'] := copy(str, 0, marker - str);
+  Request.AsObject.S['method'] := copy(str, 0, marker - str);
   str := marker;
 
   // SP
@@ -532,7 +572,7 @@ begin
   if (str > marker) and (str^ <> NL) then
   begin
     if DecodeURI(marker, str - marker, value) then
-      Request.S['uri'] := value else
+      Request.AsObject.S['uri'] := value else
       exit;
   end else
     exit;
@@ -615,6 +655,40 @@ begin
   result := true;
 end;
 
+function THTTPStub.RenderFile(const filename: string): Boolean;
+begin
+  if FileExists(filename) then
+  begin
+    Response.S['sendfile'] := filename;
+    Result := True;
+  end else
+    Result := False;
+end;
+
+function THTTPStub.RenderInternal(const params: ISuperObject): Boolean;
+var
+  return: ISuperObject;
+begin
+  with params.AsObject do
+   Result := TrySOInvoke(FRttiContext, Self, 'view_' + S['controller'] + '_' + S['action'] + '_' + S['format'], nil, return);
+end;
+
+function THTTPStub.RenderScript(const params: ISuperObject): Boolean;
+var
+  str: string;
+begin
+  with params do
+  begin
+    str :=  ExtractFilePath(ParamStr(0)) + 'script/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+    if FileExists(str) then
+    begin
+      lua_execute(Self, str);
+      Exit(True);
+    end;
+  end;
+  Result := False;
+end;
+
 function THTTPStub.Run: Cardinal;
 var
   buffer: string;
@@ -667,9 +741,10 @@ begin
             if not DecodeContent then
               exit;
 
-              Fctx := TSuperObject.Create;
+              FContext := TSuperObject.Create;
+              FParams := TSuperObject.Create;
               try
-                doBeforeProcessRequest(Fctx);
+                doBeforeProcessRequest;
                 try
                   try
                     ProcessRequest; // <<<<<<<<<<<<<<<
@@ -684,10 +759,11 @@ begin
                     end;
                   end;
                 finally
-                  doAfterProcessRequest(Fctx);
+                  doAfterProcessRequest;
                 end;
               finally
-                Fctx := nil;
+                FParams := nil;
+                FContext := nil;
               end;
 
             line := 0;
@@ -731,23 +807,22 @@ begin
   FRttiContext.SerialToJson.Add(TypeInfo(Boolean), serialtoboolean);
   FRttiContext.SerialToJson.Add(TypeInfo(TDateTime), serialtodatetime);
 
-
-
   FFormats := TSuperObject.Create;
-  FFormats.S['htm.content'] := 'text/html';
-  FFormats.S['htm.charset'] := DEFAULT_CHARSET;
-
-  FFormats.S['html.content'] := 'text/html';
-  FFormats.S['html.charset'] := DEFAULT_CHARSET;
-
-  FFormats.S['xml.content'] := 'text/xml';
-  FFormats.S['json.content'] := 'text/json';
-  FFormats.S['png.content'] := 'image/png';
-  FFormats.S['jpeg.content'] := 'image/jpeg';
-  FFormats.S['jpg.content'] := 'image/jpeg';
-  FFormats.S['gif.content'] := 'image/gif';
-  FFormats.S['css.content'] := 'text/css';
-  FFormats.S['js.content'] := 'text/javascript';
+  with FFormats.AsObject do
+  begin
+    S['htm.content'] := 'text/html';
+    S['htm.charset'] := DEFAULT_CHARSET;
+    S['html.content'] := 'text/html';
+    S['html.charset'] := DEFAULT_CHARSET;
+    S['xml.content'] := 'text/xml';
+    S['json.content'] := 'text/json';
+    S['png.content'] := 'image/png';
+    S['jpeg.content'] := 'image/jpeg';
+    S['jpg.content'] := 'image/jpeg';
+    S['gif.content'] := 'image/gif';
+    S['css.content'] := 'text/css';
+    S['js.content'] := 'text/javascript';
+  end;
 
   // connexion timout
 {$IFDEF FPC}
@@ -755,8 +830,6 @@ begin
 {$ELSE}
   setsockopt(ASocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
 {$ENDIF}
-
-
 end;
 
 destructor THTTPStub.Destroy;
@@ -769,32 +842,33 @@ begin
   inherited;
 end;
 
-procedure THTTPStub.doAfterProcessRequest(ctx: ISuperObject);
+procedure THTTPStub.doAfterProcessRequest;
 var
   ite: TSuperObjectIter;
 begin
-  Response.S['env.Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(ctx['session']) + '; path=/';
+  Response.S['env.Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FContext.AsObject.N['session']) + '; path=/';
   Response.S['Cache-Control'] := 'no-cache';
   HTTPCompress;
 
-   WriteLine(HttpResponseStrings(Response.I['response']));
+  WriteLine(HttpResponseStrings(Response.I['response']));
 
-   if ObjectFindFirst(Response['env'], ite) then
-   repeat
-     WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
-   until not ObjectFindNext(ite);
-   ObjectFindClose(ite);
+  if ObjectFindFirst(Response['env'], ite) then
+  repeat
+    WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
+  until not ObjectFindNext(ite);
+  ObjectFindClose(ite);
 
-   if Response['sendfile'] <> nil then
-     SendFile(Response.S['sendfile']) else
-     SendStream(Response.Content);
+  if Response['sendfile'] <> nil then
+    SendFile(Response.S['sendfile']) else
+    SendStream(Response.Content);
 
-   ctx.Clear(true);
-   Request.Clear(true);
-   Response.Clear(true);
+  FContext.Clear(true);
+  FParams.Clear(true);
+  Request.Clear(true);
+  Response.Clear(true);
 end;
 
-procedure THTTPStub.doBeforeProcessRequest(ctx: ISuperObject);
+procedure THTTPStub.doBeforeProcessRequest;
   function interprete(v: PSOChar; name: string): boolean;
   var
     p: PChar;
@@ -806,10 +880,10 @@ procedure THTTPStub.doBeforeProcessRequest(ctx: ISuperObject);
       p := StrScan(PChar(str), '.');
       if p <> nil then
       begin
-        ctx.S['params.format'] := p + 1;
+        FParams.AsObject.S['format'] := p + 1;
         setlength(str, p - PChar(str));
       end;
-      ctx['params'][name] := TSuperObject.ParseString(PChar(str), false);
+      FParams.AsObject[name] := TSuperObject.ParseString(PChar(str), false);
       Result := true;
     end else
       Result := false
@@ -817,37 +891,37 @@ procedure THTTPStub.doBeforeProcessRequest(ctx: ISuperObject);
 var
   obj: ISuperObject;
 begin
-  Request.I['tickcount'] := GetTickCount;
-  Request['cookies'] := HTTPInterprete(PSOChar(Request.S['env.cookie']), true);
-  Request['content-type'] := HTTPInterprete(PSOChar(Request.S['env.content-type']));
-  Request['accept'] := HTTPInterprete(PSOChar(Request.S['env.accept']), false, ',');
+  with Request.AsObject do
+  begin
+    O['cookies'] := HTTPInterprete(PSOChar(Request.S['env.cookie']), true);
+    O['content-type'] := HTTPInterprete(PSOChar(Request.S['env.content-type']));
+    O['accept'] := HTTPInterprete(PSOChar(Request.S['env.accept']), false, ',');
+  end;
 
-  Response.I['response'] :=  200;
+  Response.AsObject.I['response'] :=  200;
 
-  ctx.B['session.authenticate'] := true;
-  // decode session from cookie
-  obj := Request['cookies.' + COOKIE_NAME];
-  if obj <> nil then
-  case obj.DataType of
-    stString: ctx['session'].Merge(DecodeObject(obj.AsString));
-    stArray: ctx['session'].Merge(DecodeObject(obj.AsArray.S[0]));
+  obj := Request.AsObject['cookies'].AsObject[COOKIE_NAME];
+  case ObjectGetType(obj) of
+    stString: FContext.AsObject['session'] := DecodeObject(obj.AsString);
+    stArray: FContext.AsObject['session'] := DecodeObject(obj.AsArray.S[0]);
+  else
+    FContext.AsObject['session'] := TSuperObject.Create(stObject);
   end;
 
   // get parametters
-  ctx['params'] := TSuperObject.Create;
-  ctx['params'].Merge(Request['params'], true);
+  FParams.Merge(Request['params'], true);
   if (Request.S['method'] = 'POST') then
     if(Request.S['accept[0]'] = 'application/json') then
     begin
-      ctx['params'].Merge(Request.ContentString);
-      ctx.S['params.format'] := 'json';
+      FParams.Merge(Request.ContentString);
+      FParams.AsObject.S['format'] := 'json';
     end else
     if(Request.S['content-type[0]'] = 'application/x-www-form-urlencoded') then
     begin
       obj := HTTPInterprete(PSOChar(Request.ContentString), true, '&', false, DEFAULT_CP);
       try
-        ctx['params'].Merge(obj, true);
-        ctx.S['params.format'] := 'html';
+        FParams.Merge(obj, true);
+        FParams.AsObject.S['format'] := 'html';
       finally
         obj := nil;
       end;
@@ -861,17 +935,17 @@ begin
    end;
 
   // default controller is application
-  if (ctx['params.controller'] = nil) then
-    ctx.S['params.controller'] := 'application';
+  if (FParams.AsObject['controller'] = nil) then
+    FParams.AsObject.S['controller'] := 'application';
 
 
   // default action is index
-  if (ctx['params.action'] = nil) then
-    (ctx.S['params.action'] := 'index');
+  if (FParams.AsObject['action'] = nil) then
+    (FParams.AsObject.S['action'] := 'index');
 
   // detect format
-  if (ctx['params.format'] = nil) then
-    ctx.S['params.format'] := 'html';
+  if (FParams.AsObject['format'] = nil) then
+    FParams.AsObject.S['format'] := 'html';
 end;
 
 procedure THTTPStub.HTTPOutput(const obj: ISuperObject; format: boolean);
@@ -904,50 +978,34 @@ var
   return: ISuperObject;
 begin
   inherited;
-  path := ExtractFilePath(ParamStr(0)) + 'HTTP';
-  if Fctx['params.controller'] <> nil then
-    with Fctx['params'] do
+
+  with FParams.AsObject do
+    if FFormats[S['format'] + '.charset'] <> nil then
+      Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
+      Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'];
+
+
+  path := ExtractFilePath(ParamStr(0));
+  if FParams.AsObject['controller'] <> nil then
+    with FParams.AsObject do
     begin
       // controller
-      TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'] + '_' + Request.S['method'], Fctx['params'], return);
+      TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'] + '_' + Request.S['method'], FParams, return);
 
       // redirect ? ...
       if Response.I['response'] = 302 then Exit;
 
-      // view
-      if TrySOInvoke(FRttiContext, Self, 'view_' + S['controller'] + '_' + S['action'] + '_' + S['format'], Fctx['params'], return) then
-      begin
-        if FFormats[S['format'] + '.charset'] <> nil then
-          Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
-          Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'];
-        exit;
-      end else
-      begin
-        str := path + '/' + S['controller'] + '/' + S['action'] + '.' + S['format'] + '.lua';
-        if FileExists(str) then
-        begin
-          lua_render(Self, str);
-          exit;
-        end;
-      end;
+      if RenderInternal(FParams) or
+        RenderScript(FParams) then Exit;
     end;
 
   str := Request.S['uri'];
+  path := path + 'static';
 
-  if {$IFDEF UNICODE}(str[Length(str)] < #256) and {$ENDIF}(AnsiChar(str[Length(str)]) in ['/','\']) then
-  begin
-    if FileExists(path + str + 'index.html') then
-      Request.S['uri'] := Request.S['uri'] + 'index.html' else
-    if FileExists(path + Request.S['uri'] + 'index.htm') then
-      Request.S['uri'] := Request.S['uri'] + 'index.htm';
-  end;
+  if (AnsiChar(str[Length(str)]) in ['/','\']) then
+    str := str + 'index.' + FParams.AsObject.S['format'];
 
-  if FileExists(path + Request.S['uri']) then
-  begin
-    Response.S['env.Content-Type'] := FFormats.S[Fctx.S['params.format']+'.content'];
-    Response.S['sendfile'] := path + Request.S['uri'];
-    exit;
-  end else
+  if not RenderFile(path + str) then
     Response.I['response'] :=  404;
 end;
 

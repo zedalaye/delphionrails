@@ -17,8 +17,6 @@ type
   THTTPConnexion = class(THTTPStub)
   public
     procedure ctrl_application_index_get;
-    procedure view_application_index_html;
-    procedure ctrl_test_index_get(id: boolean);
   end;
 
 implementation
@@ -28,17 +26,8 @@ uses SysUtils, PDGDB, PDGService;
 
 procedure THTTPConnexion.ctrl_application_index_get;
 begin
-  beep;
-end;
-
-procedure THTTPConnexion.ctrl_test_index_get(id: boolean);
-begin
-  beep;
-end;
-
-procedure THTTPConnexion.view_application_index_html;
-begin
-  HTTPOutput('<b>hello<b>');
+//  Context.B['session.foo'] := true;
+//  Context.S['session.pouet'] := 'tralala';
 end;
 
 { THTTPServer }
