@@ -1,3 +1,10 @@
-<% render{controller = "application", action = "header"} %>
-<pre><%=session%></pre>
-<% render{action = "footer"} %>
+<% render{controller = "application", action = "layout"}; 
+for text in coroutine.wrap(function() return layout() end) do 
+  if text == "title" then print("index")
+  elseif text == "body" then
+%>
+  <p>hello</p>
+<%
+  end
+end
+%>
