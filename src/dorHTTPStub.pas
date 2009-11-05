@@ -812,7 +812,7 @@ begin
   FRttiContext.SerialToJson.Add(TypeInfo(TDateTime), serialtodatetime);
 
   FFormats := TSuperObject.Create;
-  with FFormats.AsObject do
+  with FFormats do
   begin
     S['htm.content'] := 'text/html';
     S['htm.charset'] := DEFAULT_CHARSET;
@@ -850,12 +850,9 @@ procedure THTTPStub.doAfterProcessRequest;
 var
   ite: TSuperObjectIter;
 begin
+  Response.S['env.Server'] := 'DOR 1.0';
   Response.S['env.Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FContext.AsObject.N['session']) + '; path=/';
-  Response.S['Cache-Control'] := 'no-cache';
-  HTTPCompress;
-
   WriteLine(HttpResponseStrings(Response.I['response']));
-
   if ObjectFindFirst(Response['env'], ite) then
   repeat
     WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
@@ -1000,7 +997,11 @@ begin
       if Response.I['response'] = 302 then Exit;
 
       if RenderInternal(FParams) or
-        RenderScript(FParams) then Exit;
+        RenderScript(FParams) then
+        begin
+          Response.S['env.Cache-Control'] := 'private, max-age=0';
+          Exit;
+        end;
     end;
 
   str := Request.S['uri'];
@@ -1009,8 +1010,9 @@ begin
   if (AnsiChar(str[Length(str)]) in ['/','\']) then
     str := str + 'index.' + FParams.AsObject.S['format'];
 
-  if not RenderFile(path + str) then
-    Response.I['response'] :=  404;
+  if RenderFile(path + str) then
+    Response.S['env.Cache-Control'] := 'public' else
+    Response.I['response'] :=  404
 end;
 
 procedure THTTPStub.SendEmpty;
