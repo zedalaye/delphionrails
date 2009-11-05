@@ -197,34 +197,6 @@ begin
   end;
 end;
 
-procedure lua_execute(const This: THTTPStub; const script: string);
-var
-  state: Plua_State;
-  ite: TSuperObjectIter;
-begin
-  state := lua_newstate(@lua_app_alloc, nil);
-  try
-    luaL_openlibs(state);
-    lua_pushlightuserdata(state, Pointer(This));
-    lua_setglobal(state, '@this');
-    lua_pushcfunction(state, @lua_print);
-    lua_setglobal(state, 'print');
-    lua_pushcfunction(state, lua_gettickcount);
-    lua_setglobal(state, 'gettickcount');
-    lua_pushcfunction(state, lua_render);
-    lua_setglobal(state, 'render');
-    if ObjectFindFirst(This.FContext, ite) then
-    repeat
-      lua_pushsuperobject(state, ite.val);
-      lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
-    until not ObjectFindNext(ite);
-    ObjectFindClose(ite);
-    lua_processsor_dofile(state, script);
-  finally
-    lua_close(state);
-  end;
-end;
-
 function HttpResponseStrings(code: integer): RawByteString;
 begin
   case code of
@@ -674,14 +646,47 @@ end;
 
 function THTTPStub.RenderScript(const params: ISuperObject): Boolean;
 var
-  str: string;
+  state: Plua_State;
+  ite: TSuperObjectIter;
+  path, str: string;
 begin
-  with params do
+  with params.AsObject do
   begin
-    str :=  ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+    path := ExtractFilePath(ParamStr(0));
+    str := path + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
     if FileExists(str) then
     begin
-      lua_execute(Self, str);
+
+      state := lua_newstate(@lua_app_alloc, nil);
+      try
+        luaL_openlibs(state);
+        lua_pushlightuserdata(state, Self);
+        lua_setglobal(state, '@this');
+        lua_pushcfunction(state, @lua_print);
+        lua_setglobal(state, 'print');
+        lua_pushcfunction(state, lua_gettickcount);
+        lua_setglobal(state, 'gettickcount');
+        lua_pushcfunction(state, lua_render);
+        lua_setglobal(state, 'render');
+        if ObjectFindFirst(FContext, ite) then
+        repeat
+          lua_pushsuperobject(state, ite.val);
+          lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
+        until not ObjectFindNext(ite);
+        ObjectFindClose(ite);
+        lua_processsor_dofile(state, str);
+
+        str := path + 'layout/' + S['controller'] + '.' + S['format'];
+        if FileExists(str) then
+          lua_processsor_dofile(state, str) else
+          begin
+            str := path + 'layout/application.' + S['format'];
+            if FileExists(str) then
+              lua_processsor_dofile(state, str);
+          end;
+      finally
+        lua_close(state);
+      end;
       Exit(True);
     end;
   end;
