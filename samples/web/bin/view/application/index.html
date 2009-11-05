@@ -1,10 +1,7 @@
-<% render{controller = "application", action = "layout"}; 
-for text in coroutine.wrap(function() return layout() end) do 
-  if text == "title" then print("index")
-  elseif text == "body" then
-%>
-  <p>hello</p>
-<%
-  end
-end
-%>
+﻿<% function content_for_title() %>
+title index
+<% end %>
+
+<% function content_for_body() %>
+<p>hello</p>
+<% end %>
