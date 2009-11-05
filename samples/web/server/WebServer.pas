@@ -4,7 +4,7 @@ unit WebServer;
 {$ENDIF}
 interface
 uses
-Windows, PDGHTTPStub, PDGSocketStub,
+Windows, dorHTTPStub, dorSocketStub,
 {$IFDEF FPC}sockets,{$ELSE}Winsock, {$ENDIF}
   superobject, mypool;
 
@@ -20,7 +20,7 @@ type
   end;
 
 implementation
-uses SysUtils, PDGDB, PDGService;
+uses SysUtils, dorDB, dorService;
 
 { THTTPServer }
 

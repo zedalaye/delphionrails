@@ -13,16 +13,15 @@
       Henri Gourvest <hgourvest@gmail.com>.
 *)
 
-unit PDGHTTPStub;
+unit dorHTTPStub;
 {$IFDEF FPC}
   {$MODE OBJFPC}{$H+}
 {$ENDIF}
-{$I PDGAppServer.inc}
 interface
 uses
-  PDGSocketStub,
+  dorSocketStub,
   {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
-  PDGUtils, classes, superobject, uiblib;
+  dorUtils, classes, superobject, uiblib;
 
 type
 
@@ -80,7 +79,7 @@ uses
 {$IFDEF MSWINDOWS}
  windows,
 {$ENDIF}
-SysUtils, StrUtils, PDGOpenSSL, PDGLua, Rtti {$ifdef madExcept}, madexcept {$endif}
+SysUtils, StrUtils, dorOpenSSL, dorLua, Rtti {$ifdef madExcept}, madexcept {$endif}
 {$IFDEF UNICODE}, AnsiStrings{$ENDIF}
 {$IFDEF UNIX}, baseunix{$ENDIF}
 ;
@@ -106,7 +105,7 @@ const
   DEFAULT_CHARSET = 'utf-8';
 
   ReadTimeOut: Integer = 60000; // 1 minute
-  COOKIE_NAME = 'PDGCookie';
+  COOKIE_NAME = 'Cookie';
   PASS_PHRASE: PAnsiChar = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
 
 function serialtoboolean(var value: TValue; const index: ISuperObject): ISuperObject;

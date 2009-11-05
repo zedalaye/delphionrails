@@ -1,4 +1,4 @@
-unit PDGZlib;
+unit dorZlib;
 {$IFDEF FPC}
 {$DEFINE ZLINKTODLL}
 {$ENDIF}

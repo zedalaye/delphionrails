@@ -21,8 +21,8 @@
 {$MINENUMSIZE 4}
 {$ENDIF}
 
-unit PDGService;
-{$I PDGAppServer.inc}
+unit dorService;
+
 interface
 uses
 {$IFDEF FPC}sockets{$ELSE}WinSock{$ENDIF},
@@ -33,12 +33,12 @@ uses
 {$IFDEF MSWINDOWS}
   Windows,
 {$ENDIF}
-  PDGSocketStub;
+  dorSocketStub;
 
 type
-  TPDGService = class
+  TDORService = class
   private
-    FThreads: TPDGThread;
+    FThreads: TDORThread;
     FName: string;
     FDisplayName: string;
 {$IFNDEF CONSOLEAPP}
@@ -57,7 +57,7 @@ type
   public
     procedure Run;
     function CreateServer(clazz: TSocketServerClass; Port: Word; const Bind: Longint = INADDR_ANY): TSocketServer;
-    function CreateThread(clazz: TPDGThreadClass): TPDGThread;
+    function CreateThread(clazz: TDORThreadClass): TDORThread;
     constructor Create; virtual;
     destructor Destroy; override;
     property Name: string read FName write FName;
@@ -70,7 +70,7 @@ type
   end;
 
 var
-  Application: TPDGService;
+  Application: TDORService;
 
 {$IFNDEF CONSOLEAPP}
 const
@@ -310,10 +310,10 @@ begin
 end;
 {$ENDIF}
 
-{ TPDGService }
+{ TDORService }
 
 {$IFNDEF CONSOLEAPP}
-procedure TPDGService.InstallService;
+procedure TDORService.InstallService;
 var
   Service: THandle;
   SCManager: THandle;
@@ -346,7 +346,7 @@ end;
 {$ENDIF}
 
 {$IFNDEF CONSOLEAPP}
-procedure TPDGService.RemoveService;
+procedure TDORService.RemoveService;
 var
   Service: THandle;
   SCManager: THandle;
@@ -381,7 +381,7 @@ begin
 end;
 {$ENDIF}
 
-procedure TPDGService.Run;
+procedure TDORService.Run;
 {$IFDEF CONSOLEAPP}
 var
   Cmd: string;
@@ -460,16 +460,16 @@ tryagain:
 {$ENDIF}
 end;
 
-constructor TPDGService.Create;
+constructor TDORService.Create;
 begin
-  FThreads := TPDGThread.Create(nil);
+  FThreads := TDORThread.Create(nil);
 {$IFNDEF CONSOLEAPP}
   FServiceType := SERVICE_WIN32_OWN_PROCESS;
   FStartType := SERVICE_DEMAND_START;
 {$ENDIF}
 end;
 
-destructor TPDGService.Destroy;
+destructor TDORService.Destroy;
 begin
   FThreads.Free;
 {$IFNDEF FPC}
@@ -479,7 +479,7 @@ begin
   inherited;
 end;
 
-function TPDGService.Start: boolean;
+function TDORService.Start: boolean;
 {$IFNDEF FPC}
 var
   Data: TWSAData;
@@ -496,27 +496,27 @@ begin
   end;
 end;
 
-procedure TPDGService.Pause;
+procedure TDORService.Pause;
 begin
   FThreads.Pause;
 end;
 
-procedure TPDGService.Resume;
+procedure TDORService.Resume;
 begin
   FThreads.Resume;
 end;
 
-function TPDGService.CreateServer(clazz: TSocketServerClass; Port: Word; const Bind: Longint): TSocketServer;
+function TDORService.CreateServer(clazz: TSocketServerClass; Port: Word; const Bind: Longint): TSocketServer;
 begin
   Result := clazz.CreateServer(FThreads, Port, Bind);
 end;
 
-function TPDGService.CreateThread(clazz: TPDGThreadClass): TPDGThread;
+function TDORService.CreateThread(clazz: TDORThreadClass): TDORThread;
 begin
   Result := clazz.Create(FThreads);
 end;
 
 initialization
-  Application := TPDGService.Create;
+  Application := TDORService.Create;
 
 end.

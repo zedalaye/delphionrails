@@ -13,18 +13,17 @@
       Henri Gourvest <hgourvest@progdigy.com>.
 *)
 
-unit PDGSocketStub;
+unit dorSocketStub;
 {$IFDEF FPC}
 {$mode objfpc}{$H+}
 {$ENDIF}
-{$I PDGAppServer.inc}
 
 interface
 uses
   {$IFNDEF FPC}Windows,{$ENDIF}
   {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
   {$IFDEF UNIX}baseunix,{$ENDIF}
-  PDGUtils;
+  dorUtils;
 
 {$IFDEF FPC}
 const
@@ -37,35 +36,35 @@ const
   
 type
   // forward declarations
-  TPDGThread = class;
+  TDORThread = class;
   TSocketStub = class;
   TSocketServer = class;
 
   TSocketStubClass = class of TSocketStub;
   TSocketServerClass = class of TSocketServer;
-  TPDGThreadClass = class of TPDGThread;
+  TDORThreadClass = class of TDORThread;
 
   PThreadList = ^TThreadList;
-  TThreadList = array[0..(Maxint div 16) - 1] of TPDGThread;
+  TThreadList = array[0..(Maxint div 16) - 1] of TDORThread;
 
-  TPDGThread = class(TInterfacedObject)
+  TDORThread = class(TInterfacedObject)
   private
     FThreadId: TThreadID;
     FThreadHandle: TThreadId;
     FPaused: boolean;
     FCriticalSection: TRtlCriticalSection;
-    FOwner: TPDGThread;
+    FOwner: TDORThread;
     FChildList: PThreadList;
     FChildCount: Integer;
     FChildCapacity: Integer;
     FThreadRefCount: Integer;
     FStopped: Longint;
-    function ChildGet(Index: Integer): TPDGThread;
+    function ChildGet(Index: Integer): TDORThread;
     procedure ChildSetCapacity(NewCapacity: Integer);
-    function ChildAdd(Item: TPDGThread): Integer;
+    function ChildAdd(Item: TDORThread): Integer;
     procedure ChildDelete(Index: Integer);
-    function ChildIndexOf(Item: TPDGThread): Integer;
-    function ChildRemove(Item: TPDGThread): Integer;
+    function ChildIndexOf(Item: TDORThread): Integer;
+    function ChildRemove(Item: TDORThread): Integer;
     function GetChildCount: Integer;
     function GetStopped: boolean;
   protected
@@ -79,14 +78,14 @@ type
     procedure Start;
     procedure Lock;
     procedure UnLock;
-    constructor Create(AOwner: TPDGThread); virtual;
+    constructor Create(AOwner: TDORThread); virtual;
     destructor Destroy; override;
     property ChildCount: Integer read GetChildCount;
-    property ChildItems[Index: Integer]: TPDGThread read ChildGet; default;
+    property ChildItems[Index: Integer]: TDORThread read ChildGet; default;
     property Stopped: boolean read GetStopped;
   end;
 
-  TSocketServer = class(TPDGThread)
+  TSocketServer = class(TDORThread)
   private
     FAddress: TSockAddr;
     FSocketHandle: longint;
@@ -98,10 +97,10 @@ type
     function doOnCreateStub(Socket: longint; Address: TSockAddr): TSocketStub; virtual; abstract;
   public
     property Address: TSockAddr read FAddress;
-    constructor CreateServer(AOwner: TPDGThread; Port: Word; const Bind: LongInt = INADDR_ANY); virtual;
+    constructor CreateServer(AOwner: TDORThread; Port: Word; const Bind: LongInt = INADDR_ANY); virtual;
   end;
 
-  TSocketStub = class(TPDGThread)
+  TSocketStub = class(TDORThread)
   private
     FAddress: TSockAddr;
     FSocketHandle: longint;
@@ -129,9 +128,9 @@ const
 
 function ThreadRun(Thread: Pointer): PtrInt; {$IFNDEF FPC}stdcall;{$ENDIF}
 var
-  t: TPDGThread;
+  t: TDORThread;
 begin
-  t := TPDGThread(Thread);
+  t := TDORThread(Thread);
   InterlockedIncrement(t.FThreadRefCount);
   try
     result := t.Run;
@@ -143,9 +142,9 @@ begin
   end;
 end;
 
-{ TPDGThread }
+{ TDORThread }
 
-constructor TPDGThread.Create(AOwner: TPDGThread);
+constructor TDORThread.Create(AOwner: TDORThread);
 begin
   inherited Create;
   InterlockedIncrement(AThreadCount);
@@ -163,7 +162,7 @@ begin
     FOwner.ChildAdd(Self);
 end;
 
-destructor TPDGThread.Destroy;
+destructor TDORThread.Destroy;
 begin
   InterlockedDecrement(AThreadCount);
   Stop;
@@ -179,7 +178,7 @@ begin
   inherited;
 end;
 
-procedure TPDGThread.Pause;
+procedure TDORThread.Pause;
 var i: integer;
 begin
   if not FPaused then
@@ -197,7 +196,7 @@ begin
   end;
 end;
 
-procedure TPDGThread.Resume;
+procedure TDORThread.Resume;
 var i: integer;
 begin
   if FPaused then
@@ -215,7 +214,7 @@ begin
   end;
 end;
 
-function TPDGThread.Run: Cardinal;
+function TDORThread.Run: Cardinal;
 begin
   Result := 0;
 //  raise Exception.Create('not implemented');
@@ -223,7 +222,7 @@ end;
 
 // Childs ...
 
-function TPDGThread.ChildAdd(Item: TPDGThread): Integer;
+function TDORThread.ChildAdd(Item: TDORThread): Integer;
 var
   Delta: Integer;
 begin
@@ -242,14 +241,14 @@ begin
       ChildSetCapacity(FChildCapacity + Delta);
     end;
     FChildList^[Result] := Item;
-    InterlockedIncrement(TPDGThread(Item).FThreadRefCount);
+    InterlockedIncrement(TDORThread(Item).FThreadRefCount);
     Inc(FChildCount);
   finally
     UnLock;
   end;
 end;
 
-procedure TPDGThread.ChildClear;
+procedure TDORThread.ChildClear;
 begin
   Lock;
   try
@@ -261,7 +260,7 @@ begin
   end;
 end;
 
-procedure TPDGThread.ChildDelete(Index: Integer);
+procedure TDORThread.ChildDelete(Index: Integer);
 begin
   if (Index < 0) or (Index >= FChildCount) then exit;
 
@@ -276,7 +275,7 @@ begin
       (FChildCount - Index) * SizeOf(Pointer));
 end;
 
-function TPDGThread.ChildGet(Index: Integer): TPDGThread;
+function TDORThread.ChildGet(Index: Integer): TDORThread;
 begin
   Result := nil;
   Lock;
@@ -289,7 +288,7 @@ begin
   end;
 end;
 
-function TPDGThread.ChildIndexOf(Item: TPDGThread): Integer;
+function TDORThread.ChildIndexOf(Item: TDORThread): Integer;
 begin
   Result := 0;
   while (Result < FChildCount) and (FChildList^[Result] <> Item) do
@@ -298,7 +297,7 @@ begin
     Result := -1;
 end;
 
-function TPDGThread.ChildRemove(Item: TPDGThread): Integer;
+function TDORThread.ChildRemove(Item: TDORThread): Integer;
 begin
   Lock;
   try
@@ -310,7 +309,7 @@ begin
   end;
 end;
 
-procedure TPDGThread.ChildSetCapacity(NewCapacity: Integer);
+procedure TDORThread.ChildSetCapacity(NewCapacity: Integer);
 begin
   Lock;
   try
@@ -326,17 +325,17 @@ begin
   end;
 end;
 
-procedure TPDGThread.Lock;
+procedure TDORThread.Lock;
 begin
   EnterCriticalSection(FCriticalSection);
 end;
 
-procedure TPDGThread.UnLock;
+procedure TDORThread.UnLock;
 begin
   LeaveCriticalSection(FCriticalSection);
 end;
 
-function TPDGThread.GetChildCount: Integer;
+function TDORThread.GetChildCount: Integer;
 begin
   Lock;
   try
@@ -346,13 +345,13 @@ begin
   end;
 end;
 
-procedure TPDGThread.Start;
+procedure TDORThread.Start;
 var
   i: Integer;
 begin
   Lock;
   try
-    if ClassType <> TPDGThread then
+    if ClassType <> TDORThread then
     {$IFDEF FPC}
       FThreadHandle := BeginThread(@ThreadRun, Self, FThreadId);
     {$ELSE}
@@ -365,17 +364,17 @@ begin
   end;
 end;
 
-procedure TPDGThread.Stop;
+procedure TDORThread.Stop;
 begin
   InterlockedExchange(FStopped, 1);
 end;
 
-function TPDGThread.GetStopped: boolean;
+function TDORThread.GetStopped: boolean;
 begin
   Result := FStopped <> 0;
 end;
 
-class function TPDGThread.ThreadCount: integer;
+class function TDORThread.ThreadCount: integer;
 begin
   Result := AThreadCount;
 end;
@@ -448,7 +447,7 @@ begin
   end;
 end;
 
-constructor TSocketServer.CreateServer(AOwner: TPDGThread; Port: Word; const Bind: LongInt);
+constructor TSocketServer.CreateServer(AOwner: TDORThread; Port: Word; const Bind: LongInt);
 begin
   inherited Create(AOwner);
   FSocketHandle := INVALID_SOCKET;

@@ -1,43 +1,43 @@
-unit PDGSQLite;
+unit dorSQLite;
 
 interface
-uses PDGDB, SuperObject;
+uses dorDB, SuperObject;
 
 type
-  TPDGSQLiteConnection = class(TPDGConnection)
+  TDBSQLiteConnection = class(TDBConnection)
   private
     FDbHandle: Pointer;
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
-    function newContext(const Options: ISuperObject = nil): IPDGContext; override;
+    function newContext(const Options: ISuperObject = nil): IDBContext; override;
   public
     constructor Create(const Options: ISuperObject); reintroduce; overload;
     constructor Create(const Options: string); reintroduce; overload;
     destructor Destroy; override;
   end;
 
-  TPDGSQLiteContext = class(TPDGContext)
+  TDBSQLiteContext = class(TDBContext)
   private
-    FConnection: TPDGSQLiteConnection;
+    FConnection: TDBSQLiteConnection;
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
-    function newCommand(const Options: ISuperObject = nil): IPDGCommand; override;
+    function newCommand(const Options: ISuperObject = nil): IDBCommand; override;
   public
-    constructor Create(Connection: TPDGSQLiteConnection; Options: ISuperObject); reintroduce;
+    constructor Create(Connection: TDBSQLiteConnection; Options: ISuperObject); reintroduce;
     destructor Destroy; override;
   end;
 
-  TPDGSQLiteCommand = class(TPDGCommand)
+  TDBSQLiteCommand = class(TDBCommand)
   private
     FNeedReset: boolean;
     FStHandle: Pointer;
-    FConnection: TPDGSQLiteConnection;
+    FConnection: TDBSQLiteConnection;
   protected
-    function Execute(const params: ISuperObject = nil; const context: IPDGContext = nil): ISuperObject; override;
+    function Execute(const params: ISuperObject = nil; const context: IDBContext = nil): ISuperObject; override;
     function GetInputMeta: ISuperObject; override;
     function GetOutputMeta: ISuperObject; override;
   public
-    constructor Create(const Connection: TPDGSQLiteConnection; const Context: TPDGSQLiteContext; Options: ISuperObject); reintroduce;
+    constructor Create(const Connection: TDBSQLiteConnection; const Context: TDBSQLiteContext; Options: ISuperObject); reintroduce;
     destructor Destroy; override;
   end;
 
@@ -203,9 +203,9 @@ end;
 const
   MAX_BUSY_TIME = 5000;
 
-{ TPDGSQLiteConnection }
+{ TDBSQLiteConnection }
 
-constructor TPDGSQLiteConnection.Create(const Options: ISuperObject);
+constructor TDBSQLiteConnection.Create(const Options: ISuperObject);
 var
   param: ISuperObject;
 begin
@@ -221,31 +221,31 @@ begin
     FDbHandle := nil;
 end;
 
-constructor TPDGSQLiteConnection.Create(const Options: string);
+constructor TDBSQLiteConnection.Create(const Options: string);
 begin
   Create(SO(Options));
 end;
 
-destructor TPDGSQLiteConnection.Destroy;
+destructor TDBSQLiteConnection.Destroy;
 begin
   if FDbHandle <> nil then
     CheckError(sqlite3_close(FDbHandle), FDbHandle);
   inherited;
 end;
 
-procedure TPDGSQLiteConnection.ExecuteImmediate(const Options: SOString);
+procedure TDBSQLiteConnection.ExecuteImmediate(const Options: SOString);
 begin
   CheckError(sqlite3_exec(FDbHandle, PAnsiChar(UTF8Encode(Options)), nil, nil, nil), FDbHandle);
 end;
 
-function TPDGSQLiteConnection.newContext(const Options: ISuperObject): IPDGContext;
+function TDBSQLiteConnection.newContext(const Options: ISuperObject): IDBContext;
 begin
-  Result := TPDGSQLiteContext.Create(Self, Options);
+  Result := TDBSQLiteContext.Create(Self, Options);
 end;
 
-{ TPDGSQLiteContext }
+{ TDBSQLiteContext }
 
-constructor TPDGSQLiteContext.Create(Connection: TPDGSQLiteConnection;
+constructor TDBSQLiteContext.Create(Connection: TDBSQLiteConnection;
   Options: ISuperObject);
 var
   sql: string;
@@ -262,7 +262,7 @@ begin
   CheckError(sqlite3_exec(FConnection.FDbHandle, PAnsiChar(AnsiString(sql)), nil, nil, nil), FConnection.FDbHandle);
 end;
 
-destructor TPDGSQLiteContext.Destroy;
+destructor TDBSQLiteContext.Destroy;
 var
   obj: ISuperObject;
 begin
@@ -273,20 +273,20 @@ begin
   inherited;
 end;
 
-procedure TPDGSQLiteContext.ExecuteImmediate(const Options: SOString);
+procedure TDBSQLiteContext.ExecuteImmediate(const Options: SOString);
 begin
   CheckError(sqlite3_exec(FConnection.FDbHandle, PAnsiChar(UTF8Encode(Options)), nil, nil, nil), FConnection.FDbHandle);
 end;
 
-function TPDGSQLiteContext.newCommand(const Options: ISuperObject): IPDGCommand;
+function TDBSQLiteContext.newCommand(const Options: ISuperObject): IDBCommand;
 begin
-  Result := TPDGSQLiteCommand.Create(FConnection, Self, Options);
+  Result := TDBSQLiteCommand.Create(FConnection, Self, Options);
 end;
 
-{ TPDGSQLiteCommand }
+{ TDBSQLiteCommand }
 
-constructor TPDGSQLiteCommand.Create(const Connection: TPDGSQLiteConnection;
-  const Context: TPDGSQLiteContext; Options: ISuperObject);
+constructor TDBSQLiteCommand.Create(const Connection: TDBSQLiteConnection;
+  const Context: TDBSQLiteContext; Options: ISuperObject);
 begin
   inherited Create(stObject);
   FNeedReset := false;
@@ -300,23 +300,23 @@ begin
   CheckError(sqlite3_prepare_v2(FConnection.FDbHandle, PSOChar(S['sql']), -1, FStHandle, nil), FConnection.FDbHandle);
 end;
 
-destructor TPDGSQLiteCommand.Destroy;
+destructor TDBSQLiteCommand.Destroy;
 begin
   if FStHandle <> nil then
     CheckError(sqlite3_finalize(FStHandle), FConnection.FDbHandle);
   inherited;
 end;
 
-function TPDGSQLiteCommand.Execute(const params: ISuperObject;
-  const context: IPDGContext): ISuperObject;
+function TDBSQLiteCommand.Execute(const params: ISuperObject;
+  const context: IDBContext): ISuperObject;
 var
   dfArray, dfFirstOne: boolean;
-  ctx: IPDGContext;
+  ctx: IDBContext;
 
   function getone: ISuperObject;
   var
     i: integer;
-    blob: IPDGBlob;
+    blob: IDBBlob;
     count: Integer;
   begin
     count := sqlite3_column_count(FStHandle);
@@ -330,7 +330,7 @@ var
           SQLITE_FLOAT: Result.AsArray.Add(TSuperObject.Create(sqlite3_column_double(FStHandle, i)));
           SQLITE_BLOB:
             begin
-              blob := TPDGBinary.Create;
+              blob := TDBBinary.Create;
               blob.getData.Write(sqlite3_column_blob(FStHandle, i)^, sqlite3_column_bytes(FStHandle, i));
               Result.AsArray.Add(blob as ISuperObject);
             end;
@@ -347,7 +347,7 @@ var
           SQLITE_FLOAT: Result[sqlite3_column_name(FStHandle, i)] := TSuperObject.Create(sqlite3_column_double(FStHandle, i));
           SQLITE_BLOB:
             begin
-              blob := TPDGBinary.Create;
+              blob := TDBBinary.Create;
               blob.getData.Write(sqlite3_column_blob(FStHandle, i)^, sqlite3_column_bytes(FStHandle, i));
               Result[sqlite3_column_name(FStHandle, i)] := blob as ISuperObject;
             end;
@@ -359,13 +359,13 @@ var
 
   procedure SetParam(index: Integer; value: ISuperObject);
   var
-    blob: IPDGBlob;
+    blob: IDBBlob;
     p: Pointer;
     len: Integer;
     str: SOString;
   begin
     if index > 0 then
-      if (Value <> nil) and (value.QueryInterface(IPDGBlob, blob) = 0) then
+      if (Value <> nil) and (value.QueryInterface(IDBBlob, blob) = 0) then
         with blob.getData do
         begin
           len := size;
@@ -492,7 +492,7 @@ begin
 end;
 
 
-function TPDGSQLiteCommand.GetInputMeta: ISuperObject;
+function TDBSQLiteCommand.GetInputMeta: ISuperObject;
 var
   j: Integer;
   count: Integer;
@@ -520,7 +520,7 @@ begin
     Result := nil;
 end;
 
-function TPDGSQLiteCommand.GetOutputMeta: ISuperObject;
+function TDBSQLiteCommand.GetOutputMeta: ISuperObject;
 var
   j, count: Integer;
   rec: ISuperObject;

@@ -26,7 +26,7 @@
   {$DEFINE HAVEINLINE}
 {$ENDIF}
 
-unit PDGLua;
+unit dorLua;
 
 interface
 uses classes, superobject;
@@ -572,7 +572,7 @@ function lua_processsor_dostream(L: Plua_State; stream: TStream): Boolean; {$IFD
 
 implementation
 uses
-  sysutils, PDGDB;
+  sysutils, dorDB;
 
 procedure lua_pop(L: Plua_State; n: Integer);  {$IFDEF HAVEINLINE}inline;{$ENDIF}
 begin
@@ -801,7 +801,7 @@ var
   i, len: Integer;
   ar: TSuperArray;
   ite: TSuperObjectIter;
-  dt: IPDGDateTime;
+  dt: IDBDateTime;
 begin
   if (obj <> nil) and obj.Processing then
     lua_pushnil(L) else
@@ -815,7 +815,7 @@ begin
         stDouble, stCurrency: lua_pushnumber(L, obj.AsDouble);
         stInt:
           begin
-            if  obj.QueryInterface(IPDGDateTime, dt) <> 0 then
+            if  obj.QueryInterface(IDBDateTime, dt) <> 0 then
               lua_pushinteger(L, obj.AsInteger) else
               begin
                 lua_pushinteger(L, obj.AsInteger div 1000);

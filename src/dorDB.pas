@@ -1,96 +1,96 @@
-unit PDGDB;
+unit dorDB;
 {$ifdef FPC}
 {$mode ObjFpc}{$H+}
 {$endif}
 interface
-uses superobject, classes, PDGUtils;
+uses superobject, classes, dorUtils;
 
 type
-  IPDGConnectionPool = interface;
-  IPDGConnection = interface;
-  IPDGContext = interface;
-  IPDGCommand = interface;
-  IPDGBlob = interface;
+  IDBConnectionPool = interface;
+  IDBConnection = interface;
+  IDBContext = interface;
+  IDBCommand = interface;
+  IDBBlob = interface;
 
-  IPDGConnectionPool = interface
+  IDBConnectionPool = interface
     ['{27621D9A-AAE9-4E24-82F5-A18D84E415F3}']
-    function GetConnection: IPDGConnection;
+    function GetConnection: IDBConnection;
     function GetSize: Integer;
   end;
 
-  IPDGConnection = interface
+  IDBConnection = interface
   ['{843E105A-B8E0-42A9-AFA0-CF5AA843DB8B}']
-    function newContext(const Options: ISuperObject = nil): IPDGContext; overload;
-    function newCommand(const Options: ISuperObject = nil): IPDGCommand; overload;
-    function newContext(const Options: SOString): IPDGContext; overload;
-    function newCommand(const Options: SOString): IPDGCommand; overload;
+    function newContext(const Options: ISuperObject = nil): IDBContext; overload;
+    function newCommand(const Options: ISuperObject = nil): IDBCommand; overload;
+    function newContext(const Options: SOString): IDBContext; overload;
+    function newCommand(const Options: SOString): IDBCommand; overload;
     procedure ExecuteImmediate(const Options: SOString); overload;
   end;
 
-  IPDGContext = interface
+  IDBContext = interface
   ['{51992399-2D1A-47EF-9DB1-C5654325F41B}']
-    function newCommand(const Options: ISuperObject = nil): IPDGCommand; overload;
-    function newCommand(const Options: SOString): IPDGCommand; overload;
+    function newCommand(const Options: ISuperObject = nil): IDBCommand; overload;
+    function newCommand(const Options: SOString): IDBCommand; overload;
     procedure ExecuteImmediate(const Options: SOString); overload;
-    function Execute(const Command: IPDGCommand; const params: ISuperObject = nil): ISuperObject; overload;
-    function Execute(const Command: IPDGCommand; const params: array of const): ISuperObject; overload;
-    function Execute(const Command: IPDGCommand; const params: SOString): ISuperObject; overload;
-    function Execute(const Command: IPDGCommand; const params: Variant): ISuperObject; overload;
+    function Execute(const Command: IDBCommand; const params: ISuperObject = nil): ISuperObject; overload;
+    function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload;
+    function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload;
+    function Execute(const Command: IDBCommand; const params: Variant): ISuperObject; overload;
   end;
 
-  IPDGCommand = interface
+  IDBCommand = interface
   ['{A39B974A-96EA-4047-A57B-A2B3EBE7BABD}']
-    function Execute(const params: ISuperObject = nil; const context: IPDGContext = nil): ISuperObject; overload;
-    function Execute(const params: array of const; const context: IPDGContext = nil): ISuperObject; overload;
-    function Execute(const params: SOString; const context: IPDGContext = nil): ISuperObject; overload;
-    function Execute(const params: Variant; const context: IPDGContext = nil): ISuperObject; overload;
+    function Execute(const params: ISuperObject = nil; const context: IDBContext = nil): ISuperObject; overload;
+    function Execute(const params: array of const; const context: IDBContext = nil): ISuperObject; overload;
+    function Execute(const params: SOString; const context: IDBContext = nil): ISuperObject; overload;
+    function Execute(const params: Variant; const context: IDBContext = nil): ISuperObject; overload;
     function GetInputMeta: ISuperObject;
     function GetOutputMeta: ISuperObject;
   end;
 
-  IPDGBlob = interface
+  IDBBlob = interface
   ['{F478FC21-00B3-49C7-8531-85572AD3C98E}']
     function getData: TStream;
   end;
 
-  IPDGDateTime = interface
+  IDBDateTime = interface
   ['{11B92F12-7E04-4442-A84E-9252FDAE2C37}']
     function AsDateTime: Double;
   end;
 
   // Abstact classes
 
-  TPDGConnection = class(TSuperObject, IPDGConnection)
+  TDBConnection = class(TSuperObject, IDBConnection)
   protected
     procedure ExecuteImmediate(const Options: SOString); virtual;
-    function newContext(const Options: ISuperObject = nil): IPDGContext; overload; virtual; abstract;
-    function newContext(const Options: SOString): IPDGContext; overload; virtual;
-    function newCommand(const Options: ISuperObject = nil): IPDGCommand; overload; virtual;
-    function newCommand(const Options: SOString): IPDGCommand; overload; virtual;
+    function newContext(const Options: ISuperObject = nil): IDBContext; overload; virtual; abstract;
+    function newContext(const Options: SOString): IDBContext; overload; virtual;
+    function newCommand(const Options: ISuperObject = nil): IDBCommand; overload; virtual;
+    function newCommand(const Options: SOString): IDBCommand; overload; virtual;
   end;
 
-  TPDGContext = class(TSuperObject, IPDGContext)
+  TDBContext = class(TSuperObject, IDBContext)
   protected
     procedure ExecuteImmediate(const Options: SOString); virtual; abstract;
-    function newCommand(const Options: ISuperObject = nil): IPDGCommand; overload; virtual; abstract;
-    function newCommand(const Options: SOString): IPDGCommand; overload; virtual;
-    function Execute(const Command: IPDGCommand; const params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Execute(const Command: IPDGCommand; const params: array of const): ISuperObject; overload; virtual;
-    function Execute(const Command: IPDGCommand; const params: SOString): ISuperObject; overload; virtual;
-    function Execute(const Command: IPDGCommand; const params: Variant): ISuperObject; overload; virtual;
+    function newCommand(const Options: ISuperObject = nil): IDBCommand; overload; virtual; abstract;
+    function newCommand(const Options: SOString): IDBCommand; overload; virtual;
+    function Execute(const Command: IDBCommand; const params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload; virtual;
+    function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload; virtual;
+    function Execute(const Command: IDBCommand; const params: Variant): ISuperObject; overload; virtual;
   end;
 
-  TPDGCommand = class(TSuperObject, IPDGCommand)
+  TDBCommand = class(TSuperObject, IDBCommand)
   protected
-    function Execute(const params: ISuperObject = nil; const context: IPDGContext = nil): ISuperObject; overload; virtual; abstract;
-    function Execute(const params: array of const; const context: IPDGContext = nil): ISuperObject; overload; virtual;
-    function Execute(const params: SOString; const context: IPDGContext = nil): ISuperObject; overload; virtual;
-    function Execute(const params: Variant; const context: IPDGContext = nil): ISuperObject; overload; virtual;
+    function Execute(const params: ISuperObject = nil; const context: IDBContext = nil): ISuperObject; overload; virtual; abstract;
+    function Execute(const params: array of const; const context: IDBContext = nil): ISuperObject; overload; virtual;
+    function Execute(const params: SOString; const context: IDBContext = nil): ISuperObject; overload; virtual;
+    function Execute(const params: Variant; const context: IDBContext = nil): ISuperObject; overload; virtual;
     function GetInputMeta: ISuperObject; virtual; abstract;
     function GetOutputMeta: ISuperObject; virtual; abstract;
   end;
 
-  TPDGBinary = class(TSuperObject, IPDGBlob)
+  TDBBinary = class(TSuperObject, IDBBlob)
   private
     FStream: TPooledMemoryStream;
   public
@@ -106,7 +106,7 @@ type
     function AsInteger: SuperInt; override; // stream length
   end;
 
-  TPDGDateTime = class(TSuperObject, IPDGDateTime)
+  TDBDateTime = class(TSuperObject, IDBDateTime)
   protected
     function AsDateTime: Double;
   end;
@@ -119,114 +119,114 @@ implementation
 
 function blob(stream: TStream = nil): ISuperObject; overload;
 begin
-  Result := TPDGBinary.Create(stream);
+  Result := TDBBinary.Create(stream);
 end;
 
 function blob(const filename: string): ISuperObject; overload;
 begin
-  Result := TPDGBinary.Create(filename);
+  Result := TDBBinary.Create(filename);
 end;
 
 function blob(buffer: Pointer; len: Integer): ISuperObject; overload;
 begin
-  Result := TPDGBinary.Create(buffer, len);
+  Result := TDBBinary.Create(buffer, len);
 end;
 
-{ TPDGConnection }
+{ TDBConnection }
 
-function TPDGConnection.newCommand(const Options: ISuperObject): IPDGCommand;
+function TDBConnection.newCommand(const Options: ISuperObject): IDBCommand;
 begin
   Result := newContext.newCommand(Options);
 end;
 
-procedure TPDGConnection.ExecuteImmediate(const Options: SOString);
+procedure TDBConnection.ExecuteImmediate(const Options: SOString);
 begin
   newContext.ExecuteImmediate(Options);
 end;
 
-function TPDGConnection.newCommand(const Options: SOString): IPDGCommand;
+function TDBConnection.newCommand(const Options: SOString): IDBCommand;
 begin
   Result := newContext.newCommand(Options);
 end;
 
-function TPDGConnection.newContext(const Options: SOString): IPDGContext;
+function TDBConnection.newContext(const Options: SOString): IDBContext;
 begin
   Result := newContext(TSuperObject.ParseString(PSOChar(Options), false));
 end;
 
-{ TPDGContext }
+{ TDBContext }
 
-function TPDGContext.Execute(const Command: IPDGCommand;
+function TDBContext.Execute(const Command: IDBCommand;
   const params: Variant): ISuperObject;
 begin
   Result := Command.Execute(so(params), Self);
 end;
 
-function TPDGContext.newCommand(const Options: SOString): IPDGCommand;
+function TDBContext.newCommand(const Options: SOString): IDBCommand;
 begin
   Result := newCommand(SO(Options));
 end;
 
-function TPDGContext.Execute(const Command: IPDGCommand;
+function TDBContext.Execute(const Command: IDBCommand;
   const params: SOString): ISuperObject;
 begin
   Result := Command.Execute(TSuperObject.ParseString(PSOChar(params), false), Self);
 end;
 
-function TPDGContext.Execute(const Command: IPDGCommand;
+function TDBContext.Execute(const Command: IDBCommand;
   const params: array of const): ISuperObject;
 begin
   Result := Command.Execute(SA(params), Self);
 end;
 
-function TPDGContext.Execute(const Command: IPDGCommand;
+function TDBContext.Execute(const Command: IDBCommand;
   const params: ISuperObject = nil): ISuperObject;
 begin
   Result := Command.Execute(params, Self);
 end;
 
-{ TPDGCommand }
+{ TDBCommand }
 
-function TPDGCommand.Execute(const params: Variant;
-  const context: IPDGContext): ISuperObject;
+function TDBCommand.Execute(const params: Variant;
+  const context: IDBContext): ISuperObject;
 begin
   Result := Execute(SO(params), context);
 end;
 
-function TPDGCommand.Execute(const params: SOString;
-  const context: IPDGContext): ISuperObject;
+function TDBCommand.Execute(const params: SOString;
+  const context: IDBContext): ISuperObject;
 begin
   Result := Execute(TSuperObject.ParseString(PSOChar(params), false), context);
 end;
 
-function TPDGCommand.Execute(const params: array of const;
-  const context: IPDGContext): ISuperObject;
+function TDBCommand.Execute(const params: array of const;
+  const context: IDBContext): ISuperObject;
 begin
   Result := Execute(SA(params), context);
 end;
 
-{ TPDGBinary }
+{ TDBBinary }
 
-function TPDGBinary.AsBoolean: Boolean;
+function TDBBinary.AsBoolean: Boolean;
 begin
   Result := FStream.Size > 0;
 end;
 
-function TPDGBinary.AsInteger: SuperInt;
+function TDBBinary.AsInteger: SuperInt;
 begin
   Result := FStream.Size;
 end;
 
-function TPDGBinary.Clone: ISuperObject;
+function TDBBinary.Clone: ISuperObject;
 var
-  blob: TPDGBinary;
+  blob: TDBBinary;
 begin
-  blob := TPDGBinary.Create;
+  blob := TDBBinary.Create;
   blob.FStream.LoadFromStream(FStream);
   Result := blob;
 end;
 
-constructor TPDGBinary.Create(stream: TStream);
+constructor TDBBinary.Create(stream: TStream);
 begin
   inherited Create('[BINARY]');
   FStream := TPooledMemoryStream.Create;
@@ -234,7 +234,7 @@ begin
     FStream.LoadFromStream(stream);
 end;
 
-constructor TPDGBinary.Create(const filename: string);
+constructor TDBBinary.Create(const filename: string);
 begin
   inherited Create('[BINARY]');
   FStream := TPooledMemoryStream.Create;
@@ -242,7 +242,7 @@ begin
     FStream.LoadFromFile(filename);
 end;
 
-constructor TPDGBinary.Create(buffer: Pointer; len: Integer);
+constructor TDBBinary.Create(buffer: Pointer; len: Integer);
 begin
   inherited Create('[BINARY]');
   FStream := TPooledMemoryStream.Create;
@@ -250,18 +250,18 @@ begin
     FStream.Write(buffer^, len);
 end;
 
-destructor TPDGBinary.Destroy;
+destructor TDBBinary.Destroy;
 begin
   FStream.Free;
   inherited;
 end;
 
-function TPDGBinary.getData: TStream;
+function TDBBinary.getData: TStream;
 begin
   Result := FStream;
 end;
 
-function TPDGBinary.Write(writer: TSuperWriter; format: boolean; escape: boolean;
+function TDBBinary.Write(writer: TSuperWriter; format: boolean; escape: boolean;
   level: integer): Integer;
 const
   Base64Code: PSOChar = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -308,9 +308,9 @@ begin
   inc(Result, writer.Append(@QUOTE, 1));
 end;
 
-{ TPDGDateTime }
+{ TDBDateTime }
 
-function TPDGDateTime.AsDateTime: Double;
+function TDBDateTime.AsDateTime: Double;
 begin
   Result := JavaToDelphiDateTime(AsInteger);
 end;

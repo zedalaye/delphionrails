@@ -4,27 +4,27 @@ unit mypool;
 {$ENDIF}
 
 interface
-uses PDGDB, PDGUIB, SuperObject;
+uses dorDB, dorUIB, SuperObject;
 
 var
-  pool: IPDGConnectionPool;
+  pool: IDBConnectionPool;
 
 implementation
-uses SysUtils, PDGSocketStub, PDGUtils;
+uses SysUtils, dorSocketStub, dorUtils;
 
 procedure init;
 var
   obj: ISuperObject;
 begin
   obj := TSuperObject.ParseFile(ExtractFilePath(ParamStr(0)) + 'appserver.json', false);
-  pool := TPDGUIBConnectionPool.Create(obj['database'], 0);
+  pool := TDBUIBConnectionPool.Create(obj['database'], 0);
 end;
 
 initialization
  init;
 
 finalization
-  while TPDGThread.ThreadCount > 0 do sleep(100);
+  while TDORThread.ThreadCount > 0 do sleep(100);
   pool := nil;
 
 end.

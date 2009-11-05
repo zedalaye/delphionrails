@@ -1,7 +1,7 @@
 ﻿	<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 		<PropertyGroup>
 			<ProjectGuid>{6883EB2A-215F-4423-9395-EE6388547281}</ProjectGuid>
-			<MainSource>AppServer.dpr</MainSource>
+			<MainSource>DORServer.dpr</MainSource>
 			<Config Condition="'$(Config)'==''">Débogage</Config>
 			<DCC_DCCCompiler>DCC32</DCC_DCCCompiler>
 			<ProjectVersion>12.0</ProjectVersion>
@@ -23,7 +23,7 @@
 			<DCC_UsePackage>vcl;rtl;vclx;vclimg;vclactnband;dbrtl;vcldb;vcldbx;bdertl;vcltouch;xmlrtl;dsnap;dsnapcon;TeeUI;TeeDB;Tee;vclib;ibxpress;adortl;IndyCore;IndySystem;IndyProtocols;inet;intrawebdb_100_140;Intraweb_100_140;VclSmp;vclie;websnap;webdsnap;inetdb;inetdbbde;inetdbxpress;soaprtl;vclribbon;dbexpress;DbxCommonDriver;DataSnapIndy10ServerTransport;DataSnapProviderClient;DbxClientDriver;DataSnapServer;DBXInterBaseDriver;DBXMySQLDriver;dbxcds;DBXFirebirdDriver;DBXSybaseASEDriver;DBXSybaseASADriver;DBXOracleDriver;DBXMSSQLDriver;DBXInformixDriver;DBXDb2Driver</DCC_UsePackage>
 			<DCC_ExeOutput>..\bin</DCC_ExeOutput>
 			<DCC_Define>CONSOLEAPP;$(DCC_Define)</DCC_Define>
-			<DCC_DependencyCheckOutputName>..\bin\AppServer.exe</DCC_DependencyCheckOutputName>
+			<DCC_DependencyCheckOutputName>..\bin\DORServer.exe</DCC_DependencyCheckOutputName>
 			<DCC_ImageBase>00400000</DCC_ImageBase>
 			<DCC_UnitAlias>WinTypes=Windows;WinProcs=Windows;$(DCC_UnitAlias)</DCC_UnitAlias>
 			<DCC_Platform>x86</DCC_Platform>
@@ -43,15 +43,15 @@
 			<DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
 		</PropertyGroup>
 		<ItemGroup>
-			<DelphiCompile Include="AppServer.dpr">
+			<DelphiCompile Include="DORServer.dpr">
 				<MainSource>MainSource</MainSource>
 			</DelphiCompile>
-			<DCCReference Include="..\..\..\src\PDGService.pas"/>
-			<DCCReference Include="..\..\..\src\PDGSocketStub.pas"/>
+			<DCCReference Include="..\..\..\src\dorService.pas"/>
+			<DCCReference Include="..\..\..\src\dorSocketStub.pas"/>
 			<DCCReference Include="WebServer.pas"/>
-			<DCCReference Include="..\..\..\src\PDGHTTPStub.pas"/>
+			<DCCReference Include="..\..\..\src\dorHTTPStub.pas"/>
 			<DCCReference Include="mypool.pas"/>
-			<DCCReference Include="..\..\..\src\PDGUtils.pas"/>
+			<DCCReference Include="..\..\..\src\dorUtils.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>
@@ -71,7 +71,7 @@
 			<BorlandProject>
 				<Delphi.Personality>
 					<Source>
-						<Source Name="MainSource">AppServer.dpr</Source>
+						<Source Name="MainSource">DORServer.dpr</Source>
 					</Source>
 					<Parameters>
 						<Parameters Name="UseLauncher">False</Parameters>

@@ -13,11 +13,10 @@
       Henri Gourvest <hgourvest@progdigy.com>.
 *)
 
-unit PDGUtils;
+unit dorUtils;
 {$IFDEF FPC}
 {$mode objfpc}{$H+}
 {$ENDIF}
-{$I PDGAppServer.inc}
 
 interface
 uses Classes, SysUtils
@@ -29,7 +28,7 @@ uses Classes, SysUtils
 , paszlib
 {$ELSE}
 , WinSock
-, PDGZLib
+, dorZLib
 {$ENDIF}
 ;
 
@@ -103,7 +102,7 @@ function GetTickCount: Cardinal;
 {$ENDIF}
 
 implementation
-uses uiblib, PDGOpenSSL;
+uses uiblib, dorOpenSSL;
 
 const
   Base64Code: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';

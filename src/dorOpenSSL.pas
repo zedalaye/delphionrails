@@ -1,6 +1,6 @@
 {$DEFINE AES_LONG}
 
-unit PDGOpenSSL;
+unit dorOpenSSL;
 
 {$define HEADER_STACK_H}
 {$define HEADER_OPENSSLCONF_H}
