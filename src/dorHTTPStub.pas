@@ -188,7 +188,7 @@ begin
         if not RenderInternal(obj) then
         begin
           with obj.AsObject do
-            str := ExtractFilePath(ParamStr(0)) + 'script/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+            str := ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
           if FileExists(str) then
             lua_processsor_dofile(state, str);
         end;
@@ -678,7 +678,7 @@ var
 begin
   with params do
   begin
-    str :=  ExtractFilePath(ParamStr(0)) + 'script/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+    str :=  ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
     if FileExists(str) then
     begin
       lua_execute(Self, str);
