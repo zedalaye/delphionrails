@@ -6,15 +6,14 @@ program DORServer;
 {$ENDIF}
 {$ENDIF}
 uses
-  dorService in '..\..\..\src\dorService.pas',
-  dorSocketStub in '..\..\..\src\dorSocketStub.pas',
-  WebServer in 'WebServer.pas',
-  dorHTTPStub in '..\..\..\src\dorHTTPStub.pas',
+  dorService,
   mypool in 'mypool.pas',
-  dorUtils in '..\..\..\src\dorUtils.pas';
+  WebServer in 'WebServer.pas';
 
 begin
+{$IFDEF DEBUG}
   ReportMemoryLeaksOnShutdown := true;
+{$ENDIF}
   Application.Name := 'DORWEBSRV';
   Application.DisplayName := 'Delphi On Rails Server';
   Application.Run;

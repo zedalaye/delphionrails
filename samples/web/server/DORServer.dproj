@@ -20,6 +20,7 @@
 			<Base>true</Base>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Base)'!=''">
+			<DCC_UnitSearchPath>..\..\..\src;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
 			<DCC_UsePackage>vcl;rtl;vclx;vclimg;vclactnband;dbrtl;vcldb;vcldbx;bdertl;vcltouch;xmlrtl;dsnap;dsnapcon;TeeUI;TeeDB;Tee;vclib;ibxpress;adortl;IndyCore;IndySystem;IndyProtocols;inet;intrawebdb_100_140;Intraweb_100_140;VclSmp;vclie;websnap;webdsnap;inetdb;inetdbbde;inetdbxpress;soaprtl;vclribbon;dbexpress;DbxCommonDriver;DataSnapIndy10ServerTransport;DataSnapProviderClient;DbxClientDriver;DataSnapServer;DBXInterBaseDriver;DBXMySQLDriver;dbxcds;DBXFirebirdDriver;DBXSybaseASEDriver;DBXSybaseASADriver;DBXOracleDriver;DBXMSSQLDriver;DBXInformixDriver;DBXDb2Driver</DCC_UsePackage>
 			<DCC_ExeOutput>..\bin</DCC_ExeOutput>
 			<DCC_Define>CONSOLEAPP;$(DCC_Define)</DCC_Define>
@@ -46,12 +47,8 @@
 			<DelphiCompile Include="DORServer.dpr">
 				<MainSource>MainSource</MainSource>
 			</DelphiCompile>
-			<DCCReference Include="..\..\..\src\dorService.pas"/>
-			<DCCReference Include="..\..\..\src\dorSocketStub.pas"/>
-			<DCCReference Include="WebServer.pas"/>
-			<DCCReference Include="..\..\..\src\dorHTTPStub.pas"/>
 			<DCCReference Include="mypool.pas"/>
-			<DCCReference Include="..\..\..\src\dorUtils.pas"/>
+			<DCCReference Include="WebServer.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>
