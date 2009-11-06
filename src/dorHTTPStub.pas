@@ -49,8 +49,6 @@ type
     FRttiContext: TSuperRttiContext;
     function DecodeFields(str: PChar): boolean;
     function DecodeCommand(str: PChar): boolean;
-    property Request: THTTPMessage read FRequest;
-    property Response: THTTPMessage read FResponse;
     procedure WriteLine(str: RawByteString);
     procedure SendEmpty;
     procedure SendFile(const filename: string);
@@ -72,6 +70,8 @@ type
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
     destructor Destroy; override;
     property Context: ISuperObject read FContext;
+    property Request: THTTPMessage read FRequest;
+    property Response: THTTPMessage read FResponse;
   end;
 
 implementation
