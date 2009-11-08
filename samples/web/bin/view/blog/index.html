@@ -1,0 +1,16 @@
+﻿<% function content_for_title() %>
+This is my Blog
+<% end %>
+
+<% function content_for_body() %>
+<h1>Listing posts</h1>
+<% for k, v in ipairs(data) do %>
+<a href="/blog/view/<%=v.id%>"><%=v.title%></a>
+<a href="/blog/edit/<%=v.id%>">Edit</a>
+<a href="/blog/delete/<%=v.id%>">Delete</a>
+<br/>
+<% end %>
+<br/><a href="/blog/new">New post</a>
+<% end %>
+
+

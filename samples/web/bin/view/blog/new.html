@@ -1,0 +1,14 @@
+<% function content_for_title() %>
+New post
+<% end %>
+
+<% function content_for_body() %>
+<h1>New post</h1>
+<form action="/blog/new" method="POST">
+  <label>Title</label>
+  <input type="text" name="title" size="50"/><br/>
+  <label>Body</label><br/>
+  <textarea name="body" cols="50" rows="20"></textarea><br/>
+  <input type="submit" value="Create"/>
+</form>
+<% end %>

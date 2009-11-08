@@ -1,5 +1,5 @@
 {"database":
-	{"databasename":"EMPLOYEE",
+	{"databasename":":DOR_DB",
 	 "username":"SYSDBA",
 	 "password":"masterkey",
      "characterset": "UTF8",

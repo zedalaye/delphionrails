@@ -1,7 +1,4 @@
 unit mypool;
-{$IFDEF FPC}
-  {$mode objfpc}{$H+}
-{$ENDIF}
 
 interface
 uses dorDB, dorUIB, SuperObject;
@@ -16,7 +13,7 @@ procedure init;
 var
   obj: ISuperObject;
 begin
-  obj := TSuperObject.ParseFile(ExtractFilePath(ParamStr(0)) + 'appserver.json', false);
+  obj := TSuperObject.ParseFile(ExtractFilePath(ParamStr(0)) + 'conf.json', false);
   pool := TDBUIBConnectionPool.Create(obj['database'], 0);
 end;
 

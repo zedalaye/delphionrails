@@ -1,12 +1,7 @@
 unit WebServer;
-{$IFDEF FPC}
-  {$MODE OBJFPC}{$H+}
-{$ENDIF}
 interface
 uses
-Windows, dorHTTPStub, dorSocketStub,
-{$IFDEF FPC}sockets,{$ELSE}Winsock, {$ENDIF}
-  superobject, mypool;
+Windows, dorHTTPStub, dorSocketStub, Winsock, superobject, mypool;
 
 type
   THTTPServer = class(TSocketServer)
@@ -16,31 +11,68 @@ type
 
   THTTPConnexion = class(THTTPStub)
   public
-    procedure ctrl_application_index_get;
-    procedure view_demo_getimg_png;
+    type
+      TBlog = record
+        id: Integer;
+        title: string;
+        body: string;
+      end;
+    procedure ctrl_blog_index_get;
+    procedure ctrl_blog_new_post(const title, body: string);
+    procedure ctrl_blog_view_get(id: Integer);
+    procedure ctrl_blog_edit_get(id: Integer);
+    procedure ctrl_blog_edit_post(const data: TBlog);
+    procedure ctrl_blog_delete(id: Integer);
+
+    procedure view_cairo_getimg_png;
   end;
 
 implementation
 uses SysUtils, dorDB, dorService, dorCairolib, dorCairo;
 
-{ THTTPServer }
+{ THTTPConnexion }
 
-procedure THTTPConnexion.ctrl_application_index_get;
+procedure THTTPConnexion.ctrl_blog_delete(id: Integer);
 begin
-
+  with pool.GetConnection.newContext do
+    Execute(newCommand('delete from blog where id = ?'), id);
+  Redirect('blog', 'index');
 end;
 
-{ THTTPServer }
-
-function THTTPServer.doOnCreateStub(Socket: longint;
-  AAddress: TSockAddr): TSocketStub;
+procedure THTTPConnexion.ctrl_blog_edit_get(id: Integer);
 begin
-  Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
+  with pool.GetConnection.newContext do
+    Context['data'] := Execute(newSelect('select * from blog where id = ?', true), id);
 end;
 
+procedure THTTPConnexion.ctrl_blog_edit_post(const data: TBlog);
+begin
+  with pool.GetConnection.newContext do
+   Execute(newCommand('update blog set title = ?, body = ? where id = ?'),
+     [data.title, data.body, data.id]);
+  Context.S['info'] := 'updated';
+end;
 
-// cairo demo
-procedure THTTPConnexion.view_demo_getimg_png;
+procedure THTTPConnexion.ctrl_blog_index_get;
+begin
+  with pool.GetConnection.newContext do
+    Context['data'] := Execute(newSelect('select title, id from blog order by post_date'));
+end;
+
+procedure THTTPConnexion.ctrl_blog_new_post(const title, body: string);
+begin
+  with pool.GetConnection.newContext do
+   Redirect(Execute(newFunction('insert into blog (title, body) values (?, ?) returning id'),
+     [title, body]).Format('/blog/view/%id%'));
+end;
+
+procedure THTTPConnexion.ctrl_blog_view_get(id: Integer);
+begin
+  with pool.GetConnection.newContext do
+    Context['data'] := Execute(newSelect('select * from blog where id = ?', true), id);
+end;
+
+procedure THTTPConnexion.view_cairo_getimg_png;
 var
   ctx: ICairoContext;
   surf: ICairoSurface;
@@ -76,6 +108,17 @@ begin
 
   surf.WriteToPNGStream(Response.Content);
 end;
+
+
+
+{ THTTPServer }
+
+function THTTPServer.doOnCreateStub(Socket: longint;
+  AAddress: TSockAddr): TSocketStub;
+begin
+  Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
+end;
+
 
 initialization
   Application.CreateServer(THTTPServer, 81);

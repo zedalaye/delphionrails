@@ -1,0 +1,16 @@
+<% function content_for_title() %>
+Edit post
+<% end %>
+
+<% function content_for_body() %>
+<h1>Edit post</h1>
+<% if info then %> <b> <%=info%> </b> <% end %>
+<form action="/blog/edit" method="POST">
+  <input type="hidden" name="data.id" value="<%=data.id%>" />
+  <label>Title</label>
+  <input type="text" name="data.title" size="50" value="<%=data.title%>"/><br/>
+  <label>Body</label><br/>
+  <textarea name="data.body" cols="50" rows="20"><%=data.body%></textarea><br/>
+  <input type="submit" value="Update"/>
+</form>
+<% end %>
