@@ -24,6 +24,8 @@ type
     function newCommand(const Options: ISuperObject = nil): IDBCommand; overload;
     function newContext(const Options: SOString): IDBContext; overload;
     function newCommand(const Options: SOString): IDBCommand; overload;
+    function newSelect(const sql: SOString; firstone: boolean = False): IDBCommand;
+    function newFunction(const sql: SOString): IDBCommand;
     procedure ExecuteImmediate(const Options: SOString); overload;
   end;
 
@@ -31,6 +33,8 @@ type
   ['{51992399-2D1A-47EF-9DB1-C5654325F41B}']
     function newCommand(const Options: ISuperObject = nil): IDBCommand; overload;
     function newCommand(const Options: SOString): IDBCommand; overload;
+    function newSelect(const sql: SOString; firstone: boolean = False): IDBCommand;
+    function newFunction(const sql: SOString): IDBCommand;
     procedure ExecuteImmediate(const Options: SOString); overload;
     function Execute(const Command: IDBCommand; const params: ISuperObject = nil): ISuperObject; overload;
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload;
@@ -67,6 +71,8 @@ type
     function newContext(const Options: SOString): IDBContext; overload; virtual;
     function newCommand(const Options: ISuperObject = nil): IDBCommand; overload; virtual;
     function newCommand(const Options: SOString): IDBCommand; overload; virtual;
+    function newSelect(const sql: SOString; firstone: boolean = False): IDBCommand; virtual;
+    function newFunction(const sql: SOString): IDBCommand; virtual;
   end;
 
   TDBContext = class(TSuperObject, IDBContext)
@@ -74,6 +80,8 @@ type
     procedure ExecuteImmediate(const Options: SOString); virtual; abstract;
     function newCommand(const Options: ISuperObject = nil): IDBCommand; overload; virtual; abstract;
     function newCommand(const Options: SOString): IDBCommand; overload; virtual;
+    function newSelect(const sql: SOString; firstone: boolean = False): IDBCommand; virtual;
+    function newFunction(const sql: SOString): IDBCommand; virtual;
     function Execute(const Command: IDBCommand; const params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload; virtual;
@@ -154,6 +162,16 @@ begin
   Result := newContext(TSuperObject.ParseString(PSOChar(Options), false));
 end;
 
+function TDBConnection.newFunction(const sql: SOString): IDBCommand;
+begin
+  Result := newContext.newCommand(SO(['sql', sql, 'function', true]));
+end;
+
+function TDBConnection.newSelect(const sql: SOString; firstone: boolean): IDBCommand;
+begin
+  Result := newContext.newCommand(SO(['sql', sql, 'firstone', firstone]));
+end;
+
 { TDBContext }
 
 function TDBContext.Execute(const Command: IDBCommand;
@@ -165,6 +183,16 @@ end;
 function TDBContext.newCommand(const Options: SOString): IDBCommand;
 begin
   Result := newCommand(SO(Options));
+end;
+
+function TDBContext.newFunction(const sql: SOString): IDBCommand;
+begin
+  Result := newCommand(SO(['sql', sql, 'function', true]));
+end;
+
+function TDBContext.newSelect(const sql: SOString; firstone: boolean): IDBCommand;
+begin
+  Result := newCommand(SO(['sql', sql, 'firstone', firstone]));
 end;
 
 function TDBContext.Execute(const Command: IDBCommand;

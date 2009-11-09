@@ -260,36 +260,36 @@ var
       Result := TSuperObject.Create(stObject);
       for i := 0 to FSQLResult.FieldCount - 1 do
         if FSQLResult.IsNull[i] then
-          Result[FSQLResult.AliasName[i]] := nil else
+          Result[LowerCase(FSQLResult.AliasName[i])] := nil else
         case FSQLResult.FieldType[i] of
-          uftChar, uftVarchar, uftCstring: Result[FSQLResult.AliasName[i]] := TSuperObject.Create(FSQLResult.AsString[i]);
-          uftSmallint, uftInteger, uftInt64: Result[FSQLResult.AliasName[i]] := TSuperObject.Create(FSQLResult.AsInteger[i]);
+          uftChar, uftVarchar, uftCstring: Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(FSQLResult.AsString[i]);
+          uftSmallint, uftInteger, uftInt64: Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(FSQLResult.AsInteger[i]);
           uftNumeric:
             begin
               if FSQLResult.SQLScale[i] >= -4 then
-                Result[FSQLResult.AliasName[i]] := TSuperObject.CreateCurrency(FSQLResult.AsCurrency[i]) else
-                Result[FSQLResult.AliasName[i]] := TSuperObject.Create(FSQLResult.AsDouble[i]);
+                Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.CreateCurrency(FSQLResult.AsCurrency[i]) else
+                Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(FSQLResult.AsDouble[i]);
             end;
-          uftFloat, uftDoublePrecision: Result[FSQLResult.AliasName[i]] := TSuperObject.Create(FSQLResult.AsDouble[i]);
+          uftFloat, uftDoublePrecision: Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(FSQLResult.AsDouble[i]);
           uftBlob, uftBlobId:
             begin
               if FSQLResult.Data^.sqlvar[i].SqlSubType = 1 then
               begin
                 FSQLResult.ReadBlob(i, str);
-                Result[FSQLResult.AliasName[i]] := TSuperObject.Create(str);
+                Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(str);
               end else
               begin
                 blob := TDBBinary.Create;
                 FSQLResult.ReadBlob(i, blob.getData);
-                Result[FSQLResult.AliasName[i]] := blob as ISuperObject;
+                Result[LowerCase(FSQLResult.AliasName[i])] := blob as ISuperObject;
               end;
             end;
-          uftTimestamp, uftDate, uftTime: Result[FSQLResult.AliasName[i]] := TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[i]));
+          uftTimestamp, uftDate, uftTime: Result[LowerCase(FSQLResult.AliasName[i])] := TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[i]));
         {$IFDEF IB7_UP}
-          uftBoolean: Result[FSQLResult.AliasName[i]] := TSuperObject.Create(PChar(FSQLResult.AsBoolean[i]));
+          uftBoolean: Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(PChar(FSQLResult.AsBoolean[i]));
         {$ENDIF}
          else
-           Result[FSQLResult.AliasName[i]] := nil;
+           Result[LowerCase(FSQLResult.AliasName[i])] := nil;
          end;
     end;
   end;
@@ -495,10 +495,10 @@ begin
         rec := TSuperObject.Create(stObject);
         if dfArray then
         begin
-          rec.S['name'] := FSQLResult.AliasName[j];
+          rec.S['name'] := LowerCase(FSQLResult.AliasName[j]);
           Result.asArray.add(rec);
         end else
-          Result.AsObject[FSQLResult.AliasName[j]] := rec;
+          Result.AsObject[LowerCase(FSQLResult.AliasName[j])] := rec;
 
         case FSQLResult.FieldType[j] of
           uftChar, uftVarchar, uftCstring:

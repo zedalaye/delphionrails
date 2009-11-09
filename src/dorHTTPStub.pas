@@ -21,7 +21,7 @@ interface
 uses
   dorSocketStub,
   {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
-  dorUtils, classes, superobject, uiblib;
+  dorUtils, classes, superobject;
 
 type
 
@@ -62,10 +62,11 @@ type
     function RenderFile(const filename: string): Boolean;
   protected
     function Run: Cardinal; override;
-    procedure HTTPOutput(const obj: ISuperObject; format: boolean); overload;
-    procedure HTTPOutput(const str: string); overload;
-    procedure HTTPCompress(level: integer = 5);
-    procedure HTTPRedirect(const location: string);
+    procedure Render(const obj: ISuperObject; format: boolean); overload;
+    procedure Render(const str: string); overload;
+    procedure Compress(level: integer = 5);
+    procedure Redirect(const location: string); overload;
+    procedure Redirect(const controler, action: string; const id: string = ''); overload;
   public
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
     destructor Destroy; override;
@@ -151,7 +152,7 @@ begin
     begin
       o := lua_tosuperobject(state, i);
       if o <> nil then
-        THTTPStub(p).HTTPOutput(o.AsString);
+        THTTPStub(p).Render(o.AsString);
     end;
   Result := 0;
 end;
@@ -249,14 +250,21 @@ begin
   end;
 end;
 
+function MBUDecode(const str: RawByteString; cp: Word): UnicodeString;
+begin
+  SetLength(Result, MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), nil, 0));
+  MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), PWideChar(Result), Length(Result));
+end;
+
 function HTTPDecode(const AStr: string; codepage: Integer = 0): String;
 var
-  Sp, Rp, Cp: PChar;
-  S: String;
+  Sp, Rp, Cp: PAnsiChar;
+  src, dst: RawByteString;
 begin
-  SetLength(Result, Length(AStr));
-  Sp := PChar(AStr);
-  Rp := PChar(Result);
+  src := RawByteString(AStr);
+  SetLength(dst, Length(src));
+  Sp := PAnsiChar(src);
+  Rp := PAnsiChar(dst);
   while Sp^ <> #0 do
   begin
     case Sp^ of
@@ -270,13 +278,10 @@ begin
                Cp := Sp;
                Inc(Sp);
                if (Cp^ <> #0) and (Sp^ <> #0) then
-               begin
-                 S := '$' + Cp^ + Sp^;
-                 Rp^ := chr(StrToInt(S));
-               end
+                 Rp^ := AnsiChar(StrToInt('$' + Char(Cp^) + Char(Sp^)))
                else
                begin
-                 Result := '';
+                 dst := '';
                  Exit;
                end;
              end;
@@ -287,9 +292,8 @@ begin
     Inc(Rp);
     Inc(Sp);
   end;
-  SetLength(Result, Rp - PChar(Result));
-  if (codepage > 0) then
-    Result := MBUDecode(RawByteString(Result), codepage)
+  SetLength(dst, Rp - PAnsiChar(dst));
+  Result := MBUDecode(dst, codepage)
 end;
 
 function HTTPInterprete(src: PSOChar; named: boolean = false; sep: SOChar = ';'; StrictSep: boolean = false; codepage: Integer = 0): ISuperObject;
@@ -947,26 +951,35 @@ begin
   // detect format
   if (FParams.AsObject['format'] = nil) then
     FParams.AsObject.S['format'] := 'html';
+
+  FContext.Merge(FParams);
 end;
 
-procedure THTTPStub.HTTPOutput(const obj: ISuperObject; format: boolean);
+procedure THTTPStub.Render(const obj: ISuperObject; format: boolean);
 begin
   obj.SaveTo(Response.Content, format);
 end;
 
-procedure THTTPStub.HTTPCompress(level: integer);
+procedure THTTPStub.Compress(level: integer);
 begin
   Response.B['compress'] := true;
   Response.I['compresslevel'] := level;
   Response.S['env.Content-Encoding'] := 'deflate';
 end;
 
-procedure THTTPStub.HTTPOutput(const str: string);
+procedure THTTPStub.Redirect(const controler, action: string; const id: string);
+begin
+  if id = '' then
+    Redirect('/' + controler + '/' + action + '.' +  FParams.S['format']) else
+    Redirect('/' + controler + '/' + action + '/' + id + '.' +  FParams.S['format']);
+end;
+
+procedure THTTPStub.Render(const str: string);
 begin
   Response.Content.WriteString(str, false, DEFAULT_CP);
 end;
 
-procedure THTTPStub.HTTPRedirect(const location: string);
+procedure THTTPStub.Redirect(const location: string);
 begin
   Response.I['response'] := 302;
   Response.S['env.Location'] := Location;
@@ -979,19 +992,18 @@ var
   return: ISuperObject;
 begin
   inherited;
-
   with FParams.AsObject do
     if FFormats[S['format'] + '.charset'] <> nil then
       Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
       Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'];
-
 
   path := ExtractFilePath(ParamStr(0));
   if FParams.AsObject['controller'] <> nil then
     with FParams.AsObject do
     begin
       // controller
-      TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'] + '_' + Request.S['method'], FParams, return);
+      if not TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'], FParams, return) then
+        TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'] + '_' + Request.S['method'], FParams, return);
 
       // redirect ? ...
       if Response.I['response'] = 302 then Exit;
