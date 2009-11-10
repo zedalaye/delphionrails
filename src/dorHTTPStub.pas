@@ -32,10 +32,8 @@ type
   public
     property Content: TPooledMemoryStream read FContent;
     property ContentString: SOString read GetContentString;
-
     constructor Create(jt: TSuperType = stObject); override;
     destructor Destroy; override;
-
     procedure Clear(all: boolean = false); override;
   end;
 
@@ -46,7 +44,13 @@ type
     FContext: ISuperObject;
     FParams: ISuperObject;
     FFormats: ISuperObject;
+    FSession: ISuperObject;
     FRttiContext: TSuperRttiContext;
+    
+    FErrorCode: Integer;
+    FCompress: Boolean;
+    FCompressLevel: Integer;
+    FSendFile: string;
     function DecodeFields(str: PChar): boolean;
     function DecodeCommand(str: PChar): boolean;
     procedure WriteLine(str: RawByteString);
@@ -64,7 +68,6 @@ type
     function Run: Cardinal; override;
     procedure Render(const obj: ISuperObject; format: boolean); overload;
     procedure Render(const str: string); overload;
-    procedure Compress(level: integer = 5);
     procedure Redirect(const location: string); overload;
     procedure Redirect(const controler, action: string; const id: string = ''); overload;
   public
@@ -73,6 +76,11 @@ type
     property Context: ISuperObject read FContext;
     property Request: THTTPMessage read FRequest;
     property Response: THTTPMessage read FResponse;
+    property Session: ISuperObject read FSession;
+    property Params: ISuperObject read FParams;
+    property ErrorCode: Integer read FErrorCode write FErrorCode;
+    property Compress: Boolean read FCompress write FCompress;
+    property CompressLevel: Integer read FCompressLevel write FCompressLevel;
   end;
 
 implementation
@@ -326,8 +334,8 @@ begin
         begin
           S[i] := #0;
           obj := Result[S];
-          value := TSuperObject.ParseString(PSOChar(@S[i+1]), false);
-          if value = nil then
+          if sep = '&' then
+            value := TSuperObject.ParseString(PSOChar(@S[i+1]), false) else
             value := TSuperObject.Create(PSOChar(@S[i+1]));
           if obj = nil then
             Result[S] := value else
@@ -347,9 +355,11 @@ begin
         end;
       end else
       begin
-        value := TSuperObject.ParseString(PSOChar(S), false);
+        value := TSuperObject.Create(S);
         if value = nil then
-          value := TSuperObject.Create(s);
+          if sep = '&' then
+            value := TSuperObject.ParseString(PChar(s), false) else
+            value := TSuperObject.Create(s);
         Result.AsArray.Add(value);
       end;
       if not StrictSep then
@@ -634,7 +644,7 @@ function THTTPStub.RenderFile(const filename: string): Boolean;
 begin
   if FileExists(filename) then
   begin
-    Response.S['sendfile'] := filename;
+    FSendFile := filename;
     Result := True;
   end else
     Result := False;
@@ -672,14 +682,24 @@ begin
         lua_setglobal(state, 'gettickcount');
         lua_pushcfunction(state, lua_render);
         lua_setglobal(state, 'render');
-        if ObjectFindFirst(FContext, ite) then
+
+        if ObjectFindFirst(FParams, ite) then
         repeat
           lua_pushsuperobject(state, ite.val);
           lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
         until not ObjectFindNext(ite);
         ObjectFindClose(ite);
-        lua_processsor_dofile(state, str);
 
+        if ObjectFindFirst(FContext, ite) then
+        repeat
+          lua_pushsuperobject(state, ite.val);
+          lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
+        until not ObjectFindNext(ite);
+
+        ObjectFindClose(ite);
+        lua_pushsuperobject(state, FSession);
+        lua_setglobal(state, 'session');
+        lua_processsor_dofile(state, str);
         str := path + 'layout/' + S['controller'] + '.' + S['format'];
         if FileExists(str) then
           lua_processsor_dofile(state, str) else
@@ -751,6 +771,7 @@ begin
 
               FContext := TSuperObject.Create;
               FParams := TSuperObject.Create;
+              FSession := TSuperObject.Create;
               try
                 doBeforeProcessRequest;
                 try
@@ -759,7 +780,7 @@ begin
                   except
                     on E: Exception do
                     begin
-                      Response.I['response'] := 500;
+                      FErrorCode := 500;
                       Response.Content.WriteString(E.Message, false);
                     {$ifdef madExcept}
                       HandleException(etNormal, E);
@@ -772,6 +793,7 @@ begin
               finally
                 FParams := nil;
                 FContext := nil;
+                FSession := nil;
               end;
 
             line := 0;
@@ -854,21 +876,25 @@ procedure THTTPStub.doAfterProcessRequest;
 var
   ite: TSuperObjectIter;
 begin
-  Response.S['env.Server'] := 'DOR 1.0';
-  Response.S['env.Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FContext.AsObject.N['session']) + '; path=/';
-  WriteLine(HttpResponseStrings(Response.I['response']));
-  if ObjectFindFirst(Response['env'], ite) then
+  if FCompress then
+    FResponse.AsObject.S['Content-Encoding'] := 'deflate';
+
+  FResponse.AsObject.S['Server'] := 'DOR 1.0';
+  FResponse.AsObject.S['Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FSession) + '; path=/';
+  WriteLine(HttpResponseStrings(FErrorCode));
+  if ObjectFindFirst(Response, ite) then
   repeat
     WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
   until not ObjectFindNext(ite);
   ObjectFindClose(ite);
 
-  if Response['sendfile'] <> nil then
-    SendFile(Response.S['sendfile']) else
+  if FSendFile <> '' then
+    SendFile(FSendFile) else
     SendStream(Response.Content);
 
   FContext.Clear(true);
   FParams.Clear(true);
+  FSession.Clear(true);
   Request.Clear(true);
   Response.Clear(true);
 end;
@@ -896,6 +922,11 @@ procedure THTTPStub.doBeforeProcessRequest;
 var
   obj: ISuperObject;
 begin
+  FErrorCode := 200;
+  FCompress := False;
+  FCompressLevel := 5;
+  FSendFile := '';
+
   with Request.AsObject do
   begin
     O['cookies'] := HTTPInterprete(PSOChar(Request.S['env.cookie']), true);
@@ -903,14 +934,12 @@ begin
     O['accept'] := HTTPInterprete(PSOChar(Request.S['env.accept']), false, ',');
   end;
 
-  Response.AsObject.I['response'] :=  200;
-
   obj := Request.AsObject['cookies'].AsObject[COOKIE_NAME];
   case ObjectGetType(obj) of
-    stString: FContext.AsObject['session'] := DecodeObject(obj.AsString);
-    stArray: FContext.AsObject['session'] := DecodeObject(obj.AsArray.S[0]);
+    stString: FSession := DecodeObject(obj.AsString);
+    stArray: FSession := DecodeObject(obj.AsArray.S[0]);
   else
-    FContext.AsObject['session'] := TSuperObject.Create(stObject);
+    FSession := TSuperObject.Create(stObject);
   end;
 
   // get parametters
@@ -951,20 +980,11 @@ begin
   // detect format
   if (FParams.AsObject['format'] = nil) then
     FParams.AsObject.S['format'] := 'html';
-
-  FContext.Merge(FParams);
 end;
 
 procedure THTTPStub.Render(const obj: ISuperObject; format: boolean);
 begin
   obj.SaveTo(Response.Content, format);
-end;
-
-procedure THTTPStub.Compress(level: integer);
-begin
-  Response.B['compress'] := true;
-  Response.I['compresslevel'] := level;
-  Response.S['env.Content-Encoding'] := 'deflate';
 end;
 
 procedure THTTPStub.Redirect(const controler, action: string; const id: string);
@@ -981,8 +1001,8 @@ end;
 
 procedure THTTPStub.Redirect(const location: string);
 begin
-  Response.I['response'] := 302;
-  Response.S['env.Location'] := Location;
+  FErrorCode := 302;
+  FResponse.AsObject.S['Location'] := Location;
 end;
 
 procedure THTTPStub.ProcessRequest;
@@ -994,8 +1014,8 @@ begin
   inherited;
   with FParams.AsObject do
     if FFormats[S['format'] + '.charset'] <> nil then
-      Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
-      Response.S['env.Content-Type'] := FFormats.S[S['format'] + '.content'];
+      FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
+      FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'];
 
   path := ExtractFilePath(ParamStr(0));
   if FParams.AsObject['controller'] <> nil then
@@ -1005,13 +1025,12 @@ begin
       if not TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'], FParams, return) then
         TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'] + '_' + Request.S['method'], FParams, return);
 
-      // redirect ? ...
-      if Response.I['response'] = 302 then Exit;
+      if FErrorCode <> 200 then Exit;
 
       if RenderInternal(FParams) or
         RenderScript(FParams) then
         begin
-          Response.S['env.Cache-Control'] := 'private, max-age=0';
+          FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
           Exit;
         end;
     end;
@@ -1023,8 +1042,13 @@ begin
     str := str + 'index.' + FParams.AsObject.S['format'];
 
   if RenderFile(path + str) then
-    Response.S['env.Cache-Control'] := 'public' else
-    Response.I['response'] :=  404
+    FResponse.AsObject.S['Cache-Control'] := 'public' else
+    if FParams.AsObject.S['format'] = 'json' then
+    begin
+      Render(FContext, false);
+      FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
+    end else
+      FErrorCode :=  404;
 end;
 
 procedure THTTPStub.SendEmpty;
@@ -1082,11 +1106,11 @@ procedure THTTPStub.SendStream(Stream: TStream);
 var
   streamout: TPooledMemoryStream;
 begin
-  if Response.B['compress'] then
+  if FCompress then
   begin
     streamout := TPooledMemoryStream.Create;
     try
-      CompressStream(stream, streamout, Response.I['compresslevel']);
+      CompressStream(stream, streamout, FCompressLevel);
       // don't send first 2 bytes !
       WriteLine(format(AnsiString('Content-Length: %d'), [streamout.size - 2]));
       streamout.Seek(2, soFromBeginning);
@@ -1103,5 +1127,6 @@ begin
 end;
 
 end.
+
 
 

@@ -70,6 +70,9 @@ procedure THTTPConnexion.ctrl_blog_view_get(id: Integer);
 begin
   with pool.GetConnection.newContext do
     Context['data'] := Execute(newSelect('select * from blog where id = ?', true), id);
+  if Context['data'] = nil then
+    ErrorCode := 404;
+  Compress := true;
 end;
 
 procedure THTTPConnexion.view_cairo_getimg_png;
