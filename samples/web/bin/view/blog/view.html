@@ -4,5 +4,6 @@
 
 <% function content_for_body() %>
 <h1><%=data.title%></h1>
-<pre><%=data.body%></pre>
+<pre><%=data.body%></pre><br/>
+<a href="/blog/edit/<%=data.id%>">Edit</a>
 <% end %>
