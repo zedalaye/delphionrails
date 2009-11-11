@@ -5,9 +5,11 @@ This is my Blog
 <% function content_for_body() %>
 <h1>Listing posts</h1>
 <% for k, v in ipairs(data) do %>
+<form action="/blog/delete/<%=v.id%>" method="POST">
 <a href="/blog/view/<%=v.id%>"><%=v.title%></a>
 <a href="/blog/edit/<%=v.id%>">Edit</a>
-<a href="/blog/delete/<%=v.id%>">Delete</a>
+<input type="submit" value="Delete"/>
+</form>
 <br/>
 <% end %>
 <br/><a href="/blog/new">New post</a>

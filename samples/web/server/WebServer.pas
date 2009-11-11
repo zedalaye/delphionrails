@@ -22,7 +22,7 @@ type
     procedure ctrl_blog_view_get(id: Integer);
     procedure ctrl_blog_edit_get(id: Integer);
     procedure ctrl_blog_edit_post(const data: TBlog);
-    procedure ctrl_blog_delete(id: Integer);
+    procedure ctrl_blog_delete_post(id: Integer);
 
     procedure view_cairo_getimg_png;
   end;
@@ -32,7 +32,7 @@ uses SysUtils, dorDB, dorService, dorCairolib, dorCairo;
 
 { THTTPConnexion }
 
-procedure THTTPConnexion.ctrl_blog_delete(id: Integer);
+procedure THTTPConnexion.ctrl_blog_delete_post(id: Integer);
 begin
   with pool.GetConnection.newContext do
     Execute(newCommand('delete from blog where id = ?'), id);
