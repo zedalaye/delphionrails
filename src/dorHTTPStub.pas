@@ -46,7 +46,7 @@ type
     FFormats: ISuperObject;
     FSession: ISuperObject;
     FRttiContext: TSuperRttiContext;
-    
+
     FErrorCode: Integer;
     FCompress: Boolean;
     FCompressLevel: Integer;
@@ -61,7 +61,7 @@ type
     procedure doBeforeProcessRequest; virtual;
     procedure doAfterProcessRequest; virtual;
     procedure ProcessRequest; virtual;
-    function RenderInternal(const params: ISuperObject): Boolean;
+    function RenderInternal: TSuperInvokeResult;
     function RenderScript(const params: ISuperObject): Boolean;
     function RenderFile(const filename: string): Boolean;
   protected
@@ -70,6 +70,7 @@ type
     procedure Render(const str: string); overload;
     procedure Redirect(const location: string); overload;
     procedure Redirect(const controler, action: string; const id: string = ''); overload;
+    function GetPassPhrase: AnsiString; virtual;
   public
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
     destructor Destroy; override;
@@ -115,7 +116,6 @@ const
 
   ReadTimeOut: Integer = 60000; // 1 minute
   COOKIE_NAME = 'Cookie';
-  PASS_PHRASE: PAnsiChar = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
 
 function serialtoboolean(var value: TValue; const index: ISuperObject): ISuperObject;
 begin
@@ -194,12 +194,14 @@ begin
           obj.AsObject.S['format'] := S['format'];
         end;
 
-        if not RenderInternal(obj) then
-        begin
-          with obj.AsObject do
-            str := ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
-          if FileExists(str) then
-            lua_processsor_dofile(state, str);
+        case RenderInternal of
+        irMethothodError:
+          begin
+            with obj.AsObject do
+              str := ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+            if FileExists(str) then
+              lua_processsor_dofile(state, str);
+          end;
         end;
       end;
     end;
@@ -378,7 +380,7 @@ begin
     end;
 end;
 
-function EncodeObject(const obj: ISuperObject): SOString;
+function EncodeObject(const obj: ISuperObject; const pass: AnsiString): SOString;
 var
   StreamA, streamB: TPooledMemoryStream;
 begin
@@ -393,7 +395,7 @@ begin
 
     // aes
     StreamA.Seek(0, soFromBeginning);
-    AesEncryptStream(StreamB, StreamA, PASS_PHRASE, 128);
+    AesEncryptStream(StreamB, StreamA, PAnsiChar(pass), 128);
     StreamA.Size := StreamA.Position;
     //StreamA.SaveToFile('c:\test.aes');
 
@@ -410,7 +412,7 @@ begin
   end;
 end;
 
-function DecodeObject(const str: SOString): ISuperObject;
+function DecodeObject(const str: SOString; const pass: AnsiString): ISuperObject;
 var
   StreamA, StreamB: TPooledMemoryStream;
 begin
@@ -422,7 +424,7 @@ begin
     streamA.Size := streamA.Position;
 
     // aes
-    AesDecryptStream(StreamA, StreamB, PASS_PHRASE, 128);
+    AesDecryptStream(StreamA, StreamB, PAnsiChar(pass), 128);
 
     // zlib
     StreamA.Seek(0, soFromBeginning);
@@ -650,7 +652,7 @@ begin
     Result := False;
 end;
 
-function THTTPStub.RenderInternal(const params: ISuperObject): Boolean;
+function THTTPStub.RenderInternal: TSuperInvokeResult;
 var
   return: ISuperObject;
 begin
@@ -875,12 +877,15 @@ end;
 procedure THTTPStub.doAfterProcessRequest;
 var
   ite: TSuperObjectIter;
+  pass: AnsiString;
 begin
   if FCompress then
     FResponse.AsObject.S['Content-Encoding'] := 'deflate';
 
   FResponse.AsObject.S['Server'] := 'DOR 1.0';
-  FResponse.AsObject.S['Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FSession) + '; path=/';
+  pass := GetPassPhrase;
+  if pass <> '' then
+    FResponse.AsObject.S['Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FSession, pass) + '; path=/';
   WriteLine(HttpResponseStrings(FErrorCode));
   if ObjectFindFirst(Response, ite) then
   repeat
@@ -921,6 +926,7 @@ procedure THTTPStub.doBeforeProcessRequest;
   end;
 var
   obj: ISuperObject;
+  pass: AnsiString;
 begin
   FErrorCode := 200;
   FCompress := False;
@@ -934,13 +940,19 @@ begin
     O['accept'] := HTTPInterprete(PSOChar(Request.S['env.accept']), false, ',');
   end;
 
-  obj := Request.AsObject['cookies'].AsObject[COOKIE_NAME];
-  case ObjectGetType(obj) of
-    stString: FSession := DecodeObject(obj.AsString);
-    stArray: FSession := DecodeObject(obj.AsArray.S[0]);
-  else
-    FSession := TSuperObject.Create(stObject);
-  end;
+
+  pass := GetPassPhrase;
+  if pass <> '' then
+  begin
+    obj := Request.AsObject['cookies'].AsObject[COOKIE_NAME];
+   case ObjectGetType(obj) of
+      stString: FSession := DecodeObject(obj.AsString, pass);
+      stArray: FSession := DecodeObject(obj.AsArray.S[0], pass);
+    else
+      FSession := TSuperObject.Create(stObject);
+    end;
+  end else
+   FSession := TSuperObject.Create(stObject);
 
   // get parametters
   FParams.Merge(Request['params'], true);
@@ -980,6 +992,11 @@ begin
   // detect format
   if (FParams.AsObject['format'] = nil) then
     FParams.AsObject.S['format'] := 'html';
+end;
+
+function THTTPStub.GetPassPhrase: AnsiString;
+begin
+  Result := '';
 end;
 
 procedure THTTPStub.Render(const obj: ISuperObject; format: boolean);
@@ -1022,12 +1039,16 @@ begin
     with FParams.AsObject do
     begin
       // controller
-      if not TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'], FParams, return) then
-        TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' + S['action'] + '_' + Request.S['method'], FParams, return);
+      case TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' +
+        S['action'] + '_' + Request.S['method'], FParams, return) of
+      irParamError: FErrorCode := 400;
+      irError: FErrorCode := 500;
+      end;
 
       if FErrorCode <> 200 then Exit;
 
-      if RenderInternal(FParams) or
+      // view ?
+      if (RenderInternal = irSuccess) or
         RenderScript(FParams) then
         begin
           FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
@@ -1035,6 +1056,7 @@ begin
         end;
     end;
 
+  // static ?
   str := Request.S['uri'];
   path := path + 'static';
 

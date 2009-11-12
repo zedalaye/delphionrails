@@ -10,6 +10,8 @@ type
   end;
 
   THTTPConnexion = class(THTTPStub)
+  protected
+    function GetPassPhrase: AnsiString; override;
   public
     type
       TBlog = record
@@ -29,6 +31,9 @@ type
 
 implementation
 uses SysUtils, dorDB, dorService, dorCairolib, dorCairo;
+
+const
+  PASS_PHRASE: AnsiString = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
 
 { THTTPConnexion }
 
@@ -73,6 +78,11 @@ begin
   if Context['data'] = nil then
     ErrorCode := 404;
   Compress := true;
+end;
+
+function THTTPConnexion.GetPassPhrase: AnsiString;
+begin
+  Result := PASS_PHRASE;
 end;
 
 procedure THTTPConnexion.view_cairo_getimg_png;
