@@ -724,7 +724,6 @@ var
   buffer: string;
   cursor, line, len: integer;
   c: Char;
- // ctx: ISuperObject;
 {$IFDEF UNIX}
   FDSet: TFDSet;
   TimeOut: TTimeVal;
