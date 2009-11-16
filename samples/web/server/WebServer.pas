@@ -12,6 +12,9 @@ type
   THTTPConnexion = class(THTTPStub)
   protected
     function GetPassPhrase: AnsiString; override;
+    procedure ProcessRequest; override;
+
+
   public
     type
       TBlog = record
@@ -85,6 +88,18 @@ begin
   Result := PASS_PHRASE;
 end;
 
+procedure THTTPConnexion.ProcessRequest;
+begin
+  inherited;
+  // automatic render context to json
+  if (ErrorCode = 404) and (Params.AsObject.S['format'] = 'json') then
+  begin
+    ErrorCode := 200;
+    Render(Context, false);
+    Response.AsObject.S['Cache-Control'] := 'private, max-age=0';
+  end;
+end;
+
 procedure THTTPConnexion.view_cairo_getimg_png;
 var
   ctx: ICairoContext;
@@ -137,3 +152,5 @@ initialization
   Application.CreateServer(THTTPServer, 81);
 
 end.
+
+

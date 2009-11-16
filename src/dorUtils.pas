@@ -636,7 +636,6 @@ function TPooledMemoryStream.LoadFromSocket(socket: longint; readsize: boolean =
 var
   count, i, j: integer;
   p: PByte;
-  b: Byte;
 begin
   Result := False;
   if readsize then

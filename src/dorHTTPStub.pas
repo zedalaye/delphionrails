@@ -57,14 +57,14 @@ type
     procedure SendEmpty;
     procedure SendFile(const filename: string);
     procedure SendStream(Stream: TStream);
-    function DecodeContent: boolean; virtual;
-    procedure doBeforeProcessRequest; virtual;
-    procedure doAfterProcessRequest; virtual;
-    procedure ProcessRequest; virtual;
     function RenderInternal: TSuperInvokeResult;
     function RenderScript(const params: ISuperObject): Boolean;
     function RenderFile(const filename: string): Boolean;
+    function DecodeContent: boolean; virtual;
+    procedure doBeforeProcessRequest; virtual;
+    procedure doAfterProcessRequest; virtual;
   protected
+    procedure ProcessRequest; virtual;
     function Run: Cardinal; override;
     procedure Render(const obj: ISuperObject; format: boolean); overload;
     procedure Render(const str: string); overload;
@@ -843,16 +843,24 @@ begin
   begin
     S['htm.content'] := 'text/html';
     S['htm.charset'] := DEFAULT_CHARSET;
+    B['htm.istext'] := True;
     S['html.content'] := 'text/html';
     S['html.charset'] := DEFAULT_CHARSET;
+    B['html.istext'] := True;
     S['xml.content'] := 'text/xml';
+    B['xml.istext'] := True;
     S['json.content'] := 'text/json';
+    B['json.istext'] := True;
     S['png.content'] := 'image/png';
     S['jpeg.content'] := 'image/jpeg';
     S['jpg.content'] := 'image/jpeg';
     S['gif.content'] := 'image/gif';
     S['css.content'] := 'text/css';
+    B['css.istext'] := True;
     S['js.content'] := 'text/javascript';
+    B['js.istext'] := True;
+    S['svg.content'] := 'image/svg+xml';
+    B['svg.istext'] := True;
   end;
 
   // connexion timout
@@ -1064,12 +1072,9 @@ begin
 
   if RenderFile(path + str) then
     FResponse.AsObject.S['Cache-Control'] := 'public' else
-    if FParams.AsObject.S['format'] = 'json' then
-    begin
-      Render(FContext, false);
-      FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
-    end else
-      FErrorCode :=  404;
+    FErrorCode :=  404;
+
+  Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
 end;
 
 procedure THTTPStub.SendEmpty;
