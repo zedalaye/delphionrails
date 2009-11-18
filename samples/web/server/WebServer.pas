@@ -1,7 +1,8 @@
 unit WebServer;
 interface
 uses
-Windows, dorHTTPStub, dorSocketStub, Winsock, superobject, mypool, dorCairolib, dorCairo;
+  Windows, dorHTTPStub, dorSocketStub, Winsock, superobject, mypool,
+  dorCairolib, dorCairo;
 
 type
   THTTPServer = class(TSocketServer)
@@ -33,6 +34,7 @@ type
     procedure view_cairo_getimg_png;
     procedure view_cairo_getimg_svg;
     procedure view_cairo_getimg_pdf;
+    procedure view_cairo_getimg_ps;
   end;
 
 implementation
@@ -170,6 +172,17 @@ begin
   surf.WriteToPNGStream(Response.Content);
 end;
 
+procedure THTTPConnexion.view_cairo_getimg_ps;
+var
+  ctx: ICairoContext;
+  surf: ICairoSurface;
+begin
+  surf := TPostScriptSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
+  ctx := TCairoContext.Create(surf);
+  ctx.Scale(Context.I['x'], Context.I['y']);
+  PaitImg(ctx);
+end;
+
 procedure THTTPConnexion.view_cairo_getimg_svg;
 var
   ctx: ICairoContext;
@@ -188,7 +201,6 @@ function THTTPServer.doOnCreateStub(Socket: longint;
 begin
   Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
 end;
-
 
 initialization
   Application.CreateServer(THTTPServer, 81);
