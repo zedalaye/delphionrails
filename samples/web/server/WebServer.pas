@@ -1,7 +1,7 @@
 unit WebServer;
 interface
 uses
-Windows, dorHTTPStub, dorSocketStub, Winsock, superobject, mypool;
+Windows, dorHTTPStub, dorSocketStub, Winsock, superobject, mypool, dorCairolib, dorCairo;
 
 type
   THTTPServer = class(TSocketServer)
@@ -10,11 +10,11 @@ type
   end;
 
   THTTPConnexion = class(THTTPStub)
+  private
+    procedure PaitImg(const ctx: ICairoContext);
   protected
     function GetPassPhrase: AnsiString; override;
     procedure ProcessRequest; override;
-
-
   public
     type
       TBlog = record
@@ -29,11 +29,14 @@ type
     procedure ctrl_blog_edit_post(const data: TBlog);
     procedure ctrl_blog_delete_post(id: Integer);
 
+    procedure ctrl_cairo_getimg_get(x, y: Integer);
     procedure view_cairo_getimg_png;
+    procedure view_cairo_getimg_svg;
+    procedure view_cairo_getimg_pdf;
   end;
 
 implementation
-uses SysUtils, dorDB, dorService, dorCairolib, dorCairo;
+uses SysUtils, dorDB, dorService;
 
 const
   PASS_PHRASE: AnsiString = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
@@ -83,43 +86,32 @@ begin
   Compress := true;
 end;
 
+procedure THTTPConnexion.ctrl_cairo_getimg_get(x, y: Integer);
+begin
+  Context.I['x'] := x;
+  Context.I['y'] := y;
+end;
+
 function THTTPConnexion.GetPassPhrase: AnsiString;
 begin
   Result := PASS_PHRASE;
 end;
 
-procedure THTTPConnexion.ProcessRequest;
-begin
-  inherited;
-  // automatic render context to json
-  if (ErrorCode = 404) and (Params.AsObject.S['format'] = 'json') then
-  begin
-    ErrorCode := 200;
-    Render(Context, false);
-    Response.AsObject.S['Cache-Control'] := 'private, max-age=0';
-  end;
-end;
-
-procedure THTTPConnexion.view_cairo_getimg_png;
+procedure THTTPConnexion.PaitImg(const ctx: ICairoContext);
 var
-  ctx: ICairoContext;
-  surf: ICairoSurface;
   pat, lin: ICairoPattern;
   i, j: integer;
 begin
-  surf := TImageSurface.Create(CAIRO_FORMAT_RGB24, 200, 200);
-  ctx := TCairoContext.Create(surf);
   ctx.SetSourceColor(aclWhite);
   ctx.Paint;
 
-  ctx.Scale(200, 200);
   pat := TCairoPattern.CreateRadial(0.25, 0.25, 0.1,  0.5, 0.5, 0.5);
   pat.AddColorStopRGB(0, 1.0, 0.8, 0.8);
   pat.AddColorStopRGB(1, 0.9, 0.0, 0.0);
 
   for i := 1 to 10 do
     for j := 1 to 10 do
-       ctx.Rectangle(i/10.0 - 0.09, j/10.0 - 0.09, 0.08, 0.08);
+      ctx.Rectangle(i/10.0 - 0.09, j/10.0 - 0.09, 0.08, 0.08);
   ctx.Source := pat;
   ctx.Fill;
 
@@ -134,10 +126,60 @@ begin
   ctx.source := lin;
   ctx.Fill;
 
+  ctx.SetSourceColor(aclBlack);
+  ctx.SelectFontFace('Sans', CAIRO_FONT_SLANT_ITALIC, CAIRO_FONT_WEIGHT_BOLD);
+  ctx.SetFontSize(0.3);
+  ctx.MoveTo(0, 0.5);
+  ctx.ShowText('Hello');
+end;
+
+procedure THTTPConnexion.ProcessRequest;
+begin
+  inherited;
+  // automatic render context to json
+  if (ErrorCode = 404) and (Params.AsObject.S['format'] = 'json') then
+  begin
+    ErrorCode := 200;
+    Render(Context, false);
+    Response.AsObject.S['Cache-Control'] := 'private, max-age=0';
+  end;
+end;
+
+procedure THTTPConnexion.view_cairo_getimg_pdf;
+var
+  ctx: ICairoContext;
+  surf: ICairoSurface;
+begin
+  surf := TPDFSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
+  ctx := TCairoContext.Create(surf);
+  ctx.Scale(Context.I['x'], Context.I['y']);
+  PaitImg(ctx);
+end;
+
+procedure THTTPConnexion.view_cairo_getimg_png;
+var
+  ctx: ICairoContext;
+  surf: ICairoSurface;
+begin
+  surf := TImageSurface.Create(CAIRO_FORMAT_RGB24, Context.I['x'], Context.I['y']);
+  ctx := TCairoContext.Create(surf);
+  ctx.Scale(Context.I['x'], Context.I['y']);
+
+  PaitImg(ctx);
+
   surf.WriteToPNGStream(Response.Content);
 end;
 
-
+procedure THTTPConnexion.view_cairo_getimg_svg;
+var
+  ctx: ICairoContext;
+  surf: ICairoSurface;
+begin
+  surf := TSVGSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
+  ctx := TCairoContext.Create(surf);
+  ctx.Scale(Context.I['x'], Context.I['y']);
+  PaitImg(ctx);
+end;
 
 { THTTPServer }
 
