@@ -15,6 +15,7 @@ type
     procedure PaintImg(const ctx: ICairoContext);
   protected
     function GetPassPhrase: AnsiString; override;
+    procedure ProcessRequest; override;
   public
     type
       TBlog = record
@@ -40,48 +41,14 @@ type
 
     // AJAX
     procedure ctrl_ajax_getdata_get(_search: Boolean; const sord, sidx: string; rows, page: Integer);
-    procedure view_ajax_getdata_json(page, total, records: Integer; const data: ISuperObject);
   end;
 
 implementation
-uses SysUtils, dorDB, dorService;
+uses SysUtils, dorDB, dorService, Math;
 
 { THTTPConnexion }
 
 {$REGION 'BLOG'}
-procedure THTTPConnexion.ctrl_ajax_getdata_get(_search: Boolean;
-  const sord, sidx: string; rows, page: Integer);
-var
-  count, pages, start: Integer;
-begin
-  with pool.GetConnection.newContext do
-  begin
-    count := Execute(newSelect('select COUNT(*) as "count" from blog', true)).I['count'];
-    if count > 0 then
-      pages := (count div rows) + 1 else
-      pages := 0;
-    if (page > pages) then
-      page := pages;
-    start := rows * page - rows;
-    Context['data'] := Execute(newSelect(Format('SELECT FIRST %d SKIP %d id, title FROM blog ORDER BY %s %s', [rows, start, sidx, sord])));
-    Context.I['page'] := page;
-    Context.I['total'] := pages;
-    Context.I['records'] := count;
-  end;
-end;
-
-procedure THTTPConnexion.view_ajax_getdata_json(page, total, records: Integer; const data: ISuperObject);
-var
-  line, rows: ISuperObject;
-begin
-  rows := TSuperObject.Create(stArray);
-
-  for line in data do
-    rows.AsArray.Add(
-      so(['id', line['id'], 'cell', SA([line['id'], line['title']])]));
-
-  Render(SO(['page', page, 'total', total, 'records', records, 'rows', rows]));
-end;
 
 procedure THTTPConnexion.ctrl_blog_delete_post(id: Integer);
 begin
@@ -221,6 +188,37 @@ end;
 
 {$ENDREGION}
 
+{$REGION 'AJAX'}
+
+procedure THTTPConnexion.ctrl_ajax_getdata_get(_search: Boolean;
+  const sord, sidx: string; rows, page: Integer);
+var
+  count, pages, start: Integer;
+  lines, line: ISuperObject;
+begin
+  with pool.GetConnection.newContext do
+  begin
+    count := Execute(newSelect('select COUNT(*) as "count" from blog', true)).I['count'];
+    if count > 0 then
+      pages := Ceil(count / rows) else
+      pages := 0;
+    page := Min(page, pages);
+    start := rows * page - rows;
+
+    lines := TSuperObject.Create(stArray);
+    for line in Execute(newSelect(Format('SELECT FIRST %d SKIP %d id, title, post_date FROM blog ORDER BY %s %s',
+      [rows, start, sidx, sord]), false, true)) do
+      lines.AsArray.Add(so(['id', line['0'], 'cell', line]));
+
+    Context['rows'] := lines;
+    Context.I['page'] := page;
+    Context.I['total'] := pages;
+    Context.I['records'] := count;
+  end;
+end;
+
+{$ENDREGION}
+
 {$REGION 'CUSOMIZE'}
 
 function THTTPConnexion.GetPassPhrase: AnsiString;
@@ -228,6 +226,16 @@ const
   PASS_PHRASE: AnsiString = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
 begin
   Result := PASS_PHRASE;
+end;
+
+procedure THTTPConnexion.ProcessRequest;
+begin
+  inherited;
+  if (ErrorCode = 404) and (Params.S['format'] = 'json') then
+  begin
+    Render(Context);
+    ErrorCode := 200;
+  end;
 end;
 
 {$ENDREGION}

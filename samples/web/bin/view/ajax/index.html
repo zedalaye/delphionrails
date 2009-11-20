@@ -9,30 +9,63 @@
 
 <script type="text/javascript">
 jQuery(document).ready(function(){
-  jQuery("#list").jqGrid({
+  jQuery("#list_json").jqGrid({
     url:'/ajax/getdata.json',
 	datatype: 'json',
-    mtype: 'GET',
-	colNames:['ID','Title'],
+	mtype: 'GET',
+	colNames:['ID','Title', 'Date'],
 	colModel :[
 	  {name:'id', index:'id', width:55},
-	  {name:'title', index:'title', width:500},
+	  {name:'title', index:'title', width:300},
+	  {name:'post_date', index:'post_date', width:300, formatter:DateFmatter}
 	],
-    pager: '#pager',
-	rowNum:10,
-    rowList:[10,20,30],
+	pager: '#pager_json',
+	rowNum:5,
+	rowList:[5,10,20,30],
 	sortname: 'id',
     sortorder: 'desc',
     viewrecords: true,
-    caption: 'Post list'
+	caption: 'JSON'
   });
 });
+
+jQuery(document).ready(function(){
+  jQuery("#list_xml").jqGrid({
+	url:'/ajax/getdata.xml',
+	datatype: 'xml',
+    mtype: 'GET',
+	colNames:['ID','Title', 'Date'],
+	colModel :[
+	  {name:'id', index:'id', width:55},
+	  {name:'title', index:'title', width:300},
+	  {name:'post_date', index:'post_date', width:300, formatter:DateFmatter}
+	],
+	pager: '#pager_xml',
+	rowNum:5,
+	rowList:[5,10,20,30],
+	sortname: 'id',
+    sortorder: 'desc',
+    viewrecords: true,
+    caption: 'XML'
+  });
+});
+
+
+function DateFmatter(cellvalue, options, rowObject)
+{
+  dt = new Date(cellvalue);
+  return dt.getDate() + "/" + dt.getMonth() + "/" + dt.getFullYear() + " " + dt.getHours() + ":" + dt.getMinutes();
+}
+
 </script>
 
 <% end %>
 
 <% function content_for_body() %>
-<table id="list"></table>
-<div id="pager"></div>
+<table id="list_json"></table>
+<div id="pager_json"></div>
+<br/>
+<table id="list_xml"></table>
+<div id="pager_xml"></div>
 <% end %>
 

@@ -1,0 +1,13 @@
+﻿<?xml version ="1.0" encoding="utf-8"?>
+<rows>
+  <page><%=page%></page>
+  <total><%=total%></total>
+  <records><%=records%></records>
+  <% for rk, rv in ipairs(rows) do %>
+	<row id = "<%=rv.id%>">
+	  <cell><%=rv.cell[1]%></cell>
+	  <cell><%=rv.cell[2]%></cell>
+	  <cell><%= os.date("%c", rv.cell[3])%></cell>
+	</row>
+  <% end %>
+</rows>
