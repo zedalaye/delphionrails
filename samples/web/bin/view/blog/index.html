@@ -1,18 +1,23 @@
-﻿<% function content_for_title() %>
-This is my Blog
+﻿<% function content_for_head() %>
+<title>This is my Blog</title>
 <% end %>
 
 <% function content_for_body() %>
 <h1>Listing posts</h1>
+<table>
 <% for k, v in ipairs(data) do %>
+<tr>
+<td><a href="/blog/view/<%=v.id%>"><%=v.title%></a></td>
+<td><a href="/blog/edit/<%=v.id%>">Edit</a></td>
+<td>
 <form action="/blog/delete/<%=v.id%>" method="POST">
-<a href="/blog/view/<%=v.id%>"><%=v.title%></a>
-<a href="/blog/edit/<%=v.id%>">Edit</a>
 <input type="submit" value="Delete"/>
 </form>
-<br/>
+</td>
+</tr>
 <% end %>
-<br/><a href="/blog/new">New post</a>
+</table>
+<a href="/blog/new">New post</a>
 <% end %>
 
 

@@ -3,12 +3,12 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta http-equiv="Content-type" content="text/html; charset=utf-8"/>
-  <title><% pcall(content_for_title) %></title>
-  <script type="text/javascript" src="/js/jquery.js"></script>
+  <% pcall(content_for_head) %>
 </head>
 <body>
 <a href="/blog">Blog</a>
 <a href="/cairo">Cairo</a>
+<a href="/ajax">Ajax</a>
 <% pcall(content_for_body) %>
 </body>
 </html>

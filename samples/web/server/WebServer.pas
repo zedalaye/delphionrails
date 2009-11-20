@@ -12,10 +12,9 @@ type
 
   THTTPConnexion = class(THTTPStub)
   private
-    procedure PaitImg(const ctx: ICairoContext);
+    procedure PaintImg(const ctx: ICairoContext);
   protected
     function GetPassPhrase: AnsiString; override;
-    procedure ProcessRequest; override;
   public
     type
       TBlog = record
@@ -23,6 +22,8 @@ type
         title: string;
         body: string;
       end;
+
+    // BLOG
     procedure ctrl_blog_index_get;
     procedure ctrl_blog_new_post(const title, body: string);
     procedure ctrl_blog_view_get(id: Integer);
@@ -30,21 +31,58 @@ type
     procedure ctrl_blog_edit_post(const data: TBlog);
     procedure ctrl_blog_delete_post(id: Integer);
 
+    // CAIRO
     procedure ctrl_cairo_getimg_get(x, y: Integer);
     procedure view_cairo_getimg_png;
     procedure view_cairo_getimg_svg;
     procedure view_cairo_getimg_pdf;
     procedure view_cairo_getimg_ps;
+
+    // AJAX
+    procedure ctrl_ajax_getdata_get(_search: Boolean; const sord, sidx: string; rows, page: Integer);
+    procedure view_ajax_getdata_json(page, total, records: Integer; const data: ISuperObject);
   end;
 
 implementation
 uses SysUtils, dorDB, dorService;
 
-const
-  PASS_PHRASE: AnsiString = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
-
 { THTTPConnexion }
-
+
+{$REGION 'BLOG'}
+procedure THTTPConnexion.ctrl_ajax_getdata_get(_search: Boolean;
+  const sord, sidx: string; rows, page: Integer);
+var
+  count, pages, start: Integer;
+begin
+  with pool.GetConnection.newContext do
+  begin
+    count := Execute(newSelect('select COUNT(*) as "count" from blog', true)).I['count'];
+    if count > 0 then
+      pages := (count div rows) + 1 else
+      pages := 0;
+    if (page > pages) then
+      page := pages;
+    start := rows * page - rows;
+    Context['data'] := Execute(newSelect(Format('SELECT FIRST %d SKIP %d id, title FROM blog ORDER BY %s %s', [rows, start, sidx, sord])));
+    Context.I['page'] := page;
+    Context.I['total'] := pages;
+    Context.I['records'] := count;
+  end;
+end;
+
+procedure THTTPConnexion.view_ajax_getdata_json(page, total, records: Integer; const data: ISuperObject);
+var
+  line, rows: ISuperObject;
+begin
+  rows := TSuperObject.Create(stArray);
+
+  for line in data do
+    rows.AsArray.Add(
+      so(['id', line['id'], 'cell', SA([line['id'], line['title']])]));
+
+  Render(SO(['page', page, 'total', total, 'records', records, 'rows', rows]));
+end;
+
 procedure THTTPConnexion.ctrl_blog_delete_post(id: Integer);
 begin
   with pool.GetConnection.newContext do
@@ -88,18 +126,17 @@ begin
   Compress := true;
 end;
 
+{$ENDREGION}
+
+{$REGION 'CAIRO'}
+
 procedure THTTPConnexion.ctrl_cairo_getimg_get(x, y: Integer);
 begin
   Context.I['x'] := x;
   Context.I['y'] := y;
 end;
 
-function THTTPConnexion.GetPassPhrase: AnsiString;
-begin
-  Result := PASS_PHRASE;
-end;
-
-procedure THTTPConnexion.PaitImg(const ctx: ICairoContext);
+procedure THTTPConnexion.PaintImg(const ctx: ICairoContext);
 var
   pat, lin: ICairoPattern;
   i, j: integer;
@@ -135,18 +172,6 @@ begin
   ctx.ShowText('Hello');
 end;
 
-procedure THTTPConnexion.ProcessRequest;
-begin
-  inherited;
-  // automatic render context to json
-  if (ErrorCode = 404) and (Params.AsObject.S['format'] = 'json') then
-  begin
-    ErrorCode := 200;
-    Render(Context, false);
-    Response.AsObject.S['Cache-Control'] := 'private, max-age=0';
-  end;
-end;
-
 procedure THTTPConnexion.view_cairo_getimg_pdf;
 var
   ctx: ICairoContext;
@@ -155,7 +180,7 @@ begin
   surf := TPDFSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
   ctx := TCairoContext.Create(surf);
   ctx.Scale(Context.I['x'], Context.I['y']);
-  PaitImg(ctx);
+  PaintImg(ctx);
 end;
 
 procedure THTTPConnexion.view_cairo_getimg_png;
@@ -167,7 +192,7 @@ begin
   ctx := TCairoContext.Create(surf);
   ctx.Scale(Context.I['x'], Context.I['y']);
 
-  PaitImg(ctx);
+  PaintImg(ctx);
 
   surf.WriteToPNGStream(Response.Content);
 end;
@@ -180,7 +205,7 @@ begin
   surf := TPostScriptSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
   ctx := TCairoContext.Create(surf);
   ctx.Scale(Context.I['x'], Context.I['y']);
-  PaitImg(ctx);
+  PaintImg(ctx);
 end;
 
 procedure THTTPConnexion.view_cairo_getimg_svg;
@@ -191,16 +216,32 @@ begin
   surf := TSVGSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
   ctx := TCairoContext.Create(surf);
   ctx.Scale(Context.I['x'], Context.I['y']);
-  PaitImg(ctx);
+  PaintImg(ctx);
 end;
 
+{$ENDREGION}
+
+{$REGION 'CUSOMIZE'}
+
+function THTTPConnexion.GetPassPhrase: AnsiString;
+const
+  PASS_PHRASE: AnsiString = 'dc62rtd6fc14ss6df464c2s3s3rt324h14vh27d3fc321h2vfghv312';
+begin
+  Result := PASS_PHRASE;
+end;
+
+{$ENDREGION}
+
 { THTTPServer }
+
+{$REGION 'TCP SERVER'}
 
 function THTTPServer.doOnCreateStub(Socket: longint;
   AAddress: TSockAddr): TSocketStub;
 begin
   Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
 end;
+{$ENDREGION}
 
 initialization
   Application.CreateServer(THTTPServer, 81);

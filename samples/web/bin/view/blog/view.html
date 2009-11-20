@@ -1,9 +1,10 @@
-﻿<% function content_for_title() %>
-<%=data.title%>
+﻿<% function content_for_head() %>
+<title><%=data.title%></title>
 <% end %>
 
 <% function content_for_body() %>
 <h1><%=data.title%></h1>
+<p><%=os.date("%B %dth, %Y", data.post_date)%></p>
 <pre><%=data.body%></pre><br/>
 <a href="/blog/edit/<%=data.id%>">Edit</a>
 <% end %>

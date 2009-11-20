@@ -66,7 +66,7 @@ type
   protected
     procedure ProcessRequest; virtual;
     function Run: Cardinal; override;
-    procedure Render(const obj: ISuperObject; format: boolean); overload;
+    procedure Render(const obj: ISuperObject; format: boolean = false); overload;
     procedure Render(const str: string); overload;
     procedure Redirect(const location: string); overload;
     procedure Redirect(const controler, action: string; const id: string = ''); overload;
@@ -657,7 +657,7 @@ var
   return: ISuperObject;
 begin
   with params.AsObject do
-   Result := TrySOInvoke(FRttiContext, Self, 'view_' + S['controller'] + '_' + S['action'] + '_' + S['format'], nil, return);
+   Result := TrySOInvoke(FRttiContext, Self, 'view_' + S['controller'] + '_' + S['action'] + '_' + S['format'], FContext, return);
 end;
 
 function THTTPStub.RenderScript(const params: ISuperObject): Boolean;
