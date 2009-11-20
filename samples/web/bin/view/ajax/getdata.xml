@@ -3,11 +3,11 @@
   <page><%=page%></page>
   <total><%=total%></total>
   <records><%=records%></records>
-  <% for rk, rv in ipairs(rows) do %>
-	<row id = "<%=rv.id%>">
-	  <cell><%=rv.cell[1]%></cell>
-	  <cell><%=rv.cell[2]%></cell>
-	  <cell><%= os.date("%c", rv.cell[3])%></cell>
+  <% for k, v in ipairs(rows) do %>
+	<row id = "<%=v.id%>">
+	  <cell><%=v.cell[1]%></cell>
+	  <cell><![CDATA[<%=v.cell[2]%>]]></cell>
+	  <cell><%= os.date("%c", v.cell[3])%></cell>
 	</row>
   <% end %>
 </rows>
