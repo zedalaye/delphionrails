@@ -40,7 +40,7 @@ type
     procedure view_cairo_getimg_ps;
 
     // AJAX
-    procedure ctrl_ajax_getdata_get(_search: Boolean; const sord, sidx: string; rows, page: Integer);
+    procedure ctrl_ajax_getdata_get(const sord, sidx: string; rows, page: Integer);
   end;
 
 implementation
@@ -190,8 +190,7 @@ end;
 
 {$REGION 'AJAX'}
 
-procedure THTTPConnexion.ctrl_ajax_getdata_get(_search: Boolean;
-  const sord, sidx: string; rows, page: Integer);
+procedure THTTPConnexion.ctrl_ajax_getdata_get(const sord, sidx: string; rows, page: Integer);
 var
   count, pages, start: Integer;
   lines, line: ISuperObject;

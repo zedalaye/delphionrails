@@ -5,6 +5,9 @@ program DORServer;
   {$APPTYPE CONSOLE}
 {$ENDIF}
 {$ENDIF}
+
+{$R *.res}
+
 uses
   madExcept,
   madLinkDisAsm,

@@ -50,12 +50,6 @@
 			</DelphiCompile>
 			<DCCReference Include="mypool.pas"/>
 			<DCCReference Include="WebServer.pas"/>
-			<None Include="..\bin\layout\application.html"/>
-			<None Include="..\bin\view\application\index.html"/>
-			<None Include="..\bin\view\blog\index.html"/>
-			<None Include="..\bin\view\blog\new.html"/>
-			<None Include="..\bin\view\blog\view.html"/>
-			<None Include="..\bin\view\blog\edit.html"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>

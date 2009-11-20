@@ -6,7 +6,7 @@
   <% for k, v in ipairs(rows) do %>
 	<row id = "<%=v.id%>">
 	  <cell><%=v.cell[1]%></cell>
-	  <cell><![CDATA[<%=v.cell[2]%>]]></cell>
+	  <cell><![CDATA[<a href="/blog/view/<%=v.cell[1]%>"><%=v.cell[2]%></a>]]></cell>
 	  <cell><%= os.date("%c", v.cell[3])%></cell>
 	</row>
   <% end %>

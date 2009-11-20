@@ -16,7 +16,7 @@ jQuery(document).ready(function(){
 	colNames:['ID','Title', 'Date'],
 	colModel :[
 	  {name:'id', index:'id', width:55},
-	  {name:'title', index:'title', width:300},
+	  {name:'title', index:'title', width:300, formatter:LinkFmatter},
 	  {name:'post_date', index:'post_date', width:300, formatter:DateFmatter}
 	],
 	pager: '#pager_json',
@@ -55,6 +55,11 @@ function DateFmatter(cellvalue, options, rowObject)
 {
   dt = new Date(cellvalue);
   return dt.getDate() + "/" + dt.getMonth() + "/" + dt.getFullYear() + " " + dt.getHours() + ":" + dt.getMinutes();
+}
+
+function LinkFmatter(cellvalue, options, rowObject)
+{
+  return "<a href=/blog/view/" + rowObject[0] + ">"+ cellvalue + "</a>"
 }
 
 </script>
