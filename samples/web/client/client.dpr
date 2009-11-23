@@ -2,7 +2,8 @@ program client;
 
 uses
   Forms,
-  main in 'main.pas' {Form45};
+  main in 'main.pas' {Form45},
+  superobject in '..\..\..\src\superobject\superobject.pas';
 
 {$R *.res}
 

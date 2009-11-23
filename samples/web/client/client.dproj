@@ -42,6 +42,7 @@
 			<DCCReference Include="main.pas">
 				<Form>Form45</Form>
 			</DCCReference>
+			<DCCReference Include="..\..\..\src\superobject\superobject.pas"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>
