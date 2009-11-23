@@ -47,9 +47,22 @@ type
 implementation
 uses SysUtils, dorDB, dorService, Math;
 
+{$REGION 'BLOG'}
+
+{ THTTPConnexion.TBlog }
+
+function THTTPConnexion.TBlog.validate(const ctx: ISuperObject): boolean;
+begin
+  if Length(title) > 50 then
+  begin
+    ctx.S['info'] := 'title must be less than 50 characters';
+    Result := False;
+  end else
+    Result := True;
+end;
+
 { THTTPConnexion }
 
-{$REGION 'BLOG'}
 
 procedure THTTPConnexion.ctrl_blog_delete_post(id: Integer);
 begin
@@ -251,18 +264,6 @@ begin
   Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
 end;
 {$ENDREGION}
-
-{ THTTPConnexion.TBlog }
-
-function THTTPConnexion.TBlog.validate(const ctx: ISuperObject): boolean;
-begin
-  if Length(title) > 50 then
-  begin
-    ctx.S['info'] := 'title must be less than 50 characters';
-    Result := False;
-  end else
-    Result := True;
-end;
 
 initialization
   Application.CreateServer(THTTPServer, 81);
