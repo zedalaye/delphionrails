@@ -18,7 +18,7 @@ object Form45: TForm45
     Top = 8
     Width = 75
     Height = 25
-    Caption = 'Button1'
+    Caption = 'Blog List'
     TabOrder = 0
     OnClick = Button1Click
   end
@@ -27,8 +27,6 @@ object Form45: TForm45
     Top = 48
     Width = 369
     Height = 225
-    Lines.Strings = (
-      'Memo1')
     TabOrder = 1
   end
 end

@@ -47,7 +47,7 @@ begin
     list := ctx.AsType<TBlogList>(SO(req.responseText)['data']);
     Memo1.Clear;
     for i := 0 to length(list) - 1 do
-      Memo1.Lines.Add(list[i].title);
+      Memo1.Lines.Add(Format('%d - %s', [list[i].id, list[i].title]));
   finally
     ctx.Free;
   end;
