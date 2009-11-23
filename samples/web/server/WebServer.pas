@@ -22,11 +22,12 @@ type
         id: Integer;
         title: string;
         body: string;
+        function validate(const ctx: ISuperObject): boolean;
       end;
 
     // BLOG
     procedure ctrl_blog_index_get;
-    procedure ctrl_blog_new_post(const title, body: string);
+    procedure ctrl_blog_new_post(const data: TBlog);
     procedure ctrl_blog_view_get(id: Integer);
     procedure ctrl_blog_edit_get(id: Integer);
     procedure ctrl_blog_edit_post(const data: TBlog);
@@ -65,10 +66,10 @@ end;
 
 procedure THTTPConnexion.ctrl_blog_edit_post(const data: TBlog);
 begin
-  with pool.GetConnection.newContext do
-   Execute(newCommand('update blog set title = ?, body = ? where id = ?'),
-     [data.title, data.body, data.id]);
-  Context.S['info'] := 'updated';
+  if data.validate(Context) then
+    with pool.GetConnection.newContext do
+     Execute(newCommand('update blog set title = ?, body = ? where id = ?'),
+       [data.title, data.body, data.id]);
 end;
 
 procedure THTTPConnexion.ctrl_blog_index_get;
@@ -77,11 +78,12 @@ begin
     Context['data'] := Execute(newSelect('select title, id from blog order by post_date'));
 end;
 
-procedure THTTPConnexion.ctrl_blog_new_post(const title, body: string);
+procedure THTTPConnexion.ctrl_blog_new_post(const data: TBlog);
 begin
-  with pool.GetConnection.newContext do
-   Redirect(Execute(newFunction('insert into blog (title, body) values (?, ?) returning id'),
-     [title, body]).Format('/blog/view/%id%'));
+  if data.validate(Context) then
+    with pool.GetConnection.newContext do
+     Redirect(Execute(newFunction('insert into blog (title, body) values (?, ?) returning id'),
+       [data.title, data.body]).Format('/blog/view/%id%'));
 end;
 
 procedure THTTPConnexion.ctrl_blog_view_get(id: Integer);
@@ -249,6 +251,18 @@ begin
   Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
 end;
 {$ENDREGION}
+
+{ THTTPConnexion.TBlog }
+
+function THTTPConnexion.TBlog.validate(const ctx: ISuperObject): boolean;
+begin
+  if Length(title) > 50 then
+  begin
+    ctx.S['info'] := 'title must be less than 50 characters';
+    Result := False;
+  end else
+    Result := True;
+end;
 
 initialization
   Application.CreateServer(THTTPServer, 81);

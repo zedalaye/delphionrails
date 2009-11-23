@@ -4,11 +4,13 @@
 
 <% function content_for_body() %>
 <h1>New post</h1>
+<% if info then %> <b> <%=info%> </b> <% end %>
 <form action="/blog/new" method="POST">
   <label>Title</label>
-  <input type="text" name="title" size="50"/><br/>
+  <input type="hidden" name="data.id" value="0"/>
+  <input type="text" name="data.title" size="50" value="<% if data then print(data.title) end %>"/><br/>
   <label>Body</label><br/>
-  <textarea name="body" cols="50" rows="20"></textarea><br/>
+  <textarea name="data.body" cols="50" rows="20"><% if data then print(data.body) end %></textarea><br/>
   <input type="submit" value="Create"/>
 </form>
 <% end %>
