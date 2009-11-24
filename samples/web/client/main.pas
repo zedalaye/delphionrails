@@ -20,6 +20,7 @@ type
   TBlogListItem = record
     id: Integer;
     title: string;
+    post_date: TDateTime;
   end;
 
   TBlogList = array of TBlogListItem;
@@ -47,7 +48,8 @@ begin
     list := ctx.AsType<TBlogList>(SO(req.responseText)['data']);
     Memo1.Clear;
     for i := 0 to length(list) - 1 do
-      Memo1.Lines.Add(Format('%d - %s', [list[i].id, list[i].title]));
+      with list[i] do
+        Memo1.Lines.Add(Format('%s | %d | %s', [DateTimeToStr(post_date), id, title]));
   finally
     ctx.Free;
   end;

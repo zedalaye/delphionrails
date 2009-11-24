@@ -7,11 +7,12 @@
 <table>
 <% for k, v in ipairs(data) do %>
 <tr>
-<td><a href="/blog/view/<%=v.id%>"><%=v.title%></a></td>
-<td><a href="/blog/edit/<%=v.id%>">Edit</a></td>
+<td><%=os.date("%c",v.post_date)%></td>
+<td>| <a href="/blog/view/<%=v.id%>"><%=v.title%></a></td>
+<td>| <a href="/blog/edit/<%=v.id%>">Edit</a></td>
 <td>
 <form action="/blog/delete/<%=v.id%>" method="POST">
-<input type="submit" value="Delete"/>
+| <input type="submit" value="Delete"/>
 </form>
 </td>
 </tr>

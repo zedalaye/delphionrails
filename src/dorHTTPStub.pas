@@ -117,36 +117,6 @@ const
   ReadTimeOut: Integer = 60000; // 1 minute
   COOKIE_NAME = 'Cookie';
 
-function serialtoboolean(var value: TValue; const index: ISuperObject): ISuperObject;
-begin
-  Result := TSuperObject.Create(TValueData(value).FAsSLong <> 0);
-end;
-
-function serialtodatetime(var value: TValue; const index: ISuperObject): ISuperObject;
-begin
-  Result := TSuperObject.Create(DelphiToJavaDateTime(TValueData(value).FAsDouble));
-end;
-
-function serialfromboolean(const obj: ISuperObject; var Value: TValue): Boolean;
-begin
-  if ObjectIsType(obj, stBoolean) then
-  begin
-    TValueData(Value).FAsSLong := obj.AsInteger;
-    Result := True;
-  end else
-    Result := False;
-end;
-
-function serialfromdatetime(const obj: ISuperObject; var Value: TValue): Boolean;
-begin
-  if ObjectIsType(obj, stInt) then
-  begin
-    TValueData(Value).FAsDouble := JavaToDelphiDateTime(obj.AsInteger);
-    Result := True;
-  end else
-    Result := False;
-end;
-
 function lua_print(state: Plua_State): Integer; cdecl;
 var
   p: Pointer;
@@ -833,11 +803,6 @@ begin
 
   FRttiContext := TSuperRttiContext.Create;
 
-  FRttiContext.SerialFromJson.Add(TypeInfo(Boolean), serialfromboolean);
-  FRttiContext.SerialFromJson.Add(TypeInfo(TDateTime), serialfromdatetime);
-  FRttiContext.SerialToJson.Add(TypeInfo(Boolean), serialtoboolean);
-  FRttiContext.SerialToJson.Add(TypeInfo(TDateTime), serialtodatetime);
-
   FFormats := TSuperObject.Create;
   with FFormats do
   begin
@@ -1059,6 +1024,7 @@ begin
         RenderScript(FParams) then
         begin
           FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
+          Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
           Exit;
         end;
     end;

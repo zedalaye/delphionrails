@@ -88,7 +88,7 @@ end;
 procedure THTTPConnexion.ctrl_blog_index_get;
 begin
   with pool.GetConnection.newContext do
-    Context['data'] := Execute(newSelect('select title, id from blog order by post_date'));
+    Context['data'] := Execute(newSelect('select title, id, post_date from blog order by post_date'));
 end;
 
 procedure THTTPConnexion.ctrl_blog_new_post(const data: TBlog);
