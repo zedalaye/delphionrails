@@ -217,7 +217,7 @@ begin
       pages := Ceil(count / rows) else
       pages := 0;
     page := Min(page, pages);
-    start := rows * page - rows;
+    start := Max(0, rows * page - rows);
 
     lines := TSuperObject.Create(stArray);
     for line in Execute(newSelect(Format('SELECT FIRST %d SKIP %d id, title, post_date FROM blog ORDER BY %s %s',
