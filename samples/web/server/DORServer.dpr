@@ -1,19 +1,12 @@
 program DORServer;
 
 {$IFDEF CONSOLEAPP}
-{$IFNDEF FPC}
   {$APPTYPE CONSOLE}
-{$ENDIF}
 {$ENDIF}
 
 {$R *.res}
 
 uses
-  madExcept,
-  madLinkDisAsm,
-  madListHardware,
-  madListProcesses,
-  madListModules,
   dorService,
   mypool in 'mypool.pas',
   WebServer in 'WebServer.pas';

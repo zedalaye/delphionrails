@@ -998,7 +998,9 @@ procedure THTTPStub.ProcessRequest;
 var
   str: string;
   path: string;
-  return: ISuperObject;
+  obj, return: ISuperObject;
+  ite: TSuperAvlEntry;
+
 begin
   inherited;
   with FParams.AsObject do
@@ -1011,10 +1013,18 @@ begin
     with FParams.AsObject do
     begin
       // controller
+      for obj in FParams do
+        if obj <> nil then
+          obj.DataPtr := Pointer(1);
+
       case TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' +
         S['action'] + '_' + Request.S['method'], FParams, return) of
       irParamError: FErrorCode := 400;
       irError: FErrorCode := 500;
+      else
+        for ite in FParams.AsObject do
+          if (ite.Value <> nil) and (ite.Value.DataPtr = nil) then
+            FContext.AsObject[ite.Name] := ite.Value;
       end;
 
       if FErrorCode <> 200 then Exit;

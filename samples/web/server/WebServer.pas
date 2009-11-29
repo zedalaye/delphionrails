@@ -26,22 +26,23 @@ type
       end;
 
     // BLOG
-    procedure ctrl_blog_index_get;
+    procedure ctrl_blog_index_get(out data: ISuperObject);
     procedure ctrl_blog_new_post(const data: TBlog);
-    procedure ctrl_blog_view_get(id: Integer);
-    procedure ctrl_blog_edit_get(id: Integer);
+    procedure ctrl_blog_view_get(id: Integer; out data: ISuperObject);
+    procedure ctrl_blog_edit_get(id: Integer; out data: ISuperObject);
     procedure ctrl_blog_edit_post(const data: TBlog);
     procedure ctrl_blog_delete_post(id: Integer);
 
     // CAIRO
-    procedure ctrl_cairo_getimg_get(x, y: Integer);
-    procedure view_cairo_getimg_png;
-    procedure view_cairo_getimg_svg;
-    procedure view_cairo_getimg_pdf;
-    procedure view_cairo_getimg_ps;
+    procedure ctrl_cairo_getimg_get(var x, y: Integer);
+    procedure view_cairo_getimg_png(x, y: Integer);
+    procedure view_cairo_getimg_svg(x, y: Integer);
+    procedure view_cairo_getimg_pdf(x, y: Integer);
+    procedure view_cairo_getimg_ps(x, y: Integer);
 
     // AJAX
-    procedure ctrl_ajax_getdata_get(const sord, sidx: string; rows, page: Integer);
+    procedure ctrl_ajax_getdata_get(const sord, sidx: string; rows: Integer;
+      var page: Integer; out records, total: Integer);
   end;
 
 implementation
@@ -71,10 +72,10 @@ begin
   Redirect('blog', 'index');
 end;
 
-procedure THTTPConnexion.ctrl_blog_edit_get(id: Integer);
+procedure THTTPConnexion.ctrl_blog_edit_get(id: Integer; out data: ISuperObject);
 begin
   with pool.GetConnection.newContext do
-    Context['data'] := Execute(newSelect('select * from blog where id = ?', true), id);
+    data := Execute(newSelect('select * from blog where id = ?', true), id);
 end;
 
 procedure THTTPConnexion.ctrl_blog_edit_post(const data: TBlog);
@@ -85,10 +86,10 @@ begin
        [data.title, data.body, data.id]);
 end;
 
-procedure THTTPConnexion.ctrl_blog_index_get;
+procedure THTTPConnexion.ctrl_blog_index_get(out data: ISuperObject);
 begin
   with pool.GetConnection.newContext do
-    Context['data'] := Execute(newSelect('select title, id, post_date from blog order by post_date'));
+    data := Execute(newSelect('select title, id, post_date from blog order by post_date'));
 end;
 
 procedure THTTPConnexion.ctrl_blog_new_post(const data: TBlog);
@@ -99,23 +100,21 @@ begin
        [data.title, data.body]).Format('/blog/view/%id%'));
 end;
 
-procedure THTTPConnexion.ctrl_blog_view_get(id: Integer);
+procedure THTTPConnexion.ctrl_blog_view_get(id: Integer; out data: ISuperObject);
 begin
   with pool.GetConnection.newContext do
-    Context['data'] := Execute(newSelect('select * from blog where id = ?', true), id);
-  if Context['data'] = nil then
+    data := Execute(newSelect('select * from blog where id = ?', true), id);
+  if data = nil then
     ErrorCode := 404;
-  Compress := true;
 end;
 
 {$ENDREGION}
 
 {$REGION 'CAIRO'}
 
-procedure THTTPConnexion.ctrl_cairo_getimg_get(x, y: Integer);
+procedure THTTPConnexion.ctrl_cairo_getimg_get(var x, y: Integer);
 begin
-  Context.I['x'] := x;
-  Context.I['y'] := y;
+  // validate input and send params to view automatically
 end;
 
 procedure THTTPConnexion.PaintImg(const ctx: ICairoContext);
@@ -154,50 +153,50 @@ begin
   ctx.ShowText('Hello');
 end;
 
-procedure THTTPConnexion.view_cairo_getimg_pdf;
+procedure THTTPConnexion.view_cairo_getimg_pdf(x, y: Integer);
 var
   ctx: ICairoContext;
   surf: ICairoSurface;
 begin
-  surf := TPDFSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
+  surf := TPDFSurface.Create(Response.Content, x, y);
   ctx := TCairoContext.Create(surf);
-  ctx.Scale(Context.I['x'], Context.I['y']);
+  ctx.Scale(x, y);
   PaintImg(ctx);
 end;
 
-procedure THTTPConnexion.view_cairo_getimg_png;
+procedure THTTPConnexion.view_cairo_getimg_png(x, y: Integer);
 var
   ctx: ICairoContext;
   surf: ICairoSurface;
 begin
-  surf := TImageSurface.Create(CAIRO_FORMAT_RGB24, Context.I['x'], Context.I['y']);
+  surf := TImageSurface.Create(CAIRO_FORMAT_RGB24, x, y);
   ctx := TCairoContext.Create(surf);
-  ctx.Scale(Context.I['x'], Context.I['y']);
+  ctx.Scale(x, y);
 
   PaintImg(ctx);
 
   surf.WriteToPNGStream(Response.Content);
 end;
 
-procedure THTTPConnexion.view_cairo_getimg_ps;
+procedure THTTPConnexion.view_cairo_getimg_ps(x, y: Integer);
 var
   ctx: ICairoContext;
   surf: ICairoSurface;
 begin
-  surf := TPostScriptSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
+  surf := TPostScriptSurface.Create(Response.Content, x, y);
   ctx := TCairoContext.Create(surf);
-  ctx.Scale(Context.I['x'], Context.I['y']);
+  ctx.Scale(x, y);
   PaintImg(ctx);
 end;
 
-procedure THTTPConnexion.view_cairo_getimg_svg;
+procedure THTTPConnexion.view_cairo_getimg_svg(x, y: Integer);
 var
   ctx: ICairoContext;
   surf: ICairoSurface;
 begin
-  surf := TSVGSurface.Create(Response.Content, Context.I['x'], Context.I['y']);
+  surf := TSVGSurface.Create(Response.Content, x, y);
   ctx := TCairoContext.Create(surf);
-  ctx.Scale(Context.I['x'], Context.I['y']);
+  ctx.Scale(x, y);
   PaintImg(ctx);
 end;
 
@@ -205,18 +204,20 @@ end;
 
 {$REGION 'AJAX'}
 
-procedure THTTPConnexion.ctrl_ajax_getdata_get(const sord, sidx: string; rows, page: Integer);
+procedure THTTPConnexion.ctrl_ajax_getdata_get(
+  const sord, sidx: string; rows: Integer; var page: Integer;
+  out records, total: Integer);
 var
-  count, pages, start: Integer;
+  start: Integer;
   lines, line: ISuperObject;
 begin
   with pool.GetConnection.newContext do
   begin
-    count := Execute(newSelect('select COUNT(*) as "count" from blog', true)).I['count'];
-    if count > 0 then
-      pages := Ceil(count / rows) else
-      pages := 0;
-    page := Min(page, pages);
+    records := Execute(newSelect('select COUNT(*) as "count" from blog', true)).I['count'];
+    if records > 0 then
+      total := Ceil(records / rows) else
+      total := 0;
+    page := Min(page, total);
     start := Max(0, rows * page - rows);
 
     lines := TSuperObject.Create(stArray);
@@ -225,9 +226,6 @@ begin
       lines.AsArray.Add(so(['id', line['0'], 'cell', line]));
 
     Context['rows'] := lines;
-    Context.I['page'] := page;
-    Context.I['total'] := pages;
-    Context.I['records'] := count;
   end;
 end;
 

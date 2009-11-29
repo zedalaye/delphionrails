@@ -42,7 +42,7 @@
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Cfg_2)'!=''">
 			<DCC_MapFile>3</DCC_MapFile>
-			<DCC_Define>DEBUG;madExcept;$(DCC_Define)</DCC_Define>
+			<DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
 		</PropertyGroup>
 		<ItemGroup>
 			<DelphiCompile Include="DORServer.dpr">
@@ -50,6 +50,15 @@
 			</DelphiCompile>
 			<DCCReference Include="mypool.pas"/>
 			<DCCReference Include="WebServer.pas"/>
+			<None Include="..\bin\layout\application.html"/>
+			<None Include="..\bin\view\ajax\index.html"/>
+			<None Include="..\bin\view\ajax\getdata.xml"/>
+			<None Include="..\bin\view\application\index.html"/>
+			<None Include="..\bin\view\blog\edit.html"/>
+			<None Include="..\bin\view\blog\index.html"/>
+			<None Include="..\bin\view\blog\new.html"/>
+			<None Include="..\bin\view\blog\view.html"/>
+			<None Include="..\bin\view\cairo\index.html"/>
 			<BuildConfiguration Include="Base">
 				<Key>Base</Key>
 			</BuildConfiguration>
