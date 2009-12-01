@@ -24,7 +24,6 @@ uses
   dorUtils, classes, superobject;
 
 type
-
   THTTPMessage = class(TSuperObject)
   private
     FContent: TPooledMemoryStream;
@@ -41,12 +40,11 @@ type
   private
     FRequest: THTTPMessage;
     FResponse: THTTPMessage;
-    FContext: ISuperObject;
+    FReturn: ISuperObject;
     FParams: ISuperObject;
     FFormats: ISuperObject;
     FSession: ISuperObject;
-    FRttiContext: TSuperRttiContext;
-
+    FContext: TSuperRttiContext;
     FErrorCode: Integer;
     FCompress: Boolean;
     FCompressLevel: Integer;
@@ -74,7 +72,7 @@ type
   public
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
     destructor Destroy; override;
-    property Context: ISuperObject read FContext;
+    property Return: ISuperObject read FReturn;
     property Request: THTTPMessage read FRequest;
     property Response: THTTPMessage read FResponse;
     property Session: ISuperObject read FSession;
@@ -82,6 +80,7 @@ type
     property ErrorCode: Integer read FErrorCode write FErrorCode;
     property Compress: Boolean read FCompress write FCompress;
     property CompressLevel: Integer read FCompressLevel write FCompressLevel;
+    property Context: TSuperRttiContext read FContext;
   end;
 
 implementation
@@ -624,10 +623,10 @@ end;
 
 function THTTPStub.RenderInternal: TSuperInvokeResult;
 var
-  return: ISuperObject;
+  ret: ISuperObject;
 begin
   with params.AsObject do
-   Result := TrySOInvoke(FRttiContext, Self, 'view_' + S['controller'] + '_' + S['action'] + '_' + S['format'], FContext, return);
+   Result := TrySOInvoke(FContext, Self, 'view_' + S['controller'] + '_' + S['action'] + '_' + S['format'], FReturn, ret);
 end;
 
 function THTTPStub.RenderScript(const params: ISuperObject): Boolean;
@@ -662,7 +661,7 @@ begin
         until not ObjectFindNext(ite);
         ObjectFindClose(ite);
 
-        if ObjectFindFirst(FContext, ite) then
+        if ObjectFindFirst(FReturn, ite) then
         repeat
           lua_pushsuperobject(state, ite.val);
           lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
@@ -740,7 +739,7 @@ begin
             if not DecodeContent then
               exit;
 
-              FContext := TSuperObject.Create;
+              FReturn := TSuperObject.Create;
               FParams := TSuperObject.Create;
               FSession := TSuperObject.Create;
               try
@@ -763,7 +762,7 @@ begin
                 end;
               finally
                 FParams := nil;
-                FContext := nil;
+                FReturn := nil;
                 FSession := nil;
               end;
 
@@ -801,7 +800,7 @@ begin
   FResponse._AddRef;
 
 
-  FRttiContext := TSuperRttiContext.Create;
+  FContext := TSuperRttiContext.Create;
 
   FFormats := TSuperObject.Create;
   with FFormats do
@@ -839,7 +838,7 @@ end;
 destructor THTTPStub.Destroy;
 begin
   FFormats := nil;
-  FRttiContext.Free;
+  FContext.Free;
 
   FRequest._Release;
   FResponse._Release;
@@ -869,7 +868,7 @@ begin
     SendFile(FSendFile) else
     SendStream(Response.Content);
 
-  FContext.Clear(true);
+  FReturn.Clear(true);
   FParams.Clear(true);
   FSession.Clear(true);
   Request.Clear(true);
@@ -998,7 +997,7 @@ procedure THTTPStub.ProcessRequest;
 var
   str: string;
   path: string;
-  obj, return: ISuperObject;
+  obj, ret: ISuperObject;
   ite: TSuperAvlEntry;
 
 begin
@@ -1017,14 +1016,14 @@ begin
         if obj <> nil then
           obj.DataPtr := Pointer(1);
 
-      case TrySOInvoke(FRttiContext, Self, 'ctrl_' + S['controller'] + '_' +
-        S['action'] + '_' + Request.S['method'], FParams, return) of
+      case TrySOInvoke(FContext, Self, 'ctrl_' + S['controller'] + '_' +
+        S['action'] + '_' + Request.S['method'], FParams, ret) of
       irParamError: FErrorCode := 400;
       irError: FErrorCode := 500;
       else
         for ite in FParams.AsObject do
           if (ite.Value <> nil) and (ite.Value.DataPtr = nil) then
-            FContext.AsObject[ite.Name] := ite.Value;
+            FReturn.AsObject[ite.Name] := ite.Value;
       end;
 
       if FErrorCode <> 200 then Exit;

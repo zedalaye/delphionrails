@@ -3,11 +3,20 @@ unit mypool;
 interface
 uses dorDB, dorUIB, SuperObject;
 
+type
+
+  TBlog = record
+    id: Integer;
+    title: string;
+    body: string;
+    function validate: boolean;
+  end;
+
 var
   pool: IDBConnectionPool;
 
 implementation
-uses SysUtils, dorSocketStub, dorUtils;
+uses SysUtils, dorSocketStub, dorHTTPStub, dorUtils;
 
 procedure init;
 var
@@ -17,6 +26,20 @@ begin
   pool := TDBUIBConnectionPool.Create(obj['database'], 0);
 end;
 
+{ TBlog }
+
+function TBlog.validate: boolean;
+begin
+  if Length(title) > 50 then
+  begin
+    with CurrentThread as THTTPStub do
+      Return.S['errors[]'] := 'title must be less than 50 characters';
+    Result := False;
+  end else
+    Result := True;
+end;
+
+
 initialization
  init;
 
@@ -25,3 +48,4 @@ finalization
   pool := nil;
 
 end.
+

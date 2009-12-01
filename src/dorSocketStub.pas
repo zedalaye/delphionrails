@@ -113,6 +113,9 @@ type
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); virtual;
   end;
 
+threadvar
+  CurrentThread: TDORThread;
+
 implementation
 uses
   SysUtils;
@@ -127,18 +130,16 @@ const
 {$ENDIF}
 
 function ThreadRun(Thread: Pointer): PtrInt; {$IFNDEF FPC}stdcall;{$ENDIF}
-var
-  t: TDORThread;
 begin
-  t := TDORThread(Thread);
-  InterlockedIncrement(t.FThreadRefCount);
+  CurrentThread := TDORThread(Thread);
+  InterlockedIncrement(CurrentThread.FThreadRefCount);
   try
-    result := t.Run;
+    result := CurrentThread.Run;
   finally
-    if InterlockedDecrement(t.FThreadRefCount) = 0 then
-      t.Free else
-      if t.FOwner <> nil then
-        t.FOwner.ChildRemove(t);
+    if InterlockedDecrement(CurrentThread.FThreadRefCount) = 0 then
+      CurrentThread.Free else
+      if CurrentThread.FOwner <> nil then
+        CurrentThread.FOwner.ChildRemove(CurrentThread);
   end;
 end;
 

@@ -17,14 +17,6 @@ type
     function GetPassPhrase: AnsiString; override;
     procedure ProcessRequest; override;
   public
-    type
-      TBlog = record
-        id: Integer;
-        title: string;
-        body: string;
-        function validate(const ctx: ISuperObject): boolean;
-      end;
-
     // BLOG
     procedure ctrl_blog_index_get(out data: ISuperObject);
     procedure ctrl_blog_new_post(const data: TBlog);
@@ -50,20 +42,7 @@ uses SysUtils, dorDB, dorService, Math;
 
 {$REGION 'BLOG'}
 
-{ THTTPConnexion.TBlog }
-
-function THTTPConnexion.TBlog.validate(const ctx: ISuperObject): boolean;
-begin
-  if Length(title) > 50 then
-  begin
-    ctx.S['info'] := 'title must be less than 50 characters';
-    Result := False;
-  end else
-    Result := True;
-end;
-
 { THTTPConnexion }
-
 
 procedure THTTPConnexion.ctrl_blog_delete_post(id: Integer);
 begin
@@ -80,7 +59,7 @@ end;
 
 procedure THTTPConnexion.ctrl_blog_edit_post(const data: TBlog);
 begin
-  if data.validate(Context) then
+  if data.validate then
     with pool.GetConnection.newContext do
      Execute(newCommand('update blog set title = ?, body = ? where id = ?'),
        [data.title, data.body, data.id]);
@@ -94,7 +73,7 @@ end;
 
 procedure THTTPConnexion.ctrl_blog_new_post(const data: TBlog);
 begin
-  if data.validate(Context) then
+  if data.validate then
     with pool.GetConnection.newContext do
      Redirect(Execute(newFunction('insert into blog (title, body) values (?, ?) returning id'),
        [data.title, data.body]).Format('/blog/view/%id%'));
@@ -225,7 +204,7 @@ begin
       [rows, start, sidx, sord]), false, true)) do
       lines.AsArray.Add(so(['id', line['0'], 'cell', line]));
 
-    Context['rows'] := lines;
+    Return['rows'] := lines;
   end;
 end;
 
@@ -245,7 +224,7 @@ begin
   inherited;
   if (ErrorCode = 404) and (Params.S['format'] = 'json') then
   begin
-    Render(Context);
+    Render(Return);
     ErrorCode := 200;
   end;
 end;

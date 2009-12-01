@@ -4,7 +4,7 @@
 
 <% function content_for_body() %>
 <h1>Edit post</h1>
-<% if info then %> <b> <%=info%> </b> <% end %>
+<% if errors then for k, v in ipairs(errors) do %> <b> <%=v%> </b> <br/><% end end %>
 <form action="/blog/edit" method="POST">
   <input type="hidden" name="data.id" value="<%=data.id%>" />
   <label>Title</label>
