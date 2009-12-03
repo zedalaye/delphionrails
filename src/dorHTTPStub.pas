@@ -49,6 +49,7 @@ type
     FCompress: Boolean;
     FCompressLevel: Integer;
     FSendFile: string;
+    FIsStatic: Boolean;
     function DecodeFields(str: PChar): boolean;
     function DecodeCommand(str: PChar): boolean;
     procedure WriteLine(str: RawByteString);
@@ -854,9 +855,12 @@ begin
     FResponse.AsObject.S['Content-Encoding'] := 'deflate';
 
   FResponse.AsObject.S['Server'] := 'DOR 1.0';
-  pass := GetPassPhrase;
-  if pass <> '' then
-    FResponse.AsObject.S['Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FSession, pass) + '; path=/';
+  if not FIsStatic then
+  begin
+    pass := GetPassPhrase;
+    if pass <> '' then
+      FResponse.AsObject.S['Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FSession, pass) + '; path=/';
+  end;
   WriteLine(HttpResponseStrings(FErrorCode));
   if ObjectFindFirst(Response, ite) then
   repeat
@@ -884,7 +888,7 @@ procedure THTTPStub.doBeforeProcessRequest;
     str := trim(v);
     if str <> '' then
     begin
-      p := StrScan(PChar(str), '.');
+      p := StrRScan(PChar(str), '.');
       if p <> nil then
       begin
         FParams.AsObject.S['format'] := p + 1;
@@ -903,6 +907,7 @@ begin
   FCompress := False;
   FCompressLevel := 5;
   FSendFile := '';
+  FIsStatic := False;
 
   with Request.AsObject do
   begin
@@ -1046,7 +1051,10 @@ begin
     str := str + 'index.' + FParams.AsObject.S['format'];
 
   if RenderFile(path + str) then
-    FResponse.AsObject.S['Cache-Control'] := 'public' else
+  begin
+    FResponse.AsObject.S['Cache-Control'] := 'max-age=2592000, public';
+    FIsStatic := True;
+  end else
     FErrorCode :=  404;
 
   Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
