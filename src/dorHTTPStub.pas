@@ -58,7 +58,6 @@ type
     procedure SendStream(Stream: TStream);
     function RenderInternal: TSuperInvokeResult;
     function RenderScript(const params: ISuperObject): Boolean;
-    function RenderFile(const filename: string): Boolean;
     function DecodeContent: boolean; virtual;
     procedure doBeforeProcessRequest; virtual;
     procedure doAfterProcessRequest; virtual;
@@ -612,16 +611,6 @@ begin
   result := true;
 end;
 
-function THTTPStub.RenderFile(const filename: string): Boolean;
-begin
-  if FileExists(filename) then
-  begin
-    FSendFile := filename;
-    Result := True;
-  end else
-    Result := False;
-end;
-
 function THTTPStub.RenderInternal: TSuperInvokeResult;
 var
   ret: ISuperObject;
@@ -1004,7 +993,7 @@ var
   path: string;
   obj, ret: ISuperObject;
   ite: TSuperAvlEntry;
-
+  rec: TSearchRec;
 begin
   inherited;
   with FParams.AsObject do
@@ -1049,15 +1038,24 @@ begin
 
   if (AnsiChar(str[Length(str)]) in ['/','\']) then
     str := str + 'index.' + FParams.AsObject.S['format'];
-
-  if RenderFile(path + str) then
+  if FindFirst(path + str, faAnyFile, rec) = 0 then
   begin
-    FResponse.AsObject.S['Cache-Control'] := 'max-age=2592000, public';
     FIsStatic := True;
+    if Request.B['env.if-none-match'] and
+      (Request.S['env.if-none-match'] = IntToStr(rec.Time) + '-' + IntToStr(rec.Size)) then
+    begin
+      FCompress := False;
+      FErrorCode := 304;
+      FSendFile := '';
+      Exit;
+    end;
+    FResponse.AsObject.S['Cache-Control'] := 'max-age=946080000, public';
+    FResponse.AsObject.S['ETag'] := IntToStr(rec.Time) + '-' + IntToStr(rec.Size);
+    FSendFile := path + str;
+    Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
+    FindClose(rec);
   end else
     FErrorCode :=  404;
-
-  Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
 end;
 
 procedure THTTPStub.SendEmpty;
