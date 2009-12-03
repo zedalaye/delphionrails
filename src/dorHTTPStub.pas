@@ -839,6 +839,7 @@ procedure THTTPStub.doAfterProcessRequest;
 var
   ite: TSuperObjectIter;
   pass: AnsiString;
+  obj: ISuperObject;
 begin
   if FCompress then
     FResponse.AsObject.S['Content-Encoding'] := 'deflate';
@@ -848,12 +849,21 @@ begin
   begin
     pass := GetPassPhrase;
     if pass <> '' then
-      FResponse.AsObject.S['Set-Cookie'] := COOKIE_NAME + '=' + EncodeObject(FSession, pass) + '; path=/';
+      FResponse.S['Set-Cookie[]'] := COOKIE_NAME + '=' + EncodeObject(FSession, pass) + '; path=/';
   end;
   WriteLine(HttpResponseStrings(FErrorCode));
   if ObjectFindFirst(Response, ite) then
   repeat
-    WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
+    case ObjectGetType(ite.val) of
+      stArray:
+        for obj in ite.val do
+          WriteLine(RawByteString(ite.key + ': ' + obj.AsString));
+      stNull: ;
+    else
+      WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
+    end;
+
+
   until not ObjectFindNext(ite);
   ObjectFindClose(ite);
 
