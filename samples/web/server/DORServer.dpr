@@ -9,7 +9,13 @@ program DORServer;
 uses
   dorService,
   mypool in 'mypool.pas',
-  WebServer in 'WebServer.pas';
+  WebServer in 'WebServer.pas',
+  application_controller in 'application_controller.pas',
+  blog_controller in 'blog_controller.pas',
+  ajax_controller in 'ajax_controller.pas',
+  cairo_controller in 'cairo_controller.pas',
+  cairo_view in 'cairo_view.pas',
+  application_view in 'application_view.pas';
 
 begin
 {$IFDEF DEBUG}

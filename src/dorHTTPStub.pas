@@ -64,14 +64,14 @@ type
   protected
     procedure ProcessRequest; virtual;
     function Run: Cardinal; override;
-    procedure Render(const obj: ISuperObject; format: boolean = false); overload;
-    procedure Render(const str: string); overload;
-    procedure Redirect(const location: string); overload;
-    procedure Redirect(const controler, action: string; const id: string = ''); overload;
     function GetPassPhrase: AnsiString; virtual;
   public
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
     destructor Destroy; override;
+    procedure Render(const obj: ISuperObject; format: boolean = false); overload;
+    procedure Render(const str: string); overload;
+    procedure Redirect(const location: string); overload;
+    procedure Redirect(const controler, action: string; const id: string = ''); overload;
     property Return: ISuperObject read FReturn;
     property Request: THTTPMessage read FRequest;
     property Response: THTTPMessage read FResponse;
@@ -409,6 +409,13 @@ begin
   end;
 end;
 
+function maj(const s: string): string;
+begin
+  Result := s;
+  if Length(s) > 0 then
+    Result[1] := UpCase(Result[1]);
+end;
+
 { THTTPMessage }
 
 procedure THTTPMessage.Clear(all: boolean);
@@ -614,9 +621,23 @@ end;
 function THTTPStub.RenderInternal: TSuperInvokeResult;
 var
   ret: ISuperObject;
+  clazz: TRttiType;
+  inst: TObject;
 begin
   with params.AsObject do
-   Result := TrySOInvoke(FContext, Self, 'view_' + S['controller'] + '_' + S['action'] + '_' + S['format'], FReturn, ret);
+  begin
+    clazz := Context.Context.FindType(format('%s_view.T%sView', [S['controller'], maj(S['controller'])]));
+    if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
+    begin
+      inst := TRttiInstanceType(clazz).MetaclassType.Create;
+      try
+        Result := TrySOInvoke(FContext, inst, S['action'] + '_' + S['format'], FReturn, ret)
+      finally
+        inst.Free;
+      end;
+    end else
+      Result := irMethothodError;
+  end;
 end;
 
 function THTTPStub.RenderScript(const params: ISuperObject): Boolean;
@@ -879,7 +900,7 @@ begin
 end;
 
 procedure THTTPStub.doBeforeProcessRequest;
-  function interprete(v: PSOChar; name: string): boolean;
+  function interprete(v: PSOChar; const name: string; parse: boolean): boolean;
   var
     p: PChar;
     str: string;
@@ -893,7 +914,9 @@ procedure THTTPStub.doBeforeProcessRequest;
         FParams.AsObject.S['format'] := p + 1;
         setlength(str, p - PChar(str));
       end;
-      FParams.AsObject[name] := TSuperObject.ParseString(PChar(str), false);
+      if parse then
+        FParams.AsObject.S[name] := LowerCase(str) else
+        FParams.AsObject[name] := TSuperObject.ParseString(PChar(str), false);
       Result := true;
     end else
       Result := false
@@ -950,9 +973,9 @@ begin
 
    obj := HTTPInterprete(PSOChar(Request.S['uri']), false, '/', false, DEFAULT_CP);
    begin
-     if interprete(PSOChar(obj.AsArray.S[1]), 'controller') then
-     if interprete(PSOChar(obj.AsArray.S[2]), 'action') then
-        interprete(PSOChar(obj.AsArray.S[3]), 'id');
+     if interprete(PSOChar(obj.AsArray.S[1]), 'controller', true) then
+     if interprete(PSOChar(obj.AsArray.S[2]), 'action', true) then
+        interprete(PSOChar(obj.AsArray.S[3]), 'id', false);
    end;
 
   // default controller is application
@@ -1004,6 +1027,8 @@ var
   obj, ret: ISuperObject;
   ite: TSuperAvlEntry;
   rec: TSearchRec;
+  clazz: TRttiType;
+  inst: TObject;
 begin
   inherited;
   with FParams.AsObject do
@@ -1020,14 +1045,22 @@ begin
         if obj <> nil then
           obj.DataPtr := Pointer(1);
 
-      case TrySOInvoke(FContext, Self, 'ctrl_' + S['controller'] + '_' +
-        S['action'] + '_' + Request.S['method'], FParams, ret) of
-      irParamError: FErrorCode := 400;
-      irError: FErrorCode := 500;
-      else
-        for ite in FParams.AsObject do
-          if (ite.Value <> nil) and (ite.Value.DataPtr = nil) then
-            FReturn.AsObject[ite.Name] := ite.Value;
+      clazz := Context.Context.FindType(format('%s_controller.T%sController', [S['controller'], maj(S['controller'])]));
+      if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
+      begin
+        inst := TRttiInstanceType(clazz).MetaclassType.Create;
+        try
+          case TrySOInvoke(FContext, inst, S['action'] + '_' + Request.S['method'], FParams, ret) of
+          irParamError: FErrorCode := 400;
+          irError: FErrorCode := 500;
+          else
+            for ite in FParams.AsObject do
+              if (ite.Value <> nil) and (ite.Value.DataPtr = nil) then
+                FReturn.AsObject[ite.Name] := ite.Value;
+          end;
+        finally
+          inst.Free;
+        end;
       end;
 
       if FErrorCode <> 200 then Exit;

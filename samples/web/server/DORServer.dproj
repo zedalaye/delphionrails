@@ -41,6 +41,8 @@
 			<DCC_DebugInformation>false</DCC_DebugInformation>
 		</PropertyGroup>
 		<PropertyGroup Condition="'$(Cfg_2)'!=''">
+			<DCC_RemoteDebug>true</DCC_RemoteDebug>
+			<DCC_DebugInfoInExe>true</DCC_DebugInfoInExe>
 			<DCC_MapFile>3</DCC_MapFile>
 			<DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
 		</PropertyGroup>
@@ -50,6 +52,12 @@
 			</DelphiCompile>
 			<DCCReference Include="mypool.pas"/>
 			<DCCReference Include="WebServer.pas"/>
+			<DCCReference Include="application_controller.pas"/>
+			<DCCReference Include="blog_controller.pas"/>
+			<DCCReference Include="ajax_controller.pas"/>
+			<DCCReference Include="cairo_controller.pas"/>
+			<DCCReference Include="cairo_view.pas"/>
+			<DCCReference Include="application_view.pas"/>
 			<None Include="..\bin\layout\application.html"/>
 			<None Include="..\bin\view\ajax\index.html"/>
 			<None Include="..\bin\view\ajax\getdata.xml"/>
