@@ -6,7 +6,7 @@ uses dorHTTPStub, superobject;
 type
   TActionView = class
   protected
-    // This empry method is called to force RTTI
+    // This empty method is called to force RTTI
     // Could be used for somethingelse later
     class procedure Register;
     class function Return: ISuperoBject;
