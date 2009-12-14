@@ -10,7 +10,7 @@ type
     procedure new_post(const data: TBlog);
     procedure view_get(id: Integer; out data: ISuperObject);
     procedure edit_get(id: Integer; out data: ISuperObject);
-    procedure blog_edit_post(const data: TBlog);
+    procedure edit_post(const data: TBlog);
     procedure delete_post(id: Integer);
   end;
 
@@ -18,7 +18,7 @@ implementation
 
 { TBlogController }
 
-procedure TBlogController.blog_edit_post(const data: TBlog);
+procedure TBlogController.edit_post(const data: TBlog);
 begin
   if data.validate then
     with pool.GetConnection.newContext do
