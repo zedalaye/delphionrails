@@ -1,7 +1,7 @@
 unit WebServer;
 interface
 uses
-  Windows, dorHTTPStub, dorSocketStub, Winsock, superobject;
+  Windows, dorHTTPStub, dorSocketStub, Winsock;
 
 type
   THTTPServer = class(TSocketServer)

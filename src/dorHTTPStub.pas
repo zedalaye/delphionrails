@@ -88,7 +88,7 @@ uses
 {$IFDEF MSWINDOWS}
  windows,
 {$ENDIF}
-SysUtils, StrUtils, dorOpenSSL, dorLua, dorActionController, Rtti {$ifdef madExcept}, madexcept {$endif}
+SysUtils, StrUtils, dorOpenSSL, dorLua, Rtti {$ifdef madExcept}, madexcept {$endif}
 {$IFDEF UNICODE}, AnsiStrings{$ENDIF}
 {$IFDEF UNIX}, baseunix{$ENDIF}
 ;
@@ -629,7 +629,8 @@ begin
     clazz := Context.Context.FindType(format('%s_view.T%sView', [S['controller'], maj(S['controller'])]));
     if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
     begin
-      inst := TRttiInstanceType(clazz).MetaclassType.Create;
+      with TRttiInstanceType(clazz) do
+        inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
       try
         Result := TrySOInvoke(FContext, inst, S['action'] + '_' + S['format'], FReturn, ret)
       finally
