@@ -912,7 +912,7 @@ procedure THTTPStub.doBeforeProcessRequest;
       p := StrRScan(PChar(str), '.');
       if p <> nil then
       begin
-        FParams.AsObject.S['format'] := p + 1;
+        FParams.AsObject.S['format'] := LowerCase(p + 1);
         setlength(str, p - PChar(str));
       end;
       if parse then
@@ -939,7 +939,6 @@ begin
     O['accept'] := HTTPInterprete(PSOChar(Request.S['env.accept']), false, ',');
   end;
 
-
   pass := GetPassPhrase;
   if pass <> '' then
   begin
@@ -950,6 +949,8 @@ begin
     else
       FSession := TSuperObject.Create(stObject);
     end;
+    if not ObjectIsType(FSession, stObject) then
+      FSession := TSuperObject.Create(stObject);
   end else
    FSession := TSuperObject.Create(stObject);
 
