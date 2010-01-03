@@ -3,6 +3,8 @@ unit dorUIB;
 {$mode objfpc}{$H+}
 {$ENDIF}
 
+{$I uib.inc}
+
 interface
 uses
 {$IFDEF MSWINDOWS}
@@ -108,7 +110,6 @@ begin
   if param <> nil then
     FLibrary.AttachDatabase(AnsiString(param.AsString), FDbHandle, AnsiString(option)) else
     FDbHandle := nil;
-
 end;
 
 constructor TDBUIBConnection.Create(const Options: string);

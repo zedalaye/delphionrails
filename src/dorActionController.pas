@@ -12,6 +12,7 @@ type
     class function Params: ISuperObject; virtual;
     class function Return: ISuperObject; virtual;
     class function Request: THTTPMessage; virtual;
+    class function Response: THTTPMessage; virtual;
     class function Session: ISuperObject; virtual;
     class function ErrorCode: Integer; virtual;
     class procedure SetErrorCode(code: Integer); virtual;
@@ -43,6 +44,11 @@ end;
 class function TActionController.Request: THTTPMessage;
 begin
   Result := (CurrentThread as THTTPStub).Request;
+end;
+
+class function TActionController.Response: THTTPMessage;
+begin
+  Result := (CurrentThread as THTTPStub).Response;
 end;
 
 class function TActionController.Return: ISuperObject;

@@ -88,7 +88,7 @@ uses
 {$IFDEF MSWINDOWS}
  windows,
 {$ENDIF}
-SysUtils, StrUtils, dorOpenSSL, dorLua, Rtti {$ifdef madExcept}, madexcept {$endif}
+SysUtils, StrUtils, superxmlparser, dorOpenSSL, dorLua, Rtti {$ifdef madExcept}, madexcept {$endif}
 {$IFDEF UNICODE}, AnsiStrings{$ENDIF}
 {$IFDEF UNIX}, baseunix{$ENDIF}
 ;
@@ -182,6 +182,7 @@ begin
   case code of
     100: Result := '100 Continue';
     101: Result := '101 Switching Protocols';
+    102: Result := 'Processing'; // WebDAV
 
     200: Result := 'HTTP/1.1 200 OK';
     201: Result := 'HTTP/1.1 201 Created';
@@ -190,6 +191,7 @@ begin
     204: Result := 'HTTP/1.1 204 No Content';
     205: Result := 'HTTP/1.1 205 Reset Content';
     206: Result := 'HTTP/1.1 206 Partial Content';
+    207: Result := 'HTTP/1.1 207 Multi-Status'; // WebDAV
 
     300: Result := 'HTTP/1.1 300 Multiple Choices';
     301: Result := 'HTTP/1.1 301 Moved Permanently';
@@ -199,6 +201,7 @@ begin
     305: Result := 'HTTP/1.1 305 Use Proxy';
     306: Result := 'HTTP/1.1 306 unused';
     307: Result := 'HTTP/1.1 307 Temporary Redirect';
+
     400: Result := 'HTTP/1.1 400 Bad Request';
     401: Result := 'HTTP/1.1 401 Authorization Required';
     402: Result := 'HTTP/1.1 402 Payment Required';
@@ -217,6 +220,14 @@ begin
     415: Result := 'HTTP/1.1 415 Unsupported Media Type';
     416: Result := 'HTTP/1.1 416 Requested Range Not Satisfiable';
     417: Result := 'HTTP/1.1 417 Expectation Failed';
+    418: Result := 'HTTP/1.1 418 I''m a teapot';
+    422: Result := 'HTTP/1.1 422 Unprocessable Entity'; // WebDAV
+    423: Result := 'HTTP/1.1 417 Locked'; // WebDAV
+    424: Result := 'HTTP/1.1 424 Failed Dependency'; // WebDAV
+    425: Result := 'HTTP/1.1 425 Unordered Collection'; // WebDAV
+    426: Result := 'HTTP/1.1 426 Upgrade Required';
+    449: Result := 'HTTP/1.1 449 Retry With';
+    450: Result := 'HTTP/1.1 450 Blocked by Windows Parental Controls';
 
     500: Result := 'HTTP/1.1 500 Internal Server Error';
     501: Result := 'HTTP/1.1 501 Method Not Implemented';
@@ -224,6 +235,10 @@ begin
     503: Result := 'HTTP/1.1 503 Service Temporarily Unavailable';
     504: Result := 'HTTP/1.1 504 Gateway Time-out';
     505: Result := 'HTTP/1.1 505 HTTP Version Not Supported';
+    506: Result := 'HTTP/1.1 506 Variant Also Negotiates';
+    507: Result := 'HTTP/1.1 507 Insufficient Storage'; // WebDAV
+    509: Result := 'HTTP/1.1 509 Bandwidth Limit Exceeded';
+    510: Result := 'HTTP/1.1 510 Not Extended';
   else
     Result := 'HTTP/1.1 ' + RawByteString(inttostr(code));
   end;
@@ -956,13 +971,18 @@ begin
 
   // get parametters
   FParams.Merge(Request['params'], true);
-  if (Request.S['method'] = 'POST') then
-    if(Request.S['accept[0]'] = 'application/json') then
+  if (Request.I['env.content-length'] > 0) then
+    if(Request.S['env.content-type'] = 'application/json') then
     begin
       FParams.Merge(Request.ContentString);
       FParams.AsObject.S['format'] := 'json';
     end else
-    if(Request.S['content-type[0]'] = 'application/x-www-form-urlencoded') then
+    if(Request.S['env.content-type'] = 'application/xml') then
+    begin
+      FParams.Merge(XMLParseStream(Request.Content, true));
+      FParams.AsObject.S['format'] := 'xml';
+    end else
+    if(Request.S['env.content-type'] = 'application/x-www-form-urlencoded') then
     begin
       obj := HTTPInterprete(PSOChar(Request.ContentString), true, '&', false, DEFAULT_CP);
       try
@@ -1066,7 +1086,10 @@ begin
         end;
       end;
 
-      if FErrorCode <> 200 then Exit;
+      if not FErrorCode in [200..207] then Exit;
+
+      if (Request.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
+        Exit;
 
       // view ?
       if (RenderInternal = irSuccess) or
