@@ -56,8 +56,8 @@ type
     procedure SendEmpty;
     procedure SendFile(const filename: string);
     procedure SendStream(Stream: TStream);
-    function RenderInternal: TSuperInvokeResult;
-    function RenderScript(const params: ISuperObject): Boolean;
+    procedure RenderInternal;
+    procedure RenderScript;
     function DecodeContent: boolean; virtual;
     procedure doBeforeProcessRequest; virtual;
     procedure doAfterProcessRequest; virtual;
@@ -88,7 +88,9 @@ uses
 {$IFDEF MSWINDOWS}
  windows,
 {$ENDIF}
-SysUtils, StrUtils, superxmlparser, dorOpenSSL, dorLua, Rtti {$ifdef madExcept}, madexcept {$endif}
+  SysUtils, StrUtils, superxmlparser, dorOpenSSL, dorLua,
+  dorActionCOntroller, dorActionView, Rtti
+  {$ifdef madExcept}, madexcept {$endif}
 {$IFDEF UNICODE}, AnsiStrings{$ENDIF}
 {$IFDEF UNIX}, baseunix{$ENDIF}
 ;
@@ -163,14 +165,13 @@ begin
           obj.AsObject.S['format'] := S['format'];
         end;
 
-        case RenderInternal of
-        irMethothodError:
-          begin
-            with obj.AsObject do
-              str := ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
-            if FileExists(str) then
-              lua_processsor_dofile(state, str);
-          end;
+        RenderInternal;
+        if not (ErrorCode in [200..207]) then
+        begin
+          with obj.AsObject do
+            str := ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+          if FileExists(str) then
+            lua_processsor_dofile(state, str);
         end;
       end;
     end;
@@ -633,9 +634,8 @@ begin
   result := true;
 end;
 
-function THTTPStub.RenderInternal: TSuperInvokeResult;
+procedure THTTPStub.RenderInternal;
 var
-  ret: ISuperObject;
   clazz: TRttiType;
   inst: TObject;
 begin
@@ -647,28 +647,29 @@ begin
       with TRttiInstanceType(clazz) do
         inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
       try
-        Result := TrySOInvoke(FContext, inst, S['action'] + '_' + S['format'], FReturn, ret)
+        if inst is TActionView then
+          TActionView(inst).Invoke else
+          ErrorCode := 404;
       finally
         inst.Free;
       end;
     end else
-      Result := irMethothodError;
+      ErrorCode := 404;
   end;
 end;
 
-function THTTPStub.RenderScript(const params: ISuperObject): Boolean;
+procedure THTTPStub.RenderScript;
 var
   state: Plua_State;
   ite: TSuperObjectIter;
   path, str: string;
 begin
-  with params.AsObject do
+  with Params.AsObject do
   begin
     path := ExtractFilePath(ParamStr(0));
     str := path + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
     if FileExists(str) then
     begin
-
       state := lua_newstate(@lua_app_alloc, nil);
       try
         luaL_openlibs(state);
@@ -709,10 +710,11 @@ begin
       finally
         lua_close(state);
       end;
-      Exit(True);
+      ErrorCode := 200;
+      Exit;
     end;
   end;
-  Result := False;
+  ErrorCode := 404;
 end;
 
 function THTTPStub.Run: Cardinal;
@@ -940,8 +942,9 @@ procedure THTTPStub.doBeforeProcessRequest;
 var
   obj: ISuperObject;
   pass: AnsiString;
+  p: PSOChar;
 begin
-  FErrorCode := 200;
+  FErrorCode := 0;
   FCompress := False;
   FCompressLevel := 5;
   FSendFile := '';
@@ -1011,7 +1014,12 @@ begin
 
   // detect format
   if (FParams.AsObject['format'] = nil) then
-    FParams.AsObject.S['format'] := 'html';
+  begin
+    p := StrRScan(PSOChar(Request.S['uri']), '.');
+    if p <> nil then
+      FParams.AsObject.S['format'] := LowerCase(p + 1) else
+      FParams.AsObject.S['format'] := 'html';
+  end;
 end;
 
 function THTTPStub.GetPassPhrase: AnsiString;
@@ -1046,8 +1054,6 @@ procedure THTTPStub.ProcessRequest;
 var
   str: string;
   path: string;
-  obj, ret: ISuperObject;
-  ite: TSuperAvlEntry;
   rec: TSearchRec;
   clazz: TRttiType;
   inst: TObject;
@@ -1063,37 +1069,29 @@ begin
     with FParams.AsObject do
     begin
       // controller
-      for obj in FParams do
-        if obj <> nil then
-          obj.DataPtr := Pointer(1);
-
       clazz := Context.Context.FindType(format('%s_controller.T%sController', [S['controller'], maj(S['controller'])]));
       if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
       begin
         with TRttiInstanceType(clazz) do
           inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
         try
-          case TrySOInvoke(FContext, inst, S['action'] + '_' + Request.S['method'], FParams, ret) of
-          irParamError: FErrorCode := 400;
-          irError: FErrorCode := 500;
-          else
-            for ite in FParams.AsObject do
-              if (ite.Value <> nil) and (ite.Value.DataPtr = nil) then
-                FReturn.AsObject[ite.Name] := ite.Value;
-          end;
+          if inst is TActionController then
+            TActionController(inst).Invoke;
         finally
           inst.Free;
         end;
       end;
 
-      if not FErrorCode in [200..207] then Exit;
+      if (FErrorCode >= 300) then Exit;
 
       if (Request.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
         Exit;
 
       // view ?
-      if (RenderInternal = irSuccess) or
-        RenderScript(FParams) then
+      RenderInternal;
+      if not (FErrorCode in [200..207]) then
+        RenderScript;
+      if FErrorCode in [200..207] then
         begin
           FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
           Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
@@ -1123,6 +1121,7 @@ begin
     FSendFile := path + str;
     Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
     FindClose(rec);
+    FErrorCode := 200;
   end else
     FErrorCode :=  404;
 end;

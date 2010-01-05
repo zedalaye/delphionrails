@@ -72,9 +72,7 @@ begin
   surf := TImageSurface.Create(CAIRO_FORMAT_RGB24, x, y);
   ctx := TCairoContext.Create(surf);
   ctx.Scale(x, y);
-
   PaintImg(ctx);
-
   surf.WriteToPNGStream(Response.Content);
 end;
 

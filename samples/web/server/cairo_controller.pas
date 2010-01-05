@@ -1,10 +1,10 @@
 unit cairo_controller;
 
 interface
-uses application_view;
+uses application_controller;
 
 type
-  TCairoController = class(TApplicationView)
+  TCairoController = class(TApplicationController)
   public
     procedure getimg_get(var x, y: Integer);
   end;
