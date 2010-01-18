@@ -26,8 +26,8 @@ unit dorService;
 interface
 uses
 {$IFDEF FPC}sockets{$ELSE}WinSock{$ENDIF},
-{$if Defined(MadExcept) and Defined(CONSOLEAPP)}
-  MadExcept,
+{$if Defined(madExcept) and Defined(CONSOLEAPP)}
+  madExcept,
 {$ifend}
   SysUtils,
 {$IFDEF MSWINDOWS}
@@ -399,7 +399,7 @@ begin
   writeln(' > PAUSE  : Pause application.');
   writeln(' > RESUME : Resume paused application.');
   writeln(' > CLEAR  : Disconnect all clients.');
-{$ifdef MadExcept}
+{$ifdef madExcept}
   writeln(' > RESTART: Restart application (madexcept).');
   writeln(' > REPORT : Generate a bug report (madexcept).');
 {$endif}
@@ -407,7 +407,7 @@ begin
 tryagain:
   //write('> ');
   readln(cmd);
-{$ifdef MadExcept}
+{$ifdef madExcept}
   if comparetext(Cmd, 'restart') = 0 then RestartApplication else
   if comparetext(Cmd, 'report') = 0 then
   begin

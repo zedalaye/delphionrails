@@ -943,6 +943,7 @@ var
   obj: ISuperObject;
   pass: AnsiString;
   p: PSOChar;
+  f: PChar;
 begin
   FErrorCode := 0;
   FCompress := False;
@@ -975,33 +976,37 @@ begin
   // get parametters
   FParams.Merge(Request['params'], true);
   if (Request.I['env.content-length'] > 0) then
-    if(Request.S['env.content-type'] = 'application/json') then
-    begin
-      FParams.Merge(Request.ContentString);
-      FParams.AsObject.S['format'] := 'json';
-    end else
-    if(Request.S['env.content-type'] = 'application/xml') then
-    begin
-      FParams.Merge(XMLParseStream(Request.Content, true));
-      FParams.AsObject.S['format'] := 'xml';
-    end else
-    if(Request.S['env.content-type'] = 'application/x-www-form-urlencoded') then
-    begin
-      obj := HTTPInterprete(PSOChar(Request.ContentString), true, '&', false, DEFAULT_CP);
-      try
-        FParams.Merge(obj, true);
-        FParams.AsObject.S['format'] := 'html';
-      finally
-        obj := nil;
+  begin
+    f := StrRScan(PChar(Request.S['env.content-type']), '/');
+    if f <> nil then
+      if(f = '/json') then
+      begin
+        FParams.Merge(Request.ContentString);
+        FParams.AsObject.S['format'] := 'json';
+      end else
+      if (f = '/xml') then
+      begin
+        FParams.Merge(XMLParseStream(Request.Content, true));
+        FParams.AsObject.S['format'] := 'xml';
+      end else
+      if (f = '/x-www-form-urlencoded') then
+      begin
+        obj := HTTPInterprete(PSOChar(Request.ContentString), true, '&', false, DEFAULT_CP);
+        try
+          FParams.Merge(obj, true);
+          FParams.AsObject.S['format'] := 'html';
+        finally
+          obj := nil;
+        end;
       end;
-    end;
+  end;
 
-   obj := HTTPInterprete(PSOChar(Request.S['uri']), false, '/', false, DEFAULT_CP);
-   begin
-     if interprete(PSOChar(obj.AsArray.S[1]), 'controller', true) then
-     if interprete(PSOChar(obj.AsArray.S[2]), 'action', true) then
-        interprete(PSOChar(obj.AsArray.S[3]), 'id', false);
-   end;
+  obj := HTTPInterprete(PSOChar(Request.S['uri']), false, '/', false, DEFAULT_CP);
+  begin
+    if interprete(PSOChar(obj.AsArray.S[1]), 'controller', true) then
+    if interprete(PSOChar(obj.AsArray.S[2]), 'action', true) then
+       interprete(PSOChar(obj.AsArray.S[3]), 'id', false);
+  end;
 
   // default controller is application
   if (FParams.AsObject['controller'] = nil) then

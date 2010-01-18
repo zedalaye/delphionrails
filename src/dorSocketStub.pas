@@ -267,7 +267,7 @@ begin
 
   with ChildGet(Index) do
     if InterlockedDecrement(FThreadRefCount) = 0 then
-      Destroy else
+      Free else
       Stop;
 
   Dec(FChildCount);

@@ -19,7 +19,7 @@ unit dorUtils;
 {$ENDIF}
 
 interface
-uses Classes, SysUtils
+uses Classes, SysUtils, superobject
 {$IFDEF MSWINDOWS}
 , windows
 {$ENDIF}
@@ -77,6 +77,22 @@ type
     procedure LoadFromFile(const FileName: string);
     function LoadFromSocket(socket: longint; readsize: boolean = true): boolean;
     constructor Create(PageSize: integer = 1024); virtual;
+    destructor Destroy; override;
+  end;
+
+  ISOCriticalObject = interface(ISuperObject)
+  ['{4E8108E9-A7D4-49E7-91D4-F194F0C71E50}']
+    procedure Lock;
+    procedure Unlock;
+  end;
+
+  TSOCriticalObject = class(TSuperObject, ISOCriticalObject)
+  private
+    FCriticalSection: TRTLCriticalSection;
+  public
+    procedure Lock;
+    procedure Unlock;
+    constructor Create(jt: TSuperType); override;
     destructor Destroy; override;
   end;
 
@@ -875,6 +891,30 @@ begin
     Write(s, sizeof(s));
   if s > 0 then
     Write(data[1], s * SizeOf(AnsiChar))
+end;
+
+{ TSOCriticalObject }
+
+constructor TSOCriticalObject.Create(jt: TSuperType);
+begin
+  inherited;
+  InitializeCriticalSection(FCriticalSection);
+end;
+
+destructor TSOCriticalObject.Destroy;
+begin
+  DeleteCriticalSection(FCriticalSection);
+  inherited;
+end;
+
+procedure TSOCriticalObject.Lock;
+begin
+  EnterCriticalSection(FCriticalSection);
+end;
+
+procedure TSOCriticalObject.Unlock;
+begin
+  LeaveCriticalSection(FCriticalSection);
 end;
 
 end.
