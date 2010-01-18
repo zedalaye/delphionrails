@@ -4,7 +4,6 @@ interface
 uses dorSocketStub, superobject, dorUtils;
 
 type
-
   TDorObserver = class(TDORThread)
   private
     FEvents: ISOCriticalObject;
@@ -21,6 +20,11 @@ type
     destructor Destroy; override;
   end;
 
+implementation
+uses
+  dorService, SysUtils, rtti, typinfo;
+
+type
   TEventStorage = class
   private
     FEvents: ISOCriticalObject;
@@ -36,10 +40,6 @@ type
   protected
     function Run: Cardinal; override;
   end;
-
-implementation
-uses
-  dorService, SysUtils, rtti, typinfo;
 
 var
   EventStorage: TEventStorage;
