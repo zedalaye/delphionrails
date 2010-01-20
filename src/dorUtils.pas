@@ -84,6 +84,7 @@ type
   ['{4E8108E9-A7D4-49E7-91D4-F194F0C71E50}']
     procedure Lock;
     procedure Unlock;
+    function Extract: ISuperObject;
   end;
 
   TSOCriticalObject = class(TSuperObject, ISOCriticalObject)
@@ -92,6 +93,7 @@ type
   public
     procedure Lock;
     procedure Unlock;
+    function Extract: ISuperObject;
     constructor Create(jt: TSuperType); override;
     destructor Destroy; override;
   end;
@@ -905,6 +907,42 @@ destructor TSOCriticalObject.Destroy;
 begin
   DeleteCriticalSection(FCriticalSection);
   inherited;
+end;
+
+function TSOCriticalObject.Extract: ISuperObject;
+var
+  i: Integer;
+  ite: TSuperObjectIter;
+begin
+  Lock;
+  try
+    case DataType of
+      stArray:
+        begin
+          Result := TSuperObject.Create(stArray);
+          for i := 0 to AsArray.Length - 1 do
+            Result.AsArray.Add(AsArray[i]);
+          AsArray.Clear(false);
+        end;
+      stObject:
+        begin
+          Result := TSuperObject.Create(stObject);
+          if ObjectFindFirst(Self, ite) then
+          with Result.AsObject do
+          repeat
+            Result.AsObject[ite.key] := ite.val;
+          until not ObjectFindNext(ite);
+          ObjectFindClose(ite);
+          AsObject.Clear;
+        end;
+      stNull:
+        Result := TSuperObject.Create(stNull);
+      else
+        Result := Clone;
+    end;
+  finally
+    Unlock;
+  end;
 end;
 
 procedure TSOCriticalObject.Lock;
