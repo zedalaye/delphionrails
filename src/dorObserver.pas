@@ -13,13 +13,13 @@ type
     procedure doOnEvent(const Event: ISuperObject); virtual;
     procedure ProcessEvents; virtual;
     class function Intercept: Boolean; virtual;
-    class procedure Trigger(const Event: ISuperObject); virtual;
     class function IsEvent(const name: string; out event: string): Boolean; virtual;
 
     function Run: Cardinal; override;
     property Event: ISuperObject read FEvent;
 
   public
+    class procedure Trigger(const Event: ISuperObject); virtual;
     constructor Create(AOwner: TDORThread); override;
     destructor Destroy; override;
 
