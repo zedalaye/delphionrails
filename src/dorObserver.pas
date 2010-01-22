@@ -29,6 +29,9 @@ type
 
 implementation
 uses
+{$ifdef madExcept}
+  madExcept,
+{$endif}
   dorService, SysUtils, rtti, typinfo;
 
 type
@@ -192,7 +195,14 @@ function TDorObserver.Run: Cardinal;
 begin
   while not Stopped do
   begin
-    ProcessEvents;
+    try
+      ProcessEvents;
+    except
+{$ifdef madExcept}
+      on E: Exception do
+        HandleException(etNormal);
+{$endif}
+    end;
     sleep(1);
   end;
   Result := 0;
