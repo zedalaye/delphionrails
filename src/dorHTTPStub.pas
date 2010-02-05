@@ -954,7 +954,7 @@ begin
   with Request.AsObject do
   begin
     O['cookies'] := HTTPInterprete(PSOChar(Request.S['env.cookie']), true);
-    O['content-type'] := HTTPInterprete(PSOChar(Request.S['env.content-type']));
+    O['content-type'] := HTTPInterprete(PSOChar(Request.S['env.content-type']), false, ';');
     O['accept'] := HTTPInterprete(PSOChar(Request.S['env.accept']), false, ',');
   end;
 
@@ -977,7 +977,7 @@ begin
   FParams.Merge(Request['params'], true);
   if (Request.I['env.content-length'] > 0) then
   begin
-    f := StrRScan(PChar(Request.S['env.content-type']), '/');
+    f := StrRScan(PChar(Request.S['content-type[0]']), '/');
     if f <> nil then
       if(f = '/json') then
       begin
