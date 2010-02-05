@@ -18,8 +18,7 @@ type
   end;
 
 implementation
-uses SysUtils, dorDB, dorService, Math;
-
+uses dorService;
 
 { THTTPConnexion }
 
