@@ -382,7 +382,6 @@ begin
     StreamA.Seek(0, soFromBeginning);
     AesEncryptStream(StreamB, StreamA, PAnsiChar(pass), 128);
     StreamA.Size := StreamA.Position;
-    //StreamA.SaveToFile('c:\test.aes');
 
     // base64
     StreamB.Seek(0, soFromBeginning);
