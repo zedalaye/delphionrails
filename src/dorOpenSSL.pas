@@ -754,7 +754,9 @@ begin
 
   InStream.Read(inbuffer, sizeof(TAesBlock));
   AES_decrypt(@inbuffer, @outbuffer, @key);
-  OutStream.Write(outbuffer, sizeof(TAesBlock)-m);
+  if SizeOf(TAesBlock) <> m then
+    OutStream.Write(outbuffer, sizeof(TAesBlock)-m) else
+    OutStream.Write(outbuffer, sizeof(TAesBlock));
 end;
 
 
