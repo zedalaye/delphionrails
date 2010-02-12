@@ -565,7 +565,7 @@ procedure luaL_openlibs(L: Plua_State); cdecl; external LUA_LIB name 'luaL_openl
 procedure lua_pushsuperobject(L: Plua_State; const obj: ISuperObject);
 function lua_tosuperobject(L: Plua_State; idx: Integer): ISuperObject;
 function lua_app_alloc(ud, ptr: Pointer; osize, nsize: size_t): Pointer; cdecl;
-function lua_processsor_loadstream(L: Plua_State; stream: TStream): Integer;
+function lua_processsor_loadstream(L: Plua_State; stream: TStream; chunkname: PAnsiChar): Integer;
 function lua_processsor_loadfile(L: Plua_State; const FileName: string): Integer;
 function lua_processsor_dofile(L: Plua_State; const FileName: string): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
 function lua_processsor_dostream(L: Plua_State; stream: TStream): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
@@ -956,7 +956,11 @@ redo:
               #7 : if not Append('\a', 2) then goto needspace;
               #8 : if not Append('\b', 2) then goto needspace;
               #9 : if not Append('\t', 2) then goto needspace;
+{$IFDEF DEBUG_LUA}
+              #10: if not Append('\n")'#10'print("', 12) then goto needspace;
+{$ELSE}
               #10: if not Append('\n', 2) then goto needspace;
+{$ENDIF}
               #11: if not Append('\v', 2) then goto needspace;
               #13: if not Append('\r', 2) then goto needspace;
               '\': if not Append('\\', 2) then goto needspace;
@@ -1057,7 +1061,10 @@ needspace:
   sz^ := outlen;
 end;
 
-function lua_processsor_loadstream(L: Plua_State; stream: TStream): Integer;
+const
+  str: PAnsiChar = 'prout';
+
+function lua_processsor_loadstream(L: Plua_State; stream: TStream; chunkname: PAnsiChar): Integer;
 var
   bom: array[0..2] of Byte;
   processor: TLuaTextProcessor;
@@ -1077,7 +1084,7 @@ var
 begin
   stream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
   try
-    Result := lua_processsor_loadstream(L, stream);
+    Result := lua_processsor_loadstream(L, stream, nil);
   finally
     stream.Free;
   end;
@@ -1085,12 +1092,12 @@ end;
 
 function lua_processsor_dofile(L: Plua_State; const FileName: string): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
 begin
-  Result := (lua_processsor_loadfile(L, FileName) <> 0) or (lua_pcall(L, 0, LUA_MULTRET, 0) <> 0);
+  Result := (lua_processsor_loadfile(L, FileName) = 0) and (lua_pcall(L, 0, LUA_MULTRET, 0) = 0);
 end;
 
 function lua_processsor_dostream(L: Plua_State; stream: TStream): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
 begin
-  Result := (lua_processsor_loadstream(L, stream) <> 0) or (lua_pcall(L, 0, LUA_MULTRET, 0) <> 0);
+  Result := (lua_processsor_loadstream(L, stream, nil) = 0) and (lua_pcall(L, 0, LUA_MULTRET, 0) = 0);
 end;
 
 end.

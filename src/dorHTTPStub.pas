@@ -178,6 +178,13 @@ begin
   end;
 end;
 
+{$IFDEF DEBUG_LUA}
+procedure script_hook(L: Plua_State; ar: Plua_Debug); cdecl;
+begin
+
+end;
+{$ENDIF}
+
 function HttpResponseStrings(code: integer): RawByteString;
 begin
   case code of
@@ -657,6 +664,8 @@ begin
   end;
 end;
 
+
+
 procedure THTTPStub.RenderScript;
 var
   state: Plua_State;
@@ -680,6 +689,9 @@ begin
         lua_setglobal(state, 'gettickcount');
         lua_pushcfunction(state, lua_render);
         lua_setglobal(state, 'render');
+{$IFDEF DEBUG_LUA}
+        lua_sethook(state, @script_hook, LUA_MASKLINE or LUA_MASKCALL, 0);
+{$ENDIF}
 
         if ObjectFindFirst(FParams, ite) then
         repeat
@@ -693,11 +705,13 @@ begin
           lua_pushsuperobject(state, ite.val);
           lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
         until not ObjectFindNext(ite);
-
         ObjectFindClose(ite);
+
         lua_pushsuperobject(state, FSession);
         lua_setglobal(state, 'session');
+
         lua_processsor_dofile(state, str);
+
         str := path + 'layout/' + S['controller'] + '.' + S['format'];
         if FileExists(str) then
           lua_processsor_dofile(state, str) else
