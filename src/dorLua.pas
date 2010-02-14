@@ -359,6 +359,7 @@ const
   LUA_MASKRET   = (1 shl LUA_HOOKRET);
   LUA_MASKLINE  = (1 shl LUA_HOOKLINE);
   LUA_MASKCOUNT = (1 shl LUA_HOOKCOUNT);
+  LUA_MASKTAILRET = (1 shl LUA_HOOKTAILRET);
 
 type
   Plua_Debug = ^lua_Debug;
@@ -566,9 +567,9 @@ procedure lua_pushsuperobject(L: Plua_State; const obj: ISuperObject);
 function lua_tosuperobject(L: Plua_State; idx: Integer): ISuperObject;
 function lua_app_alloc(ud, ptr: Pointer; osize, nsize: size_t): Pointer; cdecl;
 function lua_processsor_loadstream(L: Plua_State; stream: TStream; chunkname: PAnsiChar): Integer;
-function lua_processsor_loadfile(L: Plua_State; const FileName: string): Integer;
-function lua_processsor_dofile(L: Plua_State; const FileName: string): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
-function lua_processsor_dostream(L: Plua_State; stream: TStream): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
+function lua_processsor_loadfile(L: Plua_State; const FileName: string; chunkname: PAnsiChar): Integer;
+function lua_processsor_dofile(L: Plua_State; const FileName: string; chunkname: PAnsiChar): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
+function lua_processsor_dostream(L: Plua_State; stream: TStream; chunkname: PAnsiChar): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
 
 implementation
 uses
@@ -1061,9 +1062,6 @@ needspace:
   sz^ := outlen;
 end;
 
-const
-  str: PAnsiChar = 'prout';
-
 function lua_processsor_loadstream(L: Plua_State; stream: TStream; chunkname: PAnsiChar): Integer;
 var
   bom: array[0..2] of Byte;
@@ -1075,29 +1073,29 @@ begin
   stream.Seek(0, soFromBeginning);
   if not((stream.Read(bom, 3) = 3) and (bom[0] = $EF) and (bom[1] = $BB) and (bom[2] = $BF)) then
     stream.Seek(0, soFromBeginning);
-  Result := lua_load(L, @lua_stream_reader, @processor, nil);
+  Result := lua_load(L, @lua_stream_reader, @processor, chunkname);
 end;
 
-function lua_processsor_loadfile(L: Plua_State; const FileName: string): Integer;
+function lua_processsor_loadfile(L: Plua_State; const FileName: string; chunkname: PAnsiChar): Integer;
 var
   stream: TFileStream;
 begin
   stream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
   try
-    Result := lua_processsor_loadstream(L, stream, nil);
+    Result := lua_processsor_loadstream(L, stream, chunkname);
   finally
     stream.Free;
   end;
 end;
 
-function lua_processsor_dofile(L: Plua_State; const FileName: string): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
+function lua_processsor_dofile(L: Plua_State; const FileName: string; chunkname: PAnsiChar): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
 begin
-  Result := (lua_processsor_loadfile(L, FileName) = 0) and (lua_pcall(L, 0, LUA_MULTRET, 0) = 0);
+  Result := (lua_processsor_loadfile(L, FileName, chunkname) = 0) and (lua_pcall(L, 0, LUA_MULTRET, 0) = 0);
 end;
 
-function lua_processsor_dostream(L: Plua_State; stream: TStream): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
+function lua_processsor_dostream(L: Plua_State; stream: TStream; chunkname: PAnsiChar): Boolean; {$IFDEF HAVEINLINE}inline;{$ENDIF}
 begin
-  Result := (lua_processsor_loadstream(L, stream, nil) = 0) and (lua_pcall(L, 0, LUA_MULTRET, 0) = 0);
+  Result := (lua_processsor_loadstream(L, stream, chunkname) = 0) and (lua_pcall(L, 0, LUA_MULTRET, 0) = 0);
 end;
 
 end.

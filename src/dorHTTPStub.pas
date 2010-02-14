@@ -21,7 +21,7 @@ interface
 uses
   dorSocketStub,
   {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
-  dorUtils, classes, superobject;
+  Generics.Collections, dorUtils, classes, superobject;
 
 type
   THTTPMessage = class(TSuperObject)
@@ -35,6 +35,15 @@ type
     destructor Destroy; override;
     procedure Clear(all: boolean = false); override;
   end;
+
+{$IFDEF DEBUG_LUA}
+  TLuaStackInfo = record
+    line: Integer;
+    name: PAnsiChar;
+    source: PAnsiChar;
+    constructor Create(line: Integer; name, source: PAnsiChar);
+  end;
+{$ENDIF}
 
   THTTPStub = class(TSocketStub)
   private
@@ -50,6 +59,9 @@ type
     FCompressLevel: Integer;
     FSendFile: string;
     FIsStatic: Boolean;
+{$IFDEF DEBUG_LUA}
+    FLuaStack: TStack<TLuaStackInfo>;
+{$ENDIF}
     function DecodeFields(str: PChar): boolean;
     function DecodeCommand(str: PChar): boolean;
     procedure WriteLine(str: RawByteString);
@@ -146,7 +158,7 @@ function lua_render(state: Plua_State): Integer; cdecl;
 var
   p: Pointer;
   obj: ISuperObject;
-  str: string;
+  str, rel: string;
 begin
   Result := 0;
   lua_getglobal(state, '@this');
@@ -169,9 +181,10 @@ begin
         if not (ErrorCode in [200..207]) then
         begin
           with obj.AsObject do
-            str := ExtractFilePath(ParamStr(0)) + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+            rel := 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+          str := ExtractFilePath(ParamStr(0)) + rel;
           if FileExists(str) then
-            lua_processsor_dofile(state, str);
+            lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)));
         end;
       end;
     end;
@@ -180,8 +193,19 @@ end;
 
 {$IFDEF DEBUG_LUA}
 procedure script_hook(L: Plua_State; ar: Plua_Debug); cdecl;
+var
+  h: THTTPStub;
 begin
-
+  lua_getglobal(L, '@this');
+  h := lua_touserdata(L, -1);
+  if h <> nil then
+  begin
+    lua_getinfo(L, 'lnS', ar);
+    case ar.event of
+      LUA_HOOKCALL: h.FLuaStack.Push(TLuaStackInfo.Create(ar.currentline, ar.name, ar.source));
+      LUA_HOOKRET : h.FLuaStack.Pop;
+    end;
+  end;
 end;
 {$ENDIF}
 
@@ -670,14 +694,28 @@ procedure THTTPStub.RenderScript;
 var
   state: Plua_State;
   ite: TSuperObjectIter;
-  path, str: string;
+  path, str, rel: string;
+  procedure printerror;
+  begin
+    Render(#10'<div class="error">' + lua_tostring(state, 1) + '</div>');
+{$IFDEF DEBUG_LUA}
+    while FLuaStack.Count > 1 do
+      with FLuaStack.Pop do
+        Render(#10'<div class="error">' + string(UTF8String(source + ':' + name)) + '</div>');
+{$ENDIF}
+  end;
 begin
   with Params.AsObject do
   begin
+
     path := ExtractFilePath(ParamStr(0));
-    str := path + 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+    rel := 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+    str := path + rel;
     if FileExists(str) then
     begin
+{$IFDEF DEBUG_LUA}
+      FLuaStack := TStack<TLuaStackInfo>.Create;
+{$ENDIF}
       state := lua_newstate(@lua_app_alloc, nil);
       try
         luaL_openlibs(state);
@@ -690,7 +728,7 @@ begin
         lua_pushcfunction(state, lua_render);
         lua_setglobal(state, 'render');
 {$IFDEF DEBUG_LUA}
-        lua_sethook(state, @script_hook, LUA_MASKLINE or LUA_MASKCALL, 0);
+        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET, 0);
 {$ENDIF}
 
         if ObjectFindFirst(FParams, ite) then
@@ -710,17 +748,28 @@ begin
         lua_pushsuperobject(state, FSession);
         lua_setglobal(state, 'session');
 
-        lua_processsor_dofile(state, str);
-
-        str := path + 'layout/' + S['controller'] + '.' + S['format'];
-        if FileExists(str) then
-          lua_processsor_dofile(state, str) else
+        if lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
+        begin
+          rel := 'layout/' + S['controller'] + '.' + S['format'];
+          str := path + rel;
+          if FileExists(str) then
           begin
-            str := path + 'layout/application.' + S['format'];
-            if FileExists(str) then
-              lua_processsor_dofile(state, str);
-          end;
+            if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
+              printerror;
+          end else
+            begin
+              rel := 'layout/application.' + S['format'];
+              str := path + rel;
+              if FileExists(str) then
+                if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
+                   printerror;
+            end;
+        end else
+          printerror;
       finally
+{$IFDEF DEBUG_LUA}
+        FLuaStack.Free;
+{$ENDIF}
         lua_close(state);
       end;
       ErrorCode := 200;
@@ -1218,6 +1267,17 @@ begin
     SendIt(Stream);
   end;
 end;
+
+{$IFDEF DEBUG_LUA}
+{ TLuaStackInfo }
+
+constructor TLuaStackInfo.Create(line: Integer; name, source: PAnsiChar);
+begin
+  Self.line := line;
+  Self.name := name;
+  Self.source := source;
+end;
+{$ENDIF}
 
 end.
 
