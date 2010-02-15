@@ -729,7 +729,7 @@ begin
         lua_pushcfunction(state, lua_gettickcount);
         lua_setglobal(state, 'gettickcount');
 {$IFDEF DEBUG}
-        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET or LUA_MASKLINE, 0);
+        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET, 0);
 {$ENDIF}
 
         if ObjectFindFirst(FParams, ite) then
