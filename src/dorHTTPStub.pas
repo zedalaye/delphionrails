@@ -667,6 +667,7 @@ var
     Render(
       '<html xmlns="http://www.w3.org/1999/xhtml">'#10+
       '<head>'#10+
+      '  <meta http-equiv="Content-type" content="text/html; charset=utf-8"/>'+
       '  <title>LUA Error</title>'#10+
       '  <style>'#10+
       '    body { background-color: #fff; color: #333; }'#10+
