@@ -36,7 +36,7 @@ type
     procedure Clear(all: boolean = false); override;
   end;
 
-{$IFDEF DEBUG_LUA}
+{$IFDEF DEBUG}
   TLuaStackInfo = record
     line: Integer;
     name: PAnsiChar;
@@ -59,7 +59,7 @@ type
     FCompressLevel: Integer;
     FSendFile: string;
     FIsStatic: Boolean;
-{$IFDEF DEBUG_LUA}
+{$IFDEF DEBUG}
     FLuaStack: TStack<TLuaStackInfo>;
 {$ENDIF}
     function DecodeFields(str: PChar): boolean;
@@ -154,44 +154,7 @@ begin
   Result := 1;
 end;
 
-function lua_render(state: Plua_State): Integer; cdecl;
-var
-  p: Pointer;
-  obj: ISuperObject;
-  str, rel: string;
-begin
-  Result := 0;
-  lua_getglobal(state, '@this');
-  p := lua_touserdata(state, -1);
-  if (p <> nil) and (lua_gettop(state) = 2) then
-  with THTTPStub(p) do
-  begin
-    obj := lua_tosuperobject(state, 1);
-    case ObjectGetType(obj) of
-    stObject:
-      begin
-        with FParams.AsObject do
-        begin
-          if obj.AsObject['controller'] = nil then
-            obj.AsObject.S['controller'] := S['controller'];
-          obj.AsObject.S['format'] := S['format'];
-        end;
-
-        RenderInternal;
-        if not (ErrorCode in [200..207]) then
-        begin
-          with obj.AsObject do
-            rel := 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
-          str := ExtractFilePath(ParamStr(0)) + rel;
-          if FileExists(str) then
-            lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)));
-        end;
-      end;
-    end;
-  end;
-end;
-
-{$IFDEF DEBUG_LUA}
+{$IFDEF DEBUG}
 procedure script_hook(L: Plua_State; ar: Plua_Debug); cdecl;
 var
   h: THTTPStub;
@@ -200,9 +163,12 @@ begin
   h := lua_touserdata(L, -1);
   if h <> nil then
   begin
-    lua_getinfo(L, 'lnS', ar);
     case ar.event of
-      LUA_HOOKCALL: h.FLuaStack.Push(TLuaStackInfo.Create(ar.currentline, ar.name, ar.source));
+      LUA_HOOKCALL:
+        begin
+          lua_getinfo(L, 'lnS', ar);
+          h.FLuaStack.Push(TLuaStackInfo.Create(ar.currentline , ar.name, ar.source));
+        end;
       LUA_HOOKRET : h.FLuaStack.Pop;
     end;
   end;
@@ -697,12 +663,49 @@ var
   path, str, rel: string;
   procedure printerror;
   begin
-    Render(#10'<div class="error">' + lua_tostring(state, 1) + '</div>');
-{$IFDEF DEBUG_LUA}
+    Response.Content.Clear;
+    Render(
+      '<html xmlns="http://www.w3.org/1999/xhtml">'#10+
+      '<head>'#10+
+      '  <title>LUA Error</title>'#10+
+      '  <style>'#10+
+      '    body { background-color: #fff; color: #333; }'#10+
+      '    body, p, ol, ul, td {'#10+
+      '      font-family: verdana, arial, helvetica, sans-serif;'#10+
+      '      font-size:   13px;'#10+
+      '      line-height: 18px;'#10+
+      '    }'#10+
+      '    pre {'#10+
+      '      background-color: #eee;'#10+
+      '      padding: 10px;'#10+
+      '      font-size: 11px;'#10+
+      '    }'#10+
+      '  </style>'#10+
+      '</head>'#10+
+      '<body>'#10+
+      '<h1>Error</h1>'#10+
+      '<p>'#10+
+      '  Showing <i>' + Request.AsObject.S['uri'] + '</i>'#10+
+      '  <pre><code>'+ string(UTF8String(lua_tostring(state, 1))) + '</code></pre>'#10+
+      '</p>'#10);
+
+{$IFDEF DEBUG}
+   Render(
+      '<h1>Trace</h1>'#10+
+      '<pre><code>');
+
     while FLuaStack.Count > 1 do
       with FLuaStack.Pop do
-        Render(#10'<div class="error">' + string(UTF8String(source + ':' + name)) + '</div>');
+        Render(format('%s:%d:in %s'#10, [source, line, name]));
+
+   Render('</pre></code>'#10);
+   Render(
+     '<h1>Params</h1>'#10+
+     '<pre><code>'+
+     Return.AsJSon(true, false)+
+     '</pre></code>'#10);
 {$ENDIF}
+  Render('</body></html>');
   end;
 begin
   with Params.AsObject do
@@ -713,7 +716,7 @@ begin
     str := path + rel;
     if FileExists(str) then
     begin
-{$IFDEF DEBUG_LUA}
+{$IFDEF DEBUG}
       FLuaStack := TStack<TLuaStackInfo>.Create;
 {$ENDIF}
       state := lua_newstate(@lua_app_alloc, nil);
@@ -725,10 +728,8 @@ begin
         lua_setglobal(state, 'print');
         lua_pushcfunction(state, lua_gettickcount);
         lua_setglobal(state, 'gettickcount');
-        lua_pushcfunction(state, lua_render);
-        lua_setglobal(state, 'render');
-{$IFDEF DEBUG_LUA}
-        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET, 0);
+{$IFDEF DEBUG}
+        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET or LUA_MASKLINE, 0);
 {$ENDIF}
 
         if ObjectFindFirst(FParams, ite) then
@@ -767,7 +768,7 @@ begin
         end else
           printerror;
       finally
-{$IFDEF DEBUG_LUA}
+{$IFDEF DEBUG}
         FLuaStack.Free;
 {$ENDIF}
         lua_close(state);
@@ -1268,7 +1269,7 @@ begin
   end;
 end;
 
-{$IFDEF DEBUG_LUA}
+{$IFDEF DEBUG}
 { TLuaStackInfo }
 
 constructor TLuaStackInfo.Create(line: Integer; name, source: PAnsiChar);

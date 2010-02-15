@@ -957,11 +957,7 @@ redo:
               #7 : if not Append('\a', 2) then goto needspace;
               #8 : if not Append('\b', 2) then goto needspace;
               #9 : if not Append('\t', 2) then goto needspace;
-{$IFDEF DEBUG_LUA}
               #10: if not Append('\n")'#10'print("', 12) then goto needspace;
-{$ELSE}
-              #10: if not Append('\n', 2) then goto needspace;
-{$ENDIF}
               #11: if not Append('\v', 2) then goto needspace;
               #13: if not Append('\r', 2) then goto needspace;
               '\': if not Append('\\', 2) then goto needspace;
