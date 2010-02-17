@@ -21,7 +21,7 @@ interface
 uses
   dorSocketStub,
   {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
-  Generics.Collections, dorUtils, classes, superobject;
+  dorUtils, classes, superobject;
 
 type
   THTTPMessage = class(TSuperObject)
@@ -37,11 +37,16 @@ type
   end;
 
 {$IFDEF DEBUG}
+  PLuaStackInfo = ^TLuaStackInfo;
   TLuaStackInfo = record
+  private
+    next: PLuaStackInfo;
+  public
     line: Integer;
     name: PAnsiChar;
     source: PAnsiChar;
-    constructor Create(line: Integer; name, source: PAnsiChar);
+    function Push(line: Integer; name, source: PAnsiChar): PLuaStackInfo;
+    function Pop: PLuaStackInfo;
   end;
 {$ENDIF}
 
@@ -60,7 +65,7 @@ type
     FSendFile: string;
     FIsStatic: Boolean;
 {$IFDEF DEBUG}
-    FLuaStack: TStack<TLuaStackInfo>;
+    FLuaStack: PLuaStackInfo;
 {$ENDIF}
     function DecodeFields(str: PChar): boolean;
     function DecodeCommand(str: PChar): boolean;
@@ -164,12 +169,15 @@ begin
   if h <> nil then
   begin
     case ar.event of
+      LUA_HOOKLINE: h.FLuaStack.line := ar.currentline;
       LUA_HOOKCALL:
         begin
-          lua_getinfo(L, 'lnS', ar);
-          h.FLuaStack.Push(TLuaStackInfo.Create(ar.currentline , ar.name, ar.source));
+          lua_getinfo(L, 'Snl', ar);
+          if ar.name <> nil then
+            h.FLuaStack := h.FLuaStack.Push(ar.currentline, ar.name, ar.source) else
+            h.FLuaStack := h.FLuaStack.Push(ar.currentline, ar.what, ar.source);
         end;
-      LUA_HOOKRET : h.FLuaStack.Pop;
+      LUA_HOOKRET : h.FLuaStack := h.FLuaStack.Pop;
     end;
   end;
 end;
@@ -695,9 +703,11 @@ var
       '<h1>Trace</h1>'#10+
       '<pre><code>');
 
-    while FLuaStack.Count > 1 do
-      with FLuaStack.Pop do
-        Render(format('%s:%d:in %s'#10, [source, line, name]));
+    while FLuaStack <> nil do
+    begin
+      Render(format('%s:%d:in %s'#10, [FLuaStack.source, FLuaStack.line, FLuaStack.name]));
+      FLuaStack := FLuaStack.Pop;
+    end;
 
    Render('</pre></code>'#10);
    Render(
@@ -718,7 +728,7 @@ begin
     if FileExists(str) then
     begin
 {$IFDEF DEBUG}
-      FLuaStack := TStack<TLuaStackInfo>.Create;
+      FLuaStack := nil;
 {$ENDIF}
       state := lua_newstate(@lua_app_alloc, nil);
       try
@@ -730,7 +740,7 @@ begin
         lua_pushcfunction(state, lua_gettickcount);
         lua_setglobal(state, 'gettickcount');
 {$IFDEF DEBUG}
-        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET, 0);
+        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET or LUA_MASKLINE, 0);
 {$ENDIF}
 
         if ObjectFindFirst(FParams, ite) then
@@ -770,7 +780,8 @@ begin
           printerror;
       finally
 {$IFDEF DEBUG}
-        FLuaStack.Free;
+        while FLuaStack  <> nil do
+          FLuaStack := FLuaStack.Pop;
 {$ENDIF}
         lua_close(state);
       end;
@@ -1270,15 +1281,26 @@ begin
   end;
 end;
 
+
 {$IFDEF DEBUG}
 { TLuaStackInfo }
 
-constructor TLuaStackInfo.Create(line: Integer; name, source: PAnsiChar);
+function TLuaStackInfo.Pop: PLuaStackInfo;
 begin
-  Self.line := line;
-  Self.name := name;
-  Self.source := source;
+  Result := Next;
+  FreeMem(@Self);
 end;
+
+function TLuaStackInfo.Push(line: Integer; name,
+  source: PAnsiChar): PLuaStackInfo;
+begin
+  GetMem(Result, SizeOf(TLuaStackInfo));
+  Result.next := @self;
+  Result.line := line;
+  Result.name := name;
+  Result.source := source;
+end;
+
 {$ENDIF}
 
 end.
