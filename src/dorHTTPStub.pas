@@ -250,6 +250,14 @@ begin
   end;
 end;
 
+function DecodeValue(const p: PChar): ISuperObject; inline;
+begin
+  Result := TSuperObject.ParseString(p, False, False);
+  if Result = nil then
+    Result := TSuperObject.Create(p);
+end;
+
+
 function MBUDecode(const str: RawByteString; cp: Word): UnicodeString;
 begin
   SetLength(Result, MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), nil, 0));
@@ -327,7 +335,7 @@ begin
           S[i] := #0;
           obj := Result[S];
           if sep = '&' then
-            value := TSuperObject.ParseString(PSOChar(@S[i+1]), false) else
+            value := DecodeValue(PChar(@S[i+1])) else
             value := TSuperObject.Create(PSOChar(@S[i+1]));
           if obj = nil then
             Result[S] := value else
@@ -350,7 +358,7 @@ begin
         value := TSuperObject.Create(S);
         if value = nil then
           if sep = '&' then
-            value := TSuperObject.ParseString(PChar(s), false) else
+            value := DecodeValue(PChar(s)) else
             value := TSuperObject.Create(s);
         Result.AsArray.Add(value);
       end;
@@ -573,7 +581,7 @@ begin
                if (param <> '') and (str > marker) then
                begin
                  if not DecodeURI(marker, str - marker, value) then exit;
-                 Request['params.'+HTTPDecode(param)] := TSuperObject.ParseString(PChar(HTTPDecode(value)), False);
+                 Request['params.'+HTTPDecode(param)] := DecodeValue(PChar(HTTPDecode(value)));
                end;
                if {$IFDEF UNICODE}(str^ < #256) and {$ENDIF}(AnsiChar(str^) in [SP, NL]) then
                  Break;
@@ -1009,7 +1017,7 @@ procedure THTTPStub.doBeforeProcessRequest;
       end;
       if parse then
         FParams.AsObject.S[name] := LowerCase(str) else
-        FParams.AsObject[name] := TSuperObject.ParseString(PChar(str), false);
+        FParams.AsObject[name] := DecodeValue(PChar(str));
       Result := true;
     end else
       Result := false
