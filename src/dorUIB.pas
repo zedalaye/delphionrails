@@ -309,7 +309,11 @@ var
               FSQLParams.AsCurrency[index] := value.AsCurrency else
               FSQLParams.AsDouble[index] := value.AsDouble;
           end;
-        uftChar, uftVarchar, uftCstring: FSQLParams.AsString[index] := value.AsString;
+        uftChar, uftVarchar, uftCstring:
+          if FSQLParams.Data.sqlvar[index].SqlSubType > 1 then
+            FSQLParams.AsString[index] := value.AsString else
+            FSQLParams.AsRawByteString[index] := rawbytestring(value.AsString);
+
         uftSmallint: FSQLParams.AsSmallint[index] := value.AsInteger;
         uftInteger: FSQLParams.AsInteger[index] := value.AsInteger;
         uftFloat: FSQLParams.AsSingle[index] := value.AsDouble;
