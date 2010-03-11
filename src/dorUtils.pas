@@ -109,8 +109,13 @@ function receive(s: longint; var Buf; len, flags: Integer): Integer;
 // Base64 functions from <dirk.claessens.dc@belgium.agfa.com> (modified)
 function StrTobase64(Buf: string): string;
 function Base64ToStr(const B64: string): string;
+
 procedure StreamToBase64(const StreamIn, StreamOut: TStream);
 procedure Base64ToStream(const data: string; stream: TStream);
+
+function RbsToHex(const rb: RawByteString): string;
+function HexToRbs(const hex: string): RawByteString;
+
 
 function FileToString(const FileName: string): string;
 function StreamToStr(stream: TStream): string;
@@ -208,6 +213,8 @@ begin
       if PadCount = 0 then Break;
     end;
 end;
+
+
 
 function Base64ToStr(const B64: string): string;
 var
@@ -323,6 +330,63 @@ begin
   // delete padding, if any
   if PadCount > 0 then
     stream.Position := stream.Position - PadCount;
+end;
+
+
+function RbsToHex(const rb: RawByteString): string;
+const
+  H: PChar = '0123456789ABCDEF';
+var
+  d: PChar;
+  l: integer;
+  b: Byte;
+begin
+  l := Length(rb);
+  SetLength(Result, l * 2);
+  d := PChar(Result);
+  for l := 0 to l - 1 do
+  begin
+    b := PByte(rb)[l];
+    d^ := H[b shr 4];   inc(d);
+    d^ := H[b and $0F]; inc(d);
+  end;
+end;
+
+function HexToRbs(const hex: string): RawByteString;
+const
+  X: array['0'..'f'] of byte =
+    (0,1,2,3,4,5,6,7,8,9,0,0,0,0,0,0,0,10,11,12,13,14,15,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    10,11,12,13,14,15);
+  function valid(const v: Char): boolean; inline;
+  begin
+    Result := (v < 'g') and (AnsiChar(v) in ['0'..'9', 'A'..'F', 'a'..'f']);
+  end;
+var
+  s: PChar;
+  d: PByte;
+  l: Integer;
+  a, b: Char;
+begin
+  l := Length(hex);
+  if l mod 2 = 0 then
+  begin
+    SetLength(Result, l div 2);
+    s := PChar(hex);
+    d := PByte(Result);
+    while s^ <> #0 do
+    begin
+      a := s^; inc(s);
+      b := s^; inc(s);
+      if valid(a) and valid(b) then
+      begin
+        d^ := X[a] shl 4 + X[b];
+        inc(d);
+      end else
+        Exit('');
+    end;
+  end else
+    Result := '';
 end;
 
 {$IF not declared(InterLockedCompareExchange)}

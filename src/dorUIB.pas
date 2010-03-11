@@ -227,7 +227,10 @@ var
         if FSQLResult.IsNull[i] then
           Result.AsArray.Add(nil) else
         case FSQLResult.FieldType[i] of
-          uftChar, uftVarchar, uftCstring: Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsString[i]));
+          uftChar, uftVarchar, uftCstring:
+            if FSQLResult.Data.sqlvar[i].SqlSubType > 1 then
+              Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsString[i])) else
+              Result.AsArray.Add(TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[i])));
           uftSmallint, uftInteger, uftInt64: Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsInteger[i]));
           uftNumeric:
             begin
@@ -263,7 +266,10 @@ var
         if FSQLResult.IsNull[i] then
           Result[LowerCase(FSQLResult.AliasName[i])] := nil else
         case FSQLResult.FieldType[i] of
-          uftChar, uftVarchar, uftCstring: Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(FSQLResult.AsString[i]);
+          uftChar, uftVarchar, uftCstring:
+             if FSQLResult.Data.sqlvar[i].SqlSubType > 1 then
+               Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(FSQLResult.AsString[i]) else
+               Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[i]));
           uftSmallint, uftInteger, uftInt64: Result[LowerCase(FSQLResult.AliasName[i])] := TSuperObject.Create(FSQLResult.AsInteger[i]);
           uftNumeric:
             begin
@@ -312,7 +318,7 @@ var
         uftChar, uftVarchar, uftCstring:
           if FSQLParams.Data.sqlvar[index].SqlSubType > 1 then
             FSQLParams.AsString[index] := value.AsString else
-            FSQLParams.AsRawByteString[index] := rawbytestring(value.AsString);
+            FSQLParams.AsRawByteString[index] := HexToRbs(value.AsString);
 
         uftSmallint: FSQLParams.AsSmallint[index] := value.AsInteger;
         uftInteger: FSQLParams.AsInteger[index] := value.AsInteger;
