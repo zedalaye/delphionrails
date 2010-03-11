@@ -125,6 +125,13 @@ type
 
 implementation
 
+function DecodeValue(const s: SOString): ISuperObject; inline;
+begin
+  Result := TSuperObject.ParseString(PSOChar(s), False, False);
+  if Result = nil then
+    Result := TSuperObject.Create(s);
+end;
+
 function blob(stream: TStream = nil): ISuperObject; overload;
 begin
   Result := TDBBinary.Create(stream);
@@ -198,7 +205,7 @@ end;
 function TDBContext.Execute(const Command: IDBCommand;
   const params: SOString): ISuperObject;
 begin
-  Result := Command.Execute(TSuperObject.ParseString(PSOChar(params), false), Self);
+  Result := Command.Execute(DecodeValue(params), Self);
 end;
 
 function TDBContext.Execute(const Command: IDBCommand;
@@ -224,7 +231,7 @@ end;
 function TDBCommand.Execute(const params: SOString;
   const context: IDBContext): ISuperObject;
 begin
-  Result := Execute(TSuperObject.ParseString(PSOChar(params), false), context);
+  Result := Execute(DecodeValue(params), context);
 end;
 
 function TDBCommand.Execute(const params: array of const;
