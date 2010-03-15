@@ -305,6 +305,7 @@ var
   var
     BlobHandle: IscBlobHandle;
     blob: IDBBlob;
+    dt: TDateTime;
   begin
     if ObjectIsType(value, stNull) then
       FSQLParams.IsNull[index] := true else
@@ -324,7 +325,12 @@ var
         uftInteger: FSQLParams.AsInteger[index] := value.AsInteger;
         uftFloat: FSQLParams.AsSingle[index] := value.AsDouble;
         uftDoublePrecision: FSQLParams.AsDouble[index] := value.AsDouble;
-        uftDate, uftTime, uftTimestamp: FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(value.AsInteger);
+        uftDate, uftTime, uftTimestamp:
+          case ObjectGetType(value) of
+            stInt: FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(value.AsInteger);
+            stString: if TryStrToDateTime(value.AsString, dt) then
+              FSQLParams.AsDateTime[index] := dt;
+          end;
         uftInt64: FSQLParams.AsInt64[index] := value.AsInteger;
         uftBlob, uftBlobId:
           with FConnection, FLibrary, TDBUIBContext((ctx as ISuperObject).DataPtr) do
