@@ -306,6 +306,7 @@ var
     BlobHandle: IscBlobHandle;
     blob: IDBBlob;
     dt: TDateTime;
+    i: Int64;
   begin
     if ObjectIsType(value, stNull) then
       FSQLParams.IsNull[index] := true else
@@ -328,8 +329,12 @@ var
         uftDate, uftTime, uftTimestamp:
           case ObjectGetType(value) of
             stInt: FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(value.AsInteger);
-            stString: if TryStrToDateTime(value.AsString, dt) then
-              FSQLParams.AsDateTime[index] := dt;
+            stString:
+              if ISO8201DateToJavaDateTime(value.AsString, i) then
+                FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(i) else
+                if TryStrToDateTime(value.AsString, dt) then
+                  FSQLParams.AsDateTime[index] := dt else
+                  FSQLParams.IsNull[index] := true;
           end;
         uftInt64: FSQLParams.AsInt64[index] := value.AsInteger;
         uftBlob, uftBlobId:
