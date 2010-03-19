@@ -330,7 +330,7 @@ var
           case ObjectGetType(value) of
             stInt: FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(value.AsInteger);
             stString:
-              if ISO8201DateToJavaDateTime(value.AsString, i) then
+              if ISO8601DateToJavaDateTime(value.AsString, i) then
                 FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(i) else
                 if TryStrToDateTime(value.AsString, dt) then
                   FSQLParams.AsDateTime[index] := dt else
