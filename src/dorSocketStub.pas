@@ -41,7 +41,7 @@ type
   TSocketServer = class;
 
   TSocketStubClass = class of TSocketStub;
-  TSocketServerClass = class of TSocketServer;
+  TAbstractServerClass = class of TAbstractServer;
   TDORThreadClass = class of TDORThread;
 
   PThreadList = ^TThreadList;
@@ -85,19 +85,29 @@ type
     property Stopped: boolean read GetStopped;
   end;
 
-  TSocketServer = class(TDORThread)
+  TAbstractServer = class(TDORThread)
   private
     FAddress: TSockAddr;
-    FSocketHandle: longint;
+    FSocketHandle: LongInt;
     FPort: Word;
     FBind: Longint;
+  public
+    property Address: TSockAddr read FAddress;
+    property SocketHandle: LongInt read FSocketHandle;
+    constructor CreateServer(AOwner: TDORThread; Port: Word; const Bind: LongInt = INADDR_ANY); virtual;
+  end;
+
+  TSocketServer = class(TAbstractServer)
   protected
     function Run: Cardinal; override;
     procedure Stop; override;
     function doOnCreateStub(Socket: longint; Address: TSockAddr): TSocketStub; virtual; abstract;
-  public
-    property Address: TSockAddr read FAddress;
-    constructor CreateServer(AOwner: TDORThread; Port: Word; const Bind: LongInt = INADDR_ANY); virtual;
+  end;
+
+  TUDPServer = class(TAbstractServer)
+  protected
+    function Run: Cardinal; override;
+    procedure Stop; override;
   end;
 
   TSocketStub = class(TDORThread)
@@ -380,6 +390,17 @@ begin
   Result := AThreadCount;
 end;
 
+{ TAbstractServer }
+
+constructor TAbstractServer.CreateServer(AOwner: TDORThread; Port: Word;
+  const Bind: Integer);
+begin
+  inherited Create(AOwner);
+  FSocketHandle := INVALID_SOCKET;
+  FPort := Port;
+  FBind := Bind;
+end;
+
 { TSocketServer }
 
 function TSocketServer.Run: Cardinal;
@@ -448,14 +469,6 @@ begin
   end;
 end;
 
-constructor TSocketServer.CreateServer(AOwner: TDORThread; Port: Word; const Bind: LongInt);
-begin
-  inherited Create(AOwner);
-  FSocketHandle := INVALID_SOCKET;
-  FPort := Port;
-  FBind := Bind;
-end;
-
 procedure TSocketServer.Stop;
 {$IFDEF UNIX}
 var
@@ -476,6 +489,41 @@ begin
     fpconnect(ASocket, @addr, sizeof(addr));
     closesocket(ASocket);
   {$ENDIF}
+    InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
+  end;
+end;
+
+{ TUDPServer }
+
+function TUDPServer.Run: Cardinal;
+begin
+  Result := 0;
+{$IFDEF FPC}
+  FSocketHandle := fpsocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+{$ELSE}
+  FSocketHandle := socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+{$ENDIF}
+  FAddress.sin_addr.s_addr := FBind;
+  FAddress.sin_family := AF_INET;
+  FAddress.sin_port := htons(FPort);
+
+{$IFDEF FPC}
+  if fpbind(FSocketHandle, @FAddress, SizeOf(FAddress)) <> 0 then
+{$ELSE}
+  if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
+{$ENDIF}
+  begin
+    Stop;
+    raise Exception.Create('can''t bind.');
+  end;
+end;
+
+procedure TUDPServer.Stop;
+begin
+  inherited;
+  if FSocketHandle <> INVALID_SOCKET then
+  begin
+    closesocket(FSocketHandle);
     InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
   end;
 end;
