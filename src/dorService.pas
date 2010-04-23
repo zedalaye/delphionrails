@@ -56,7 +56,7 @@ type
 {$ENDIF}
   public
     procedure Run;
-    function CreateServer(clazz: TSocketServerClass; Port: Word; const Bind: Longint = INADDR_ANY): TSocketServer;
+    function CreateServer(clazz: TAbstractServerClass; Port: Word; const Bind: Longint = INADDR_ANY): TAbstractServer;
     function CreateThread(clazz: TDORThreadClass): TDORThread;
     constructor Create; virtual;
     destructor Destroy; override;
@@ -506,7 +506,7 @@ begin
   FThreads.Resume;
 end;
 
-function TDORService.CreateServer(clazz: TSocketServerClass; Port: Word; const Bind: Longint): TSocketServer;
+function TDORService.CreateServer(clazz: TAbstractServerClass; Port: Word; const Bind: Longint): TAbstractServer;
 begin
   Result := clazz.CreateServer(FThreads, Port, Bind);
 end;

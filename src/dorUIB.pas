@@ -150,8 +150,15 @@ var
 begin
   obj := AsObject['rollback'];
   if ObjectIsType(obj, stBoolean) and obj.AsBoolean then
-    FConnection.FLibrary.TransactionRollback(FTrHandle) else
-    FConnection.FLibrary.TransactionCommit(FTrHandle);
+  begin
+    TriggerRollbackEvent;
+    FConnection.FLibrary.TransactionRollback(FTrHandle);
+  end
+  else
+    begin
+      FConnection.FLibrary.TransactionCommit(FTrHandle);
+      TriggerCommitEvent;
+    end;
   inherited Destroy;
 end;
 

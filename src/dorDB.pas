@@ -3,7 +3,7 @@ unit dorDB;
 {$mode ObjFpc}{$H+}
 {$endif}
 interface
-uses superobject, classes, dorUtils;
+uses superobject, classes, dorUtils, SysUtils, Generics.Collections;
 
 type
   IDBConnectionPool = interface;
@@ -40,6 +40,8 @@ type
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload;
     function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload;
     function Execute(const Command: IDBCommand; const params: Variant): ISuperObject; overload;
+    procedure OnCommit(const proc: TProc);
+    procedure OnRollback(const proc: TProc);
   end;
 
   IDBCommand = interface
@@ -76,7 +78,12 @@ type
   end;
 
   TDBContext = class(TSuperObject, IDBContext)
+  private
+    FCommitEvent: TList<TProc>;
+    FRollbackEvent: TList<TProc>;
   protected
+    procedure TriggerCommitEvent;
+    procedure TriggerRollbackEvent;
     procedure ExecuteImmediate(const Options: SOString); virtual; abstract;
     function newCommand(const Options: ISuperObject = nil): IDBCommand; overload; virtual; abstract;
     function newCommand(const Options: SOString): IDBCommand; overload; virtual;
@@ -86,6 +93,11 @@ type
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: Variant): ISuperObject; overload; virtual;
+    procedure OnCommit(const proc: TProc);
+    procedure OnRollback(const proc: TProc);
+  public
+    constructor Create(jt: TSuperType = stObject); override;
+    destructor Destroy; override;
   end;
 
   TDBCommand = class(TSuperObject, IDBCommand)
@@ -181,6 +193,30 @@ end;
 
 { TDBContext }
 
+procedure TDBContext.OnCommit(const proc: TProc);
+begin
+  FCommitEvent.Add(proc);
+end;
+
+procedure TDBContext.OnRollback(const proc: TProc);
+begin
+  FRollbackEvent.Add(proc);
+end;
+
+constructor TDBContext.Create(jt: TSuperType);
+begin
+  inherited;
+  FCommitEvent := TList<TProc>.Create;
+  FRollbackEvent := TList<TProc>.Create;
+end;
+
+destructor TDBContext.Destroy;
+begin
+  FCommitEvent.Free;
+  FRollbackEvent.Free;
+  inherited;
+end;
+
 function TDBContext.Execute(const Command: IDBCommand;
   const params: Variant): ISuperObject;
 begin
@@ -200,6 +236,20 @@ end;
 function TDBContext.newSelect(const sql: SOString; firstone: boolean; asArray: Boolean): IDBCommand;
 begin
   Result := newCommand(SO(['sql', sql, 'firstone', firstone, 'array', asArray]));
+end;
+
+procedure TDBContext.TriggerCommitEvent;
+var
+  p: TProc;
+begin
+  for p in FCommitEvent do p();
+end;
+
+procedure TDBContext.TriggerRollbackEvent;
+var
+  p: TProc;
+begin
+  for p in FRollbackEvent do p();
 end;
 
 function TDBContext.Execute(const Command: IDBCommand;
