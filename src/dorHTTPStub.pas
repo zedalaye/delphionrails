@@ -964,7 +964,11 @@ var
   obj: ISuperObject;
 begin
   if FCompress then
-    FResponse.AsObject.S['Content-Encoding'] := 'deflate';
+  begin
+    if Pos('deflate', Request.S['env.accept-encoding']) > 0 then
+      FResponse.AsObject.S['Content-Encoding'] := 'deflate' else
+      FCompress := False;
+  end;
 
   FResponse.AsObject.S['Server'] := 'DOR 1.0';
   if not FIsStatic then
