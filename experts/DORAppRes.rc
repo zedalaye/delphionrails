@@ -1,0 +1,3 @@
+DORDPR          RCDATA  project.txt
+DORSRV          RCDATA  server.txt
+DORSRVJSON      RCDATA  serverjson.txt

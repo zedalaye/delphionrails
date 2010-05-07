@@ -1,0 +1,15 @@
+﻿program %program%;
+{$IFDEF CONSOLEAPP}
+  {$APPTYPE CONSOLE}
+{$ENDIF}
+
+{$R *.res}
+
+uses
+  dorService;
+
+begin
+  Application.Name := '%servicename%';
+  Application.DisplayName := '%displayname%';
+  Application.Run;
+end.

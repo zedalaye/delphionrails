@@ -1,0 +1,50 @@
+unit %unit%;
+
+interface
+uses
+  Windows, dorHTTPStub, dorSocketStub, Winsock;
+
+type
+  THTTPServer = class(TSocketServer)
+  protected
+    function doOnCreateStub(Socket: longint; AAddress: TSockAddr): TSocketStub; override;
+  end;
+
+  THTTPConnexion = class(THTTPStub)
+  protected
+    procedure ProcessRequest; override;
+    function GetPassPhrase: AnsiString; override;
+  end;
+
+implementation
+uses
+  dorService;
+
+{ THTTPServer }
+
+function THTTPServer.doOnCreateStub(Socket: longint;
+  AAddress: TSockAddr): TSocketStub;
+begin
+  Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
+end;
+
+{ THTTPConnexion }
+
+procedure THTTPConnexion.ProcessRequest;
+begin
+  inherited;
+  if (ErrorCode = 404) and (Params.AsObject.S['format'] = 'json') then
+  begin
+    Render(Return);
+    ErrorCode := 200;
+  end;
+end;
+
+function THTTPConnexion.GetPassPhrase: AnsiString;
+begin
+  Result := '%pass%';
+end;
+
+initialization
+  Application.CreateServer(THTTPServer, %port%);
+end.

@@ -1,0 +1,39 @@
+﻿unit %unit%;
+
+interface
+uses
+  Windows, dorHTTPStub, dorSocketStub, Winsock;
+
+type
+  THTTPServer = class(TSocketServer)
+  protected
+    function doOnCreateStub(Socket: longint; AAddress: TSockAddr): TSocketStub; override;
+  end;
+
+  THTTPConnexion = class(THTTPStub)
+  protected
+    function GetPassPhrase: AnsiString; override;
+  end;
+
+implementation
+uses
+  dorService;
+
+{ THTTPServer }
+
+function THTTPServer.doOnCreateStub(Socket: longint;
+  AAddress: TSockAddr): TSocketStub;
+begin
+  Result := THTTPConnexion.CreateStub(Self, Socket, AAddress);
+end;
+
+{ THTTPConnexion }
+
+function THTTPConnexion.GetPassPhrase: AnsiString;
+begin
+  Result := '%pass%';
+end;
+
+initialization
+  Application.CreateServer(THTTPServer, %port%);
+end.
