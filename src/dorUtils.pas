@@ -10,7 +10,7 @@
     under the License.
 
     The Initial Developer of the Original Code is
-      Henri Gourvest <hgourvest@progdigy.com>.
+      Henri Gourvest <hgourvest@gmail.com>.
 *)
 
 unit dorUtils;

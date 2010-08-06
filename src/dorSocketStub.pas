@@ -10,7 +10,7 @@
     under the License.
 
     The Initial Developer of the Original Code is
-      Henri Gourvest <hgourvest@progdigy.com>.
+      Henri Gourvest <hgourvest@gmail.com>.
 *)
 
 unit dorSocketStub;
@@ -23,7 +23,7 @@ uses
   {$IFNDEF FPC}Windows,{$ENDIF}
   {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
   {$IFDEF UNIX}baseunix,{$ENDIF}
-  dorUtils;
+  dorUtils, superobject;
 
 {$IFDEF FPC}
 const
@@ -70,6 +70,7 @@ type
   protected
     function Run: Cardinal; virtual;
     procedure Stop; virtual;
+    property Owner: TDORThread read FOwner;
   public
     class function ThreadCount: integer;
     procedure ChildClear; virtual;
@@ -83,6 +84,44 @@ type
     property ChildCount: Integer read GetChildCount;
     property ChildItems[Index: Integer]: TDORThread read ChildGet; default;
     property Stopped: boolean read GetStopped;
+  end;
+
+  TCustomObserver = class(TDORThread)
+  private
+    type
+      TEventStorage = class
+      private
+        FEvents: ISOCriticalObject;
+        FIntercept: ISOCriticalObject;
+        FObservers: ISOCriticalObject;
+        function Empty: ISuperObject;
+      public
+        constructor Create; virtual;
+        procedure Trigger(const Event: ISuperObject);
+      end;
+
+      TEventProcessor = class(TDORThread)
+      protected
+        function Run: Cardinal; override;
+      end;
+    class var
+      EventStorage: TEventStorage;
+  private
+    FIntercepting: Boolean;
+    FEvents: ISOCriticalObject;
+  protected
+    procedure RegisterEvent(const name: string); virtual;
+    procedure UnregisterEvent(const name: string); virtual;
+    procedure Intercept;
+    procedure doOnEvent(const Event: ISuperObject); virtual;
+    procedure ProcessEvents; virtual;
+    function ExtractEvents: ISuperObject; virtual;
+  public
+    constructor Create(AOwner: TDORThread); override;
+    destructor Destroy; override;
+    class procedure TriggerEvent(const Event: ISuperObject);
+    class constructor Create;
+    class destructor Destroy;
   end;
 
   TAbstractServer = class(TDORThread)
@@ -110,13 +149,14 @@ type
     procedure Stop; override;
   end;
 
-  TSocketStub = class(TDORThread)
+  TSocketStub = class(TCustomObserver)
   private
     FAddress: TSockAddr;
     FSocketHandle: longint;
   protected
     function Run: Cardinal; override;
     procedure Stop; override;
+    procedure Release;
   public
     property SocketHandle: longint read FSocketHandle;
     property Address: TSockAddr read FAddress;
@@ -128,7 +168,7 @@ threadvar
 
 implementation
 uses
-  SysUtils;
+  SysUtils, dorService;
 
 var
   AThreadCount: Integer = 0;
@@ -390,6 +430,210 @@ begin
   Result := AThreadCount;
 end;
 
+{ TCustomObserver }
+
+procedure TCustomObserver.doOnEvent(const Event: ISuperObject);
+begin
+
+end;
+
+function TCustomObserver.ExtractEvents: ISuperObject;
+begin
+  Result := FEvents.Extract;
+end;
+
+class procedure TCustomObserver.TriggerEvent(const Event: ISuperObject);
+begin
+  EventStorage.Trigger(Event);
+end;
+
+procedure TCustomObserver.UnregisterEvent(const name: string);
+var
+  l: ISuperObject;
+  j: Integer;
+begin
+  with EventStorage.FObservers do
+  begin
+    Lock;
+    try
+      l := AsObject[name];
+      if l <> nil then
+      for j := 0 to l.AsArray.Length - 1 do
+        if l.AsArray[j] = FEvents then
+        begin
+          l.AsArray.Delete(j);
+          Break;
+        end;
+    finally
+      Unlock;
+    end;
+  end;
+end;
+
+procedure TCustomObserver.ProcessEvents;
+var
+  Event: ISuperObject;
+begin
+  for Event in ExtractEvents do
+    doOnEvent(Event);
+end;
+
+procedure TCustomObserver.Intercept;
+begin
+  if not FIntercepting then
+    with EventStorage.FIntercept do
+    begin
+      Lock;
+      try
+        AsArray.Add(FEvents);
+      finally
+        Unlock;
+      end;
+      FIntercepting := True;
+    end;
+end;
+
+procedure TCustomObserver.RegisterEvent(const name: string);
+var
+  l: ISuperObject;
+begin
+  with EventStorage.FObservers do
+    begin
+      Lock;
+      try
+        l := AsObject[name];
+        if l = nil then
+        begin
+          l := TSuperObject.Create(stArray);
+          AsObject[name] := l;
+        end;
+        l.AsArray.Add(FEvents);
+      finally
+        Unlock;
+      end;
+    end;
+end;
+
+class constructor TCustomObserver.Create;
+begin
+  Application := TDORService.Create;
+  EventStorage := TEventStorage.Create;
+  Application.CreateThread(TEventProcessor);
+end;
+
+destructor TCustomObserver.Destroy;
+var
+  j: Integer;
+begin
+  if FIntercepting then
+    with EventStorage.FIntercept do
+    begin
+      Lock;
+      try
+        for j := 0 to AsArray.Length - 1 do
+          if AsArray[j] = FEvents then
+          begin
+            AsArray.Delete(j);
+            Break;
+          end;
+      finally
+        Unlock;
+      end;
+    end;
+  inherited;
+end;
+
+constructor TCustomObserver.Create(AOwner: TDORThread);
+begin
+  inherited;
+  FEvents := TSOCriticalObject.Create(stArray);
+  FIntercepting := False;
+end;
+
+class destructor TCustomObserver.Destroy;
+begin
+  while TDORThread.ThreadCount > 0 do Sleep(200);
+  EventStorage.Free;
+end;
+
+{ TCustomObserver.TEventStorage }
+
+constructor TCustomObserver.TEventStorage.Create;
+begin
+  FEvents := TSOCriticalObject.Create(stArray);
+  FObservers := TSOCriticalObject.Create(stObject);
+  FIntercept := TSOCriticalObject.Create(stArray);
+end;
+
+function TCustomObserver.TEventStorage.Empty: ISuperObject;
+begin
+  FEvents.Lock;
+  try
+    if FEvents.AsArray.Length > 0 then
+      Result := FEvents.Extract else
+      Result := nil;
+  finally
+    FEvents.Unlock;
+  end;
+end;
+
+procedure TCustomObserver.TEventStorage.Trigger(const Event: ISuperObject);
+begin
+  FEvents.Lock;
+  try
+    FEvents.AsArray.Add(Event);
+  finally
+    FEvents.Unlock;
+  end;
+end;
+
+{ TCustomObserver.TEventProcessor }
+
+function TCustomObserver.TEventProcessor.Run: Cardinal;
+var
+  events, event, box: ISuperObject;
+begin
+  while not Stopped do
+  begin
+    events := EventStorage.Empty;
+    if events <> nil then
+      for event in events do
+      begin
+        EventStorage.FIntercept.Lock;
+        try
+          for box in EventStorage.FIntercept do
+          begin
+            ISOCriticalObject(box).Lock;
+            try
+              box.AsArray.Add(event.Clone);
+            finally
+              ISOCriticalObject(box).Unlock;
+            end;
+          end;
+        finally
+          EventStorage.FIntercept.Unlock;
+        end;
+
+        EventStorage.FObservers.Lock;
+        try
+          for box in EventStorage.FObservers.N[event.AsObject.S['event']] do
+          begin
+            ISOCriticalObject(box).Lock;
+            try
+              box.AsArray.Add(event.Clone);
+            finally
+              ISOCriticalObject(box).Unlock;
+            end;
+          end;
+        finally
+          EventStorage.FObservers.Unlock;
+        end;
+      end;
+    sleep(1);
+  end;
+  Result := 0;
+end;
+
 { TAbstractServer }
 
 constructor TAbstractServer.CreateServer(AOwner: TDORThread; Port: Word;
@@ -550,8 +794,13 @@ begin
   if FSocketHandle <> INVALID_SOCKET then
   begin
     CloseSocket(FSocketHandle);
-    InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
+    Release;
   end;
+end;
+
+procedure TSocketStub.Release;
+begin
+  InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
 end;
 
 {$IFNDEF FPC}

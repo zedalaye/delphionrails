@@ -633,6 +633,33 @@ function AES_unwrap_key(key: PAES_KEY; const iv: PAnsiChar; out_: PAnsiChar; con
  * md5
  ******************************************************************************)
 
+type
+  MD5_LONG = Cardinal;
+
+const
+  MD5_CBLOCK	= 64;
+  MD5_LBLOCK  = MD5_CBLOCK div 4;
+  MD5_DIGEST_LENGTH = 16;
+
+type
+  MD5state_st = record
+    A, B, C, D: MD5_LONG;
+    Nl, Nh: MD5_LONG;
+    data: array[0..MD5_LBLOCK-1] of MD5_LONG;
+    num : Cardinal;
+	end;
+  MD5_CTX = MD5state_st;
+  PMD5_CTX = ^MD5_CTX;
+
+{$ifdef OPENSSL_FIPS}
+int private_MD5_Init(MD5_CTX *c);
+{$endif}
+function MD5_Init(c: PMD5_CTX): Integer; cdecl; external LIBEAY;
+function MD5_Update(c: PMD5_CTX; const data: Pointer; len: Cardinal): Integer; cdecl; external LIBEAY;
+function MD5_Final(md: PByte; c: PMD5_CTX): Integer; cdecl; external LIBEAY;
+function MD5(const d: PByte; n: Cardinal; md: PByte): PByte; cdecl; external LIBEAY;
+procedure MD5_Transform(c: PMD5_CTX; b: PByte); cdecl; external LIBEAY;
+
 (*******************************************************************************
  * obj_mac
  ******************************************************************************)

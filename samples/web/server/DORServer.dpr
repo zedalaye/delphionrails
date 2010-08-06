@@ -15,7 +15,9 @@ uses
   ajax_controller in 'ajax_controller.pas',
   cairo_controller in 'cairo_controller.pas',
   cairo_view in 'cairo_view.pas',
-  application_view in 'application_view.pas';
+  application_view in 'application_view.pas',
+  application_websocket in 'application_websocket.pas',
+  chat_websocket in 'chat_websocket.pas';
 
 begin
 {$IFDEF DEBUG}

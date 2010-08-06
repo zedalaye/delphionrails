@@ -58,6 +58,8 @@
 			<DCCReference Include="cairo_controller.pas"/>
 			<DCCReference Include="cairo_view.pas"/>
 			<DCCReference Include="application_view.pas"/>
+			<DCCReference Include="application_websocket.pas"/>
+			<DCCReference Include="chat_websocket.pas"/>
 			<None Include="..\bin\layout\application.html"/>
 			<None Include="..\bin\view\ajax\index.html"/>
 			<None Include="..\bin\view\ajax\getdata.xml"/>

@@ -81,6 +81,8 @@ type
   protected
     procedure ProcessRequest; virtual;
     function Run: Cardinal; override;
+    function Upgrade: Cardinal; virtual;
+    function WebSocket: Cardinal; virtual;
     function GetPassPhrase: AnsiString; virtual;
   public
     constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
@@ -106,7 +108,7 @@ uses
  windows,
 {$ENDIF}
   SysUtils, StrUtils, superxmlparser, dorOpenSSL, dorLua,
-  dorActionCOntroller, dorActionView, Rtti
+  dorActionController, dorActionView, dorActionWebsocket, Rtti
   {$ifdef madExcept}, madexcept {$endif}
 {$IFDEF UNICODE}, AnsiStrings{$ENDIF}
 {$IFDEF UNIX}, baseunix{$ENDIF}
@@ -503,7 +505,7 @@ begin
     Request.FContent.Size := ContentLength;
     Request.FContent.LoadFromSocket(SocketHandle, false);
   end;
-  result := true;
+  Result := True;
 end;
 
 function THTTPStub.DecodeCommand(str: PChar): boolean;
@@ -818,6 +820,7 @@ begin
   c := #0;
   while not Stopped do
   begin
+    ProcessEvents;
     inc(cursor);
     if cursor > len then
     begin
@@ -856,8 +859,11 @@ begin
               FSession := TSuperObject.Create;
               try
                 doBeforeProcessRequest;
+                if (Request.S['env.connection'] = 'Upgrade') then
+                  Exit(Upgrade);
                 try
                   try
+
                     ProcessRequest; // <<<<<<<<<<<<<<<
                   except
                     on E: Exception do
@@ -1112,6 +1118,10 @@ begin
       FParams.AsObject.S['format'] := LowerCase(p + 1) else
       FParams.AsObject.S['format'] := 'html';
   end;
+
+{$IFDEF CONSOLEAPP}
+  //Writeln(FRequest.AsJSon(True, False));
+{$ENDIF}
 end;
 
 function THTTPStub.GetPassPhrase: AnsiString;
@@ -1240,6 +1250,113 @@ begin
     SendEmpty;
 end;
 
+function THTTPStub.WebSocket: Cardinal;
+const
+  timeout: Integer = 100;
+var
+  b: Byte;
+  stream: TPooledMemoryStream;
+  state: Boolean;
+  data: UTF8String;
+  t: TRttiType;
+  m: TRttiMethod;
+  inst: TActionWebsocket;
+  event: string;
+
+  function IsEvent(const name: string;
+    out event: string): Boolean;
+  var
+    p: PChar;
+  begin
+    p := StrRScan(PChar(name), '_');
+    if p <> nil then
+    begin
+      if lowercase(p) = '_event' then
+      begin
+        event := LowerCase(copy(name, 1, p - PChar(name)));
+        Result := true;
+      end else
+        Result := False;
+    end else
+      Result := False;
+  end;
+
+  procedure GetEvents;
+  var
+    ev: ISuperObject;
+  begin
+    for ev in ExtractEvents do
+      SOInvoke(inst, ev.AsObject.S['event'] + '_event', ev, Context)
+  end;
+
+begin
+  Result := 0;
+  if FParams.AsObject['controller'] <> nil then
+    with FParams.AsObject do
+    begin
+      // controller
+      t := Context.Context.FindType(format('%s_websocket.T%sWebsocket', [S['controller'], maj(S['controller'])]));
+      if (t <> nil) and (t is  TRttiInstanceType)  then
+      begin
+        with TRttiInstanceType(t) do
+          inst := TActionWebsocket(GetMethod('create').Invoke(MetaclassType, []).AsObject);
+          if not(inst is TActionWebsocket) then
+          begin
+            inst.Free;
+            Exit;
+          end;
+      end else
+        Exit;
+    end else
+      Exit;
+
+  state := False;
+  stream := TPooledMemoryStream.Create;
+  setsockopt(SocketHandle, SOL_SOCKET, SO_RCVTIMEO, @timeout,  sizeof(timeout));
+  try
+    // register events
+    for m in t.GetMethods do
+      if IsEvent(m.Name, event) then
+        RegisterEvent(event);
+
+    while not Stopped do
+    if recv(SocketHandle, b, 1, 0) = 1 then
+      begin
+        case state of
+          False:
+            begin
+              if b <> 0 then Exit;
+              state := True;
+            end;
+          True:
+            begin
+              if b <> $FF then
+                stream.Write(b, 1) else
+                begin
+                  SetLength(data, stream.Size);
+                  stream.Seek(0, soFromBeginning);
+                  stream.Read(PAnsiChar(data)^, stream.Size);
+                  inst.InputMessage(string(data));
+                  stream.Size := 0;
+                  state := False;
+                end;
+            end;
+        end;
+      end
+    else
+      if WSAGetLastError = WSAETIMEDOUT then
+        GetEvents else
+        Exit;
+  finally
+    for m in t.GetMethods do
+      if IsEvent(m.Name, event) then
+        UnregisterEvent(event);
+
+    stream.Free;
+    inst.Free;
+  end;
+end;
+
 procedure THTTPStub.WriteLine(str: RawByteString);
 begin
   str := str + CRLF;
@@ -1293,6 +1410,76 @@ begin
   end;
 end;
 
+function THTTPStub.Upgrade: Cardinal;
+
+  function doWebSocket: Cardinal;
+    function getKeyNumber(const key: string; out spaces: Cardinal): Cardinal;
+    var
+      i: Integer;
+    begin
+      Result := 0;
+      spaces := 0;
+      for i := 1 to Length(key) do
+        case key[i] of
+          '0'..'9': Result := Result*10 + ord(key[i]) - ord('0');
+          ' ': inc(spaces);
+        end;
+    end;
+    function bigendian(c: Cardinal): Cardinal;
+    var
+      i: array[0..3] of Byte absolute c;
+      o: array[0..3] of Byte absolute Result;
+    begin
+      o[0] := i[3];
+      o[1] := i[2];
+      o[2] := i[1];
+      o[3] := i[0];
+    end;
+  var
+    key1, key2, origin, protocol: ISuperObject;
+
+    location: RawByteString;
+    keyNumber1, keyNumber2, space1, space2: Cardinal;
+    challenge: packed record
+      part1, part2: Cardinal;
+      key3: array[0..7] of Byte;
+    end;
+    response: array[0..MD5_DIGEST_LENGTH - 1] of Byte;
+  begin
+    Result := 0;
+    origin := Request['env.origin'];
+    if not ObjectIsType(origin, stString) then Exit;
+
+    key1 := Request['env.sec-websocket-key1'];
+    if not ObjectIsType(key1, stString) then Exit;
+    key2 := Request['env.sec-websocket-key2'];
+    if not ObjectIsType(key2, stString) then Exit;
+    if receive(SocketHandle, challenge.key3, SizeOf(challenge.key3), 0) <> SizeOf(challenge.key3) then Exit;
+    location := RawByteString('ws://' + Request.s['env.host'] + Request.S['uri']);
+    keyNumber1 := getKeyNumber(key1.AsString, space1);
+    keyNumber2 := getKeyNumber(key2.AsString, space2);
+    if (space1 = 0) or (space2 = 0) then Exit;
+    if (keyNumber1 mod space1 <> 0) or (keyNumber2 mod space2 <> 0) Then Exit;
+    challenge.part1 := bigendian(keyNumber1 div space1);
+	  challenge.part2 := bigendian(keyNumber2 div space2);
+    if MD5(@challenge, SizeOf(challenge), @response) = nil then Exit;;
+    WriteLine('HTTP/1.1 101 WebSocket Protocol Handshake');
+	  WriteLine('Upgrade: WebSocket');
+	  WriteLine('Connection: Upgrade');
+	  WriteLine('Sec-WebSocket-Location: ' + location);
+	  WriteLine('Sec-WebSocket-Origin: ' + RawByteString(origin.AsString) );
+    protocol := Request['env.sec-websocket-protocol'];
+    if ObjectIsType(protocol, stString) then
+      WriteLine('Sec-WebSocket-Protocol: ' + RawByteString(protocol.asstring));
+    WriteLine('');
+    send(SocketHandle, response, SizeOf(response), 0);
+    Result := WebSocket;
+  end;
+begin
+  Result := 0;
+  if Request.S['env.upgrade'] = 'WebSocket' then
+    Result := doWebSocket;
+end;
 
 {$IFDEF DEBUG}
 { TLuaStackInfo }

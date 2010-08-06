@@ -516,7 +516,4 @@ begin
   Result := clazz.Create(FThreads);
 end;
 
-initialization
-  Application := TDORService.Create;
-
 end.
