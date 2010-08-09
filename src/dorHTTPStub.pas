@@ -1259,36 +1259,7 @@ var
   state: Boolean;
   data: UTF8String;
   t: TRttiType;
-  m: TRttiMethod;
   inst: TActionWebsocket;
-  event: string;
-
-  function IsEvent(const name: string;
-    out event: string): Boolean;
-  var
-    p: PChar;
-  begin
-    p := StrRScan(PChar(name), '_');
-    if p <> nil then
-    begin
-      if lowercase(p) = '_event' then
-      begin
-        event := LowerCase(copy(name, 1, p - PChar(name)));
-        Result := true;
-      end else
-        Result := False;
-    end else
-      Result := False;
-  end;
-
-  procedure GetEvents;
-  var
-    ev: ISuperObject;
-  begin
-    for ev in ExtractEvents do
-      SOInvoke(inst, ev.AsObject.S['event'] + '_event', ev, Context)
-  end;
-
 begin
   Result := 0;
   if FParams.AsObject['controller'] <> nil then
@@ -1314,11 +1285,6 @@ begin
   stream := TPooledMemoryStream.Create;
   setsockopt(SocketHandle, SOL_SOCKET, SO_RCVTIMEO, @timeout,  sizeof(timeout));
   try
-    // register events
-    for m in t.GetMethods do
-      if IsEvent(m.Name, event) then
-        RegisterEvent(event);
-
     while not Stopped do
     if recv(SocketHandle, b, 1, 0) = 1 then
       begin
@@ -1345,13 +1311,9 @@ begin
       end
     else
       if WSAGetLastError = WSAETIMEDOUT then
-        GetEvents else
+        ProcessEvents else
         Exit;
   finally
-    for m in t.GetMethods do
-      if IsEvent(m.Name, event) then
-        UnregisterEvent(event);
-
     stream.Free;
     inst.Free;
   end;

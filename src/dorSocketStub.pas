@@ -23,6 +23,7 @@ uses
   {$IFNDEF FPC}Windows,{$ENDIF}
   {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
   {$IFDEF UNIX}baseunix,{$ENDIF}
+  Generics.Collections,
   dorUtils, superobject;
 
 {$IFDEF FPC}
@@ -106,17 +107,22 @@ type
       end;
     class var
       EventStorage: TEventStorage;
+  public
+    type
+      TEventProc = reference to procedure(const event: ISuperObject);
   private
     FIntercepting: Boolean;
     FEvents: ISOCriticalObject;
+    FEventProc: TDictionary<string, TEventProc>;
   protected
-    procedure RegisterEvent(const name: string); virtual;
-    procedure UnregisterEvent(const name: string); virtual;
     procedure Intercept;
     procedure doOnEvent(const Event: ISuperObject); virtual;
     procedure ProcessEvents; virtual;
     function ExtractEvents: ISuperObject; virtual;
   public
+    procedure RegisterEvent(const name: string; proc: TEventProc = nil); virtual;
+    procedure UnregisterEvent(const name: string); virtual;
+    procedure UnregisterEvents; virtual;
     constructor Create(AOwner: TDORThread); override;
     destructor Destroy; override;
     class procedure TriggerEvent(const Event: ISuperObject);
@@ -467,7 +473,53 @@ begin
     finally
       Unlock;
     end;
+    FEventProc.Remove(name);
   end;
+end;
+
+procedure TCustomObserver.UnregisterEvents;
+var
+  l: ISuperObject;
+  j: Integer;
+  name: string;
+begin
+  with EventStorage.FObservers do
+  begin
+    for name in FEventProc.Keys do
+    begin
+      Lock;
+      try
+        l := AsObject[name];
+        if l <> nil then
+        for j := 0 to l.AsArray.Length - 1 do
+          if l.AsArray[j] = FEvents then
+          begin
+            l.AsArray.Delete(j);
+            Break;
+          end;
+      finally
+        Unlock;
+      end;
+    end;
+    FEventProc.Clear;
+  end;
+
+  if FIntercepting then
+    with EventStorage.FIntercept do
+    begin
+      Lock;
+      try
+        for j := 0 to AsArray.Length - 1 do
+          if AsArray[j] = FEvents then
+          begin
+            AsArray.Delete(j);
+            Break;
+          end;
+      finally
+        Unlock;
+      end;
+    end;
+
 end;
 
 procedure TCustomObserver.ProcessEvents;
@@ -475,7 +527,7 @@ var
   Event: ISuperObject;
 begin
   for Event in ExtractEvents do
-    doOnEvent(Event);
+    FEventProc[Event.S['event']](Event);
 end;
 
 procedure TCustomObserver.Intercept;
@@ -493,7 +545,7 @@ begin
     end;
 end;
 
-procedure TCustomObserver.RegisterEvent(const name: string);
+procedure TCustomObserver.RegisterEvent(const name: string; proc: TEventProc);
 var
   l: ISuperObject;
 begin
@@ -507,6 +559,9 @@ begin
           l := TSuperObject.Create(stArray);
           AsObject[name] := l;
         end;
+        if Assigned(proc) then
+          FEventProc.AddOrSetValue(name, proc) else
+          FEventProc.AddOrSetValue(name, procedure(const event: ISuperObject) begin doOnEvent(event) end);
         l.AsArray.Add(FEvents);
       finally
         Unlock;
@@ -522,30 +577,17 @@ begin
 end;
 
 destructor TCustomObserver.Destroy;
-var
-  j: Integer;
 begin
-  if FIntercepting then
-    with EventStorage.FIntercept do
-    begin
-      Lock;
-      try
-        for j := 0 to AsArray.Length - 1 do
-          if AsArray[j] = FEvents then
-          begin
-            AsArray.Delete(j);
-            Break;
-          end;
-      finally
-        Unlock;
-      end;
-    end;
+  UnregisterEvents;
+  FEvents := nil;
+  FEventProc.Free;
   inherited;
 end;
 
 constructor TCustomObserver.Create(AOwner: TDORThread);
 begin
   inherited;
+  FEventProc := TDictionary<string, TEventProc>.Create;
   FEvents := TSOCriticalObject.Create(stArray);
   FIntercepting := False;
 end;

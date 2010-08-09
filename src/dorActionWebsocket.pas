@@ -16,9 +16,10 @@
 unit dorActionWebsocket;
 
 interface
-uses superobject, dorHTTPStub;
+uses superobject, dorSocketStub, dorHTTPStub;
 
 type
+
   TActionWebsocket = class
   protected
     // This empty method is called to force RTTI
@@ -30,12 +31,14 @@ type
     class function Context: TSuperRttiContext; virtual;
     class procedure OutputMessage(const msg: string);
     class procedure TriggerEvent(const Event: ISuperObject);
+    class procedure RegisterEvent(const name: string; const proc: TCustomObserver.TEventProc);
+    class procedure UnregisterEvent(const name: string);
   public
     procedure InputMessage(const msg: string); virtual;
   end;
 
 implementation
-uses dorSocketStub, WinSock;
+uses WinSock;
 
 { TActionController }
 
@@ -77,9 +80,20 @@ begin
   TCustomObserver.TriggerEvent(Event);
 end;
 
+class procedure TActionWebsocket.UnregisterEvent(const name: string);
+begin
+  (CurrentThread as TCustomObserver).UnregisterEvent(name);
+end;
+
 class procedure TActionWebsocket.Register;
 begin
 
+end;
+
+class procedure TActionWebsocket.RegisterEvent(const name: string;
+  const proc: TCustomObserver.TEventProc);
+begin
+  (CurrentThread as TCustomObserver).RegisterEvent(name, proc);
 end;
 
 end.

@@ -7,7 +7,7 @@ type
   TChatWebsocket = class(TApplicationWebsocket)
   public
     procedure InputMessage(const msg: string); override;
-    procedure chatmessage_event(const msg: string);
+    constructor Create; virtual;
   end;
 
 implementation
@@ -15,9 +15,11 @@ uses superobject;
 
 { TChatWebsocket }
 
-procedure TChatWebsocket.chatmessage_event(const msg: string);
+constructor TChatWebsocket.Create;
 begin
-  OutputMessage(msg);
+  RegisterEvent('chatmessage', procedure (const event: ISuperObject) begin
+    OutputMessage(event.S['msg']);
+  end);
 end;
 
 procedure TChatWebsocket.InputMessage(const msg: string);
