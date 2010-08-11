@@ -125,7 +125,7 @@ type
     procedure UnregisterEvents; virtual;
     constructor Create(AOwner: TDORThread); override;
     destructor Destroy; override;
-    class procedure TriggerEvent(const Event: ISuperObject);
+    class procedure TriggerEvent(const Event: ISuperObject); virtual;
     class constructor Create;
     class destructor Destroy;
   end;
