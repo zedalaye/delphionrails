@@ -16,35 +16,54 @@
 unit dorActionWebsocket;
 
 interface
-uses superobject, dorSocketStub, dorHTTPStub;
+uses Windows, WinSock, superobject, dorSocketStub;
 
 type
-
-  TActionWebsocket = class
+  TActionWebsocket = class(TCustomObserver)
+  private
+    FSocket: TSocket;
+    FCriticalSection: TRTLCriticalSection;
+    FParams: ISuperObject;
+    FSession: ISuperObject;
   protected
-    // This empty method is called to force RTTI
-    // Could be used for somethingelse later
     class procedure Register;
-    class function Params: ISuperObject; virtual;
-    class function Request: THTTPMessage; virtual;
-    class function Session: ISuperObject; virtual;
-    class function Context: TSuperRttiContext; virtual;
-    class procedure OutputMessage(const msg: string);
-    class procedure TriggerEvent(const Event: ISuperObject);
-    class procedure RegisterEvent(const name: string; const proc: TCustomObserver.TEventProc);
-    class procedure UnregisterEvent(const name: string);
+    function Run: Cardinal; override;
+    procedure doOnInternalEvent(const Event: ISuperObject); override;
   public
+    procedure OutputMessage(const msg: string);
     procedure InputMessage(const msg: string); virtual;
+    constructor Create; reintroduce; virtual;
+    destructor Destroy; override;
+
+    property Params: ISuperObject read FParams;
+    property Session: ISuperObject read FSession;
   end;
 
+  TActionWebsocketClass = class of TActionWebsocket;
 implementation
-uses WinSock;
+uses SysUtils, dorhttpstub;
 
 { TActionController }
 
-class function TActionWebsocket.Context: TSuperRttiContext;
+constructor TActionWebsocket.Create;
 begin
-  Result := (CurrentThread as THTTPStub).Context;
+  InitializeCriticalSection(FCriticalSection);
+  FSocket := (CurrentThread as TSocketStub).SocketHandle;
+  FParams := (CurrentThread as THTTPStub).Params;
+  FSession := (CurrentThread as THTTPStub).Session;
+  inherited Create(CurrentThread);
+end;
+
+destructor TActionWebsocket.Destroy;
+begin
+  DeleteCriticalSection(FCriticalSection);
+  inherited;
+end;
+
+procedure TActionWebsocket.doOnInternalEvent(const Event: ISuperObject);
+begin
+  if ObjectIsType(Event, stString) then
+    InputMessage(Event.AsString);
 end;
 
 procedure TActionWebsocket.InputMessage(const msg: string);
@@ -52,37 +71,17 @@ begin
 
 end;
 
-class procedure TActionWebsocket.OutputMessage(const msg: string);
+procedure TActionWebsocket.OutputMessage(const msg: string);
 var
   utf8: UTF8String;
 begin
-  utf8 := #0 + UTF8String(msg) + #255;
-  send((CurrentThread as TSocketStub).SocketHandle, PAnsiChar(utf8)^, Length(utf8), 0);
-end;
-
-class function TActionWebsocket.Params: ISuperObject;
-begin
-  Result := (CurrentThread as THTTPStub).Params;
-end;
-
-class function TActionWebsocket.Request: THTTPMessage;
-begin
-  Result := (CurrentThread as THTTPStub).Request;
-end;
-
-class function TActionWebsocket.Session: ISuperObject;
-begin
-  Result := (CurrentThread as THTTPStub).Session;
-end;
-
-class procedure TActionWebsocket.TriggerEvent(const Event: ISuperObject);
-begin
-  TCustomObserver.TriggerEvent(Event);
-end;
-
-class procedure TActionWebsocket.UnregisterEvent(const name: string);
-begin
-  (CurrentThread as TCustomObserver).UnregisterEvent(name);
+  EnterCriticalSection(FCriticalSection);
+  try
+    utf8 := #0 + UTF8String(msg) + #255;
+    send(FSocket, PAnsiChar(utf8)^, Length(utf8), 0);
+  finally
+    LeaveCriticalSection(FCriticalSection);
+  end;
 end;
 
 class procedure TActionWebsocket.Register;
@@ -90,10 +89,14 @@ begin
 
 end;
 
-class procedure TActionWebsocket.RegisterEvent(const name: string;
-  const proc: TCustomObserver.TEventProc);
+function TActionWebsocket.Run: Cardinal;
 begin
-  (CurrentThread as TCustomObserver).RegisterEvent(name, proc);
+  Result := 0;
+  while not Stopped do
+  begin
+    sleep(1);
+    ProcessEvents;
+  end;
 end;
 
 end.

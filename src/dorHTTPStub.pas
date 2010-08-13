@@ -820,7 +820,7 @@ begin
   c := #0;
   while not Stopped do
   begin
-    ProcessEvents;
+    //ProcessEvents;
     inc(cursor);
     if cursor > len then
     begin
@@ -1251,8 +1251,6 @@ begin
 end;
 
 function THTTPStub.WebSocket: Cardinal;
-const
-  timeout: Integer = 100;
 var
   b: Byte;
   stream: TPooledMemoryStream;
@@ -1269,24 +1267,19 @@ begin
       t := Context.Context.FindType(format('%s_websocket.T%sWebsocket', [S['controller'], maj(S['controller'])]));
       if (t <> nil) and (t is  TRttiInstanceType)  then
       begin
-        with TRttiInstanceType(t) do
-          inst := TActionWebsocket(GetMethod('create').Invoke(MetaclassType, []).AsObject);
-          if not(inst is TActionWebsocket) then
-          begin
-            inst.Free;
-            Exit;
-          end;
+        if TRttiInstanceType(t).MetaclassType.InheritsFrom(TActionWebsocket) then
+          inst := TActionWebsocketClass(TRttiInstanceType(t).MetaclassType).Create else
+          Exit;
       end else
         Exit;
     end else
       Exit;
-
+  inst.Start;
   state := False;
   stream := TPooledMemoryStream.Create;
-  setsockopt(SocketHandle, SOL_SOCKET, SO_RCVTIMEO, @timeout,  sizeof(timeout));
   try
     while not Stopped do
-    if recv(SocketHandle, b, 1, 0) = 1 then
+      if recv(SocketHandle, b, 1, 0) = 1 then
       begin
         case state of
           False:
@@ -1302,7 +1295,7 @@ begin
                   SetLength(data, stream.Size);
                   stream.Seek(0, soFromBeginning);
                   stream.Read(PAnsiChar(data)^, stream.Size);
-                  inst.InputMessage(string(data));
+                  TCustomObserver(ChildItems[0]).TriggerInternalEvent(TSuperObject.Create(string(data)));
                   stream.Size := 0;
                   state := False;
                 end;
@@ -1310,12 +1303,10 @@ begin
         end;
       end
     else
-      if WSAGetLastError = WSAETIMEDOUT then
-        ProcessEvents else
-        Exit;
+      Exit;
   finally
     stream.Free;
-    inst.Free;
+    //inst.Free;
   end;
 end;
 
@@ -1437,8 +1428,11 @@ function THTTPStub.Upgrade: Cardinal;
     send(SocketHandle, response, SizeOf(response), 0);
     Result := WebSocket;
   end;
+const
+  zerotimeout: Integer = 0;
 begin
   Result := 0;
+  setsockopt(SocketHandle, SOL_SOCKET, SO_RCVTIMEO, @zerotimeout, SizeOf(zerotimeout));
   if Request.S['env.upgrade'] = 'WebSocket' then
     Result := doWebSocket;
 end;

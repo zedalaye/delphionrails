@@ -71,9 +71,9 @@ type
   protected
     function Run: Cardinal; virtual;
     procedure Stop; virtual;
-    property Owner: TDORThread read FOwner;
   public
     class function ThreadCount: integer;
+    property Owner: TDORThread read FOwner;
     procedure ChildClear; virtual;
     procedure Pause;
     procedure Resume;
@@ -117,6 +117,7 @@ type
   protected
     procedure Intercept;
     procedure doOnEvent(const Event: ISuperObject); virtual;
+    procedure doOnInternalEvent(const Event: ISuperObject); virtual;
     procedure ProcessEvents; virtual;
     function ExtractEvents: ISuperObject; virtual;
   public
@@ -126,6 +127,7 @@ type
     constructor Create(AOwner: TDORThread); override;
     destructor Destroy; override;
     class procedure TriggerEvent(const Event: ISuperObject); virtual;
+    procedure TriggerInternalEvent(const Event: ISuperObject); virtual;
     class constructor Create;
     class destructor Destroy;
   end;
@@ -155,7 +157,7 @@ type
     procedure Stop; override;
   end;
 
-  TSocketStub = class(TCustomObserver)
+  TSocketStub = class(TDORThread)
   private
     FAddress: TSockAddr;
     FSocketHandle: longint;
@@ -438,6 +440,11 @@ end;
 
 { TCustomObserver }
 
+procedure TCustomObserver.doOnInternalEvent(const Event: ISuperObject);
+begin
+
+end;
+
 procedure TCustomObserver.doOnEvent(const Event: ISuperObject);
 begin
 
@@ -446,6 +453,16 @@ end;
 function TCustomObserver.ExtractEvents: ISuperObject;
 begin
   Result := FEvents.Extract;
+end;
+
+procedure TCustomObserver.TriggerInternalEvent(const Event: ISuperObject);
+begin
+  FEvents.Lock;
+  try
+    FEvents.AsArray.Add(Event);
+  finally
+    FEvents.Unlock;
+  end;
 end;
 
 class procedure TCustomObserver.TriggerEvent(const Event: ISuperObject);
@@ -527,7 +544,9 @@ var
   Event: ISuperObject;
 begin
   for Event in ExtractEvents do
-    FEventProc[Event.S['event']](Event);
+    if ObjectIsType(Event, stObject) and ObjectIsType(Event.AsObject['event'], stString) then
+      FEventProc[Event.S['event']](Event) else
+      doOnInternalEvent(Event);
 end;
 
 procedure TCustomObserver.Intercept;
