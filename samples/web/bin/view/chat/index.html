@@ -25,7 +25,9 @@
   }
   
   $('#msg').select();
-  s = new WebSocket('ws://'+ location.host + '/chat');
+  if (location.protocol == "https:")
+    {s = new WebSocket('wss://'+ location.host + '/chat')} else
+    {s = new WebSocket('ws://'+ location.host + '/chat')};
   s.onopen = function () {append("connected")};
   s.onmessage = function (evt) {append(evt.data)};
   s.onclose = function () {append("disconnected")};

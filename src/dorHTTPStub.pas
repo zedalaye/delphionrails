@@ -1301,7 +1301,9 @@ function THTTPStub.Upgrade: Cardinal;
     key2 := Request['env.sec-websocket-key2'];
     if not ObjectIsType(key2, stString) then Exit;
     if receive(SocketHandle, challenge.key3, SizeOf(challenge.key3), 0) <> SizeOf(challenge.key3) then Exit;
-    location := RawByteString('ws://' + Request.s['env.host'] + Request.S['uri']);
+    if Copy(origin.AsString, 1, 8) = 'https://' then
+      location := RawByteString('wss://' + Request.s['env.host'] + Request.S['uri']) else
+      location := RawByteString('ws://' + Request.s['env.host'] + Request.S['uri']);
     keyNumber1 := getKeyNumber(key1.AsString, space1);
     keyNumber2 := getKeyNumber(key2.AsString, space2);
     if (space1 = 0) or (space2 = 0) then Exit;
