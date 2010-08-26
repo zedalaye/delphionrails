@@ -69,8 +69,7 @@ type
 {$ENDIF}
   end;
 
-var
-  Application: TDORService;
+  function Application: TDORService;
 
 {$IFNDEF CONSOLEAPP}
 const
@@ -88,6 +87,16 @@ const
 {$ENDIF}
 
 implementation
+
+var
+  FApplication: TDORService = nil;
+
+function Application: TDORService;
+begin
+  if FApplication = nil then
+    FApplication := TDORService.Create;
+  Result := FApplication;
+end;
 
 {$IFNDEF CONSOLEAPP}
 type
@@ -201,10 +210,10 @@ function DeleteService(hService: THandle): BOOL; stdcall;
 
 procedure Terminate;
 begin
-  if Application <> nil then
+  if FApplication <> nil then
   begin
-    Application.Free;
-    Application := nil;
+    FApplication.Free;
+    FApplication := nil;
   end;
 end;
 
@@ -475,7 +484,7 @@ begin
 {$IFNDEF FPC}
   WSACleanup;
 {$ENDIF}
-  Application := nil;
+  FApplication := nil;
   inherited;
 end;
 
@@ -510,5 +519,8 @@ function TDORService.CreateThread(clazz: TDORThreadClass): TDORThread;
 begin
   Result := clazz.Create(FThreads);
 end;
+
+initialization
+  Application;
 
 end.

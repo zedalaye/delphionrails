@@ -613,7 +613,6 @@ end;
 
 class constructor TCustomObserver.Create;
 begin
-  Application := TDORService.Create;
   EventStorage := TEventStorage.Create;
   Application.CreateThread(TEventProcessor);
 end;
@@ -949,9 +948,7 @@ begin
   FSource := nil;
 end;
 
-{$IFNDEF FPC}
 initialization
   IsMultiThread := true;
-{$ENDIF}
 
 end.
