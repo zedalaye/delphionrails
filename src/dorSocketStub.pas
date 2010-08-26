@@ -30,18 +30,18 @@ uses
 const
   SOL_SOCKET    = $ffff;
   SO_REUSEADDR  = $0004;
-  SO_RCVTIMEO   = $1006; 
+  SO_RCVTIMEO   = $1006;
   IPPROTO_TCP   = 6;
   TCP_NODELAY   = $0001;
 {$ENDIF}
-  
+
 type
   // forward declarations
   TDORThread = class;
-  TSocketStub = class;
+  TClientStub = class;
   TSocketServer = class;
 
-  TSocketStubClass = class of TSocketStub;
+  TClientStubClass = class of TClientStub;
   TAbstractServerClass = class of TAbstractServer;
   TDORThreadClass = class of TDORThread;
 
@@ -132,8 +132,34 @@ type
     class destructor Destroy;
   end;
 
+  IReadWrite = interface
+  ['{EA82DA8F-F2AB-4B93-AAAA-E388C9E72F20}']
+    function Read(var buf; len, Timeout: Cardinal): Cardinal;
+    function Write(var buf; len, Timeout: Cardinal): Cardinal;
+    procedure Close;
+  end;
+
+  TRWSocket = class(TInterfacedObject, IReadWrite)
+  private
+    FSocket: LongInt;
+    FOwned: Boolean;
+    FReadTimeout: Cardinal;
+    FWriteTimeout: Cardinal;
+  protected
+    function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
+    function Write(var buf; len, Timeout: Cardinal): Cardinal; virtual;
+    procedure Close;
+  public
+    constructor Create(Socket: LongInt; Owned: Boolean); virtual;
+    destructor Destroy; override;
+  end;
+
+  TOnSocketStub = reference to function(socket: LongInt): IReadWrite;
+
   TAbstractServer = class(TDORThread)
   private
+    FStubClass: TClientStubClass;
+    FOnSocketStub: TOnSocketStub;
     FAddress: TSockAddr;
     FSocketHandle: LongInt;
     FPort: Word;
@@ -141,14 +167,15 @@ type
   public
     property Address: TSockAddr read FAddress;
     property SocketHandle: LongInt read FSocketHandle;
-    constructor CreateServer(AOwner: TDORThread; Port: Word; const Bind: LongInt = INADDR_ANY); virtual;
+    constructor CreateServer(Port: Word; const Bind: string;
+      const StubClass: TClientStubClass;
+      const OnSocketStub: TOnSocketStub = nil); virtual;
   end;
 
   TSocketServer = class(TAbstractServer)
   protected
     function Run: Cardinal; override;
     procedure Stop; override;
-    function doOnCreateStub(Socket: longint; Address: TSockAddr): TSocketStub; virtual; abstract;
   end;
 
   TUDPServer = class(TAbstractServer)
@@ -157,18 +184,16 @@ type
     procedure Stop; override;
   end;
 
-  TSocketStub = class(TDORThread)
+  TClientStub = class(TDORThread)
   private
-    FAddress: TSockAddr;
-    FSocketHandle: longint;
+    FSource: IReadWrite;
   protected
     function Run: Cardinal; override;
     procedure Stop; override;
     procedure Release;
   public
-    property SocketHandle: longint read FSocketHandle;
-    property Address: TSockAddr read FAddress;
-    constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); virtual;
+    property Source: IReadWrite read FSource;
+    constructor CreateStub(AOwner: TSocketServer; const Source: IReadWrite); virtual;
   end;
 
 threadvar
@@ -226,7 +251,6 @@ begin
   InterlockedDecrement(AThreadCount);
   Stop;
   ChildClear;
-  //TerminateThread(FThreadHandle, 0);
 {$IFDEF FPC}
   DoneCriticalSection(FCriticalSection);
 {$ELSE}
@@ -276,7 +300,6 @@ end;
 function TDORThread.Run: Cardinal;
 begin
   Result := 0;
-//  raise Exception.Create('not implemented');
 end;
 
 // Childs ...
@@ -695,15 +718,76 @@ begin
   Result := 0;
 end;
 
+{ TRWSocket }
+
+procedure TRWSocket.Close;
+begin
+  if FOwned then
+    CloseSocket(FSocket);
+  FSocket := INVALID_SOCKET;
+end;
+
+constructor TRWSocket.Create(Socket: Integer; Owned: Boolean);
+begin
+  inherited Create;
+  FSocket := Socket;
+  FOwned := Owned;
+  FReadTimeout := 0;
+  FWriteTimeout := 0;
+end;
+
+destructor TRWSocket.Destroy;
+begin
+  Close;
+  inherited;
+end;
+
+function TRWSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
+var
+ p: PByte;
+begin
+  if (FReadTimeout <> Timeout) then
+  begin
+    setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @Timeout, SizeOf(Timeout));
+    FReadTimeout := Timeout;
+  end;
+
+  Result := 0;
+  p := @Buf;
+  while len > 0 do
+    if Winsock.recv(FSocket, p^, 1, 0) = 1 then
+    begin
+      Dec(len, 1);
+      Inc(p);
+      Inc(Result);
+    end else
+      Break;
+end;
+
+
+function TRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
+begin
+  if (FReadTimeout <> Timeout) then
+  begin
+    setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
+    FWriteTimeout := Timeout;
+  end;
+
+  Result := Winsock.send(FSocket, buf, len, 0);
+end;
+
 { TAbstractServer }
 
-constructor TAbstractServer.CreateServer(AOwner: TDORThread; Port: Word;
-  const Bind: Integer);
+constructor TAbstractServer.CreateServer(Port: Word; const Bind: string;
+  const StubClass: TClientStubClass;
+  const OnSocketStub: TOnSocketStub);
 begin
-  inherited Create(AOwner);
+  inherited Create(Application.Threads);
+  FStubClass := StubClass;
+  FOnSocketStub := OnSocketStub;
   FSocketHandle := INVALID_SOCKET;
   FPort := Port;
-  FBind := Bind;
+  FBind := inet_addr(PAnsiChar(AnsiString(Bind)));
 end;
 
 { TSocketServer }
@@ -713,7 +797,7 @@ var
   InputSocket: longint;
   InputAddress: TSockAddr;
   InputLen: Integer;
-  Stub: TSocketStub;
+  Stub: TDORThread;
   SO_True: Integer;
 begin
   SO_True := -1;
@@ -764,7 +848,10 @@ begin
 {$ENDIF}
     if (InputSocket <> INVALID_SOCKET) then
     begin
-      Stub := doOnCreateStub(InputSocket, InputAddress);
+      if not Assigned(FOnSocketStub) then
+        Stub := FStubClass.CreateStub(Self, TRWSocket.Create(InputSocket, True)) else
+        Stub := FStubClass.CreateStub(Self, FOnSocketStub(InputSocket));
+
       if Stub <> nil then
         Stub.Start else
         closesocket(InputSocket);
@@ -833,35 +920,33 @@ begin
   end;
 end;
 
-{ TSocketStub }
+{ TClientStub }
 
-constructor TSocketStub.CreateStub(AOwner: TSocketServer; ASocket: longint;
-  AAddress: TSockAddr);
+constructor TClientStub.CreateStub(AOwner: TSocketServer; const Source: IReadWrite);
 begin
   inherited Create(AOwner);
-  FSocketHandle := ASocket;
-  FAddress := AAddress;
+  FSource := Source;
 end;
 
-function TSocketStub.Run: Cardinal;
+function TClientStub.Run: Cardinal;
 begin
   // you must implement this method
   Result := 0;
 end;
 
-procedure TSocketStub.Stop;
+procedure TClientStub.Stop;
 begin
   inherited;
-  if FSocketHandle <> INVALID_SOCKET then
+  if FSource <> nil then
   begin
-    CloseSocket(FSocketHandle);
+    FSource.Close;
     Release;
   end;
 end;
 
-procedure TSocketStub.Release;
+procedure TClientStub.Release;
 begin
-  InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
+  FSource := nil;
 end;
 
 {$IFNDEF FPC}

@@ -55,8 +55,8 @@ type
     procedure RemoveService;
 {$ENDIF}
   public
+    property Threads: TDORThread read FThreads;
     procedure Run;
-    function CreateServer(clazz: TAbstractServerClass; Port: Word; const Bind: Longint = INADDR_ANY): TAbstractServer;
     function CreateThread(clazz: TDORThreadClass): TDORThread;
     constructor Create; virtual;
     destructor Destroy; override;
@@ -504,11 +504,6 @@ end;
 procedure TDORService.Resume;
 begin
   FThreads.Resume;
-end;
-
-function TDORService.CreateServer(clazz: TAbstractServerClass; Port: Word; const Bind: Longint): TAbstractServer;
-begin
-  Result := clazz.CreateServer(FThreads, Port, Bind);
 end;
 
 function TDORService.CreateThread(clazz: TDORThreadClass): TDORThread;

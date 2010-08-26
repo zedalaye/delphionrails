@@ -21,7 +21,7 @@ uses Windows, WinSock, superobject, dorSocketStub;
 type
   TActionWebsocket = class(TCustomObserver)
   private
-    FSocket: TSocket;
+    FStub: TClientStub;
     FCriticalSection: TRTLCriticalSection;
     FParams: ISuperObject;
     FSession: ISuperObject;
@@ -48,7 +48,7 @@ uses SysUtils, dorhttpstub;
 constructor TActionWebsocket.Create;
 begin
   InitializeCriticalSection(FCriticalSection);
-  FSocket := (CurrentThread as TSocketStub).SocketHandle;
+  FStub := (CurrentThread as TClientStub);
   FParams := (CurrentThread as THTTPStub).Params;
   FSession := (CurrentThread as THTTPStub).Session;
   inherited Create(CurrentThread);
@@ -78,7 +78,7 @@ begin
   EnterCriticalSection(FCriticalSection);
   try
     utf8 := #0 + UTF8String(msg) + #255;
-    send(FSocket, PAnsiChar(utf8)^, Length(utf8), 0);
+    FStub.Source.Write(PAnsiChar(utf8)^, Length(utf8), 0);
   finally
     LeaveCriticalSection(FCriticalSection);
   end;

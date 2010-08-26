@@ -50,7 +50,7 @@ type
   end;
 {$ENDIF}
 
-  THTTPStub = class(TSocketStub)
+  THTTPStub = class(TClientStub)
   private
     FRequest: THTTPMessage;
     FResponse: THTTPMessage;
@@ -85,7 +85,7 @@ type
     function WebSocket: Cardinal; virtual;
     function GetPassPhrase: AnsiString; virtual;
   public
-    constructor CreateStub(AOwner: TSocketServer; ASocket: longint; AAddress: TSockAddr); override;
+    constructor CreateStub(AOwner: TSocketServer; const ASocket: IReadWrite); override;
     destructor Destroy; override;
     procedure Render(const obj: ISuperObject; format: boolean = false); overload;
     procedure Render(const str: string); overload;
@@ -391,12 +391,20 @@ end;
 function THTTPStub.DecodeContent: boolean;
 var
   ContentLength: integer;
+  len: Integer;
+  b: Byte;
 begin
   ContentLength := Request.I['env.content-length'];
   if ContentLength > 0 then
+  with Request.FContent do
   begin
-    Request.FContent.Size := ContentLength;
-    Request.FContent.LoadFromSocket(SocketHandle, false);
+    Size := ContentLength;
+    Seek(0, soFromBeginning);
+    for len := 1 to ContentLength do
+    begin
+      Source.Read(b, 1, ReadTimeOut);
+      Write(b, 1);
+    end;
   end;
   Result := True;
 end;
@@ -738,7 +746,7 @@ begin
       if Stopped then exit;
     until r > 0;
 {$ENDIF}
-    if receive(SocketHandle, c, 1, 0) <> 1 then exit;
+    if Source.Read(c, 1, ReadTimeOut) <> 1 then exit;
     case c of
     CR: dec(cursor){->LF};
     LF: begin
@@ -801,8 +809,7 @@ begin
   end;
 end;
 
-constructor THTTPStub.CreateStub(AOwner: TSocketServer; ASocket: longint;
-  AAddress: TSockAddr);
+constructor THTTPStub.CreateStub(AOwner: TSocketServer; const ASocket: IReadWrite);
 begin
   inherited;
   FRequest := THTTPMessage.Create;
@@ -837,13 +844,6 @@ begin
     S['svg.content'] := 'image/svg+xml';
     B['svg.istext'] := True;
   end;
-
-  // connexion timout
-{$IFDEF FPC}
-  fpsetsockopt(Socket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
-{$ELSE}
-  setsockopt(ASocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
-{$ENDIF}
 end;
 
 destructor THTTPStub.Destroy;
@@ -1172,7 +1172,7 @@ begin
   stream := TPooledMemoryStream.Create;
   try
     while not Stopped do
-      if recv(SocketHandle, b, 1, 0) = 1 then
+      if Source.Read(b, 1, 0) = 1 then
       begin
         case state of
           False:
@@ -1199,18 +1199,13 @@ begin
       Exit;
   finally
     stream.Free;
-    //inst.Free;
   end;
 end;
 
 procedure THTTPStub.WriteLine(str: RawByteString);
 begin
   str := str + CRLF;
-{$IFDEF FPC}
-  fpsend(SocketHandle, PChar(str), length(str), 0);
-{$ELSE}
-  send(SocketHandle, PAnsiChar(str)^, length(str), 0);
-{$ENDIF}
+  Source.Write(PAnsiChar(str)^, length(str), 0);
 end;
 
 procedure THTTPStub.SendStream(Stream: TStream);
@@ -1219,17 +1214,11 @@ procedure THTTPStub.SendStream(Stream: TStream);
     size: Integer;
     buffer: array[0..1023] of byte;
   begin
-    //WriteLine(format('Content-Length: %d', [s.size]));
     WriteLine('');
-    //s.Seek(0, soFromBeginning);
     size := s.Read(buffer, sizeof(buffer));
     while size > 0 do
     begin
-{$IFDEF FPC}
-      fpsend(SocketHandle, @buffer, size, 0);
-{$ELSE}
-      send(SocketHandle, buffer, size, 0);
-{$ENDIF}
+      Source.Write(buffer, size, 0);
       size := s.Read(buffer, sizeof(buffer));
     end;
   end;
@@ -1300,7 +1289,7 @@ function THTTPStub.Upgrade: Cardinal;
     if not ObjectIsType(key1, stString) then Exit;
     key2 := Request['env.sec-websocket-key2'];
     if not ObjectIsType(key2, stString) then Exit;
-    if receive(SocketHandle, challenge.key3, SizeOf(challenge.key3), 0) <> SizeOf(challenge.key3) then Exit;
+    if Source.Read(challenge.key3, SizeOf(challenge.key3), 0) <> SizeOf(challenge.key3) then Exit;
     if Copy(origin.AsString, 1, 8) = 'https://' then
       location := RawByteString('wss://' + Request.s['env.host'] + Request.S['uri']) else
       location := RawByteString('ws://' + Request.s['env.host'] + Request.S['uri']);
@@ -1320,14 +1309,11 @@ function THTTPStub.Upgrade: Cardinal;
     if ObjectIsType(protocol, stString) then
       WriteLine('Sec-WebSocket-Protocol: ' + RawByteString(protocol.asstring));
     WriteLine('');
-    send(SocketHandle, response, SizeOf(response), 0);
+    Source.Write(response, SizeOf(response), 0);
     Result := WebSocket;
   end;
-const
-  zerotimeout: Integer = 0;
 begin
   Result := 0;
-  setsockopt(SocketHandle, SOL_SOCKET, SO_RCVTIMEO, @zerotimeout, SizeOf(zerotimeout));
   if Request.S['env.upgrade'] = 'WebSocket' then
     Result := doWebSocket;
 end;
