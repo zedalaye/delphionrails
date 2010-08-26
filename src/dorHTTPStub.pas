@@ -14,14 +14,10 @@
 *)
 
 unit dorHTTPStub;
-{$IFDEF FPC}
-  {$MODE OBJFPC}{$H+}
-{$ENDIF}
+
 interface
 uses
-  dorSocketStub,
-  {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
-  dorUtils, classes, superobject;
+  dorSocketStub, dorUtils, classes, superobject;
 
 type
   THTTPMessage = class(TSuperObject)

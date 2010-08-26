@@ -14,26 +14,13 @@
 *)
 
 unit dorSocketStub;
-{$IFDEF FPC}
-{$mode objfpc}{$H+}
-{$ENDIF}
 
 interface
 uses
-  {$IFNDEF FPC}Windows,{$ENDIF}
-  {$IFDEF FPC}sockets,{$ELSE}Winsock,{$ENDIF}
+  Windows, Winsock,
   {$IFDEF UNIX}baseunix,{$ENDIF}
   Generics.Collections,
   dorUtils, superobject;
-
-{$IFDEF FPC}
-const
-  SOL_SOCKET    = $ffff;
-  SO_REUSEADDR  = $0004;
-  SO_RCVTIMEO   = $1006;
-  IPPROTO_TCP   = 6;
-  TCP_NODELAY   = $0001;
-{$ENDIF}
 
 type
   // forward declarations
@@ -206,13 +193,7 @@ uses
 var
   AThreadCount: Integer = 0;
 
-{$IFDEF FPC}
-const
-  INVALID_HANDLE_VALUE = TThreadId(-1);
-  INVALID_SOCKET = longint(-1);
-{$ENDIF}
-
-function ThreadRun(Thread: Pointer): PtrInt; {$IFNDEF FPC}stdcall;{$ENDIF}
+function ThreadRun(Thread: Pointer): PtrInt; stdcall;
 begin
   CurrentThread := TDORThread(Thread);
   InterlockedIncrement(CurrentThread.FThreadRefCount);
@@ -232,11 +213,7 @@ constructor TDORThread.Create(AOwner: TDORThread);
 begin
   inherited Create;
   InterlockedIncrement(AThreadCount);
-{$IFDEF FPC}
-  InitCriticalSection(FCriticalSection);
-{$ELSE}
   InitializeCriticalSection(FCriticalSection);
-{$ENDIF}
   FPaused := False;
   InterlockedExchange(FStopped, 0);
   FOwner := AOwner;
@@ -251,13 +228,9 @@ begin
   InterlockedDecrement(AThreadCount);
   Stop;
   ChildClear;
-{$IFDEF FPC}
-  DoneCriticalSection(FCriticalSection);
-{$ELSE}
   DeleteCriticalSection(FCriticalSection);
   if FThreadHandle <> INVALID_HANDLE_VALUE then
     CloseHandle(FThreadHandle);
-{$ENDIF}
   inherited;
 end;
 
@@ -434,11 +407,7 @@ begin
   Lock;
   try
     if ClassType <> TDORThread then
-    {$IFDEF FPC}
-      FThreadHandle := BeginThread(@ThreadRun, Self, FThreadId);
-    {$ELSE}
       FThreadHandle := CreateThread(nil, 0, @ThreadRun, Self, 0, FThreadId);
-    {$ENDIF}
     for i := 0 to ChildCount - 1 do
       ChildItems[i].Start;
   finally
@@ -801,37 +770,21 @@ var
 begin
   SO_True := -1;
   Result := 0;
-{$IFDEF FPC}
-  FSocketHandle := fpsocket(AF_INET, SOCK_STREAM, 0);
-{$ELSE}
   FSocketHandle := socket(AF_INET, SOCK_STREAM, 0);
-{$ENDIF}
   FAddress.sin_addr.s_addr := FBind;
   FAddress.sin_family := AF_INET;
   FAddress.sin_port := htons(FPort);
 
-{$IFDEF FPC}
-  fpsetsockopt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PChar(@SO_True), SizeOf(SO_True));
-  fpsetsockopt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PChar(@SO_True), SizeOf(SO_True));
-{$ELSE}
   SetSockOpt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@SO_True), SizeOf(SO_True));
   SetSockOpt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@SO_True), SizeOf(SO_True));
-{$ENDIF}
 
-{$IFDEF FPC}
-  if fpbind(FSocketHandle, @FAddress, SizeOf(FAddress)) <> 0 then
-{$ELSE}
   if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
-{$ENDIF}
   begin
     Stop;
     raise Exception.Create('can''t bind.');
   end;
-{$IFDEF FPC}
-  if (fplisten(FSocketHandle, 15) <> 0) then
-{$ELSE}
+
   if (listen(FSocketHandle, 15) <> 0) then
-{$ENDIF}
   begin
     Stop;
     raise Exception.Create('can''t listen.');
@@ -840,11 +793,7 @@ begin
   InputLen := SizeOf(InputAddress);
   while not Stopped do
   try
-{$IFDEF FPC}
-    InputSocket := fpaccept(FSocketHandle, @InputAddress, @InputLen);
-{$ELSE}
     InputSocket := accept(FSocketHandle, @InputAddress, @InputLen);
-{$ENDIF}
     if (InputSocket <> INVALID_SOCKET) then
     begin
       if not Assigned(FOnSocketStub) then
@@ -889,20 +838,12 @@ end;
 function TUDPServer.Run: Cardinal;
 begin
   Result := 0;
-{$IFDEF FPC}
-  FSocketHandle := fpsocket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-{$ELSE}
   FSocketHandle := socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-{$ENDIF}
   FAddress.sin_addr.s_addr := FBind;
   FAddress.sin_family := AF_INET;
   FAddress.sin_port := htons(FPort);
 
-{$IFDEF FPC}
-  if fpbind(FSocketHandle, @FAddress, SizeOf(FAddress)) <> 0 then
-{$ELSE}
   if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
-{$ENDIF}
   begin
     Stop;
     raise Exception.Create('can''t bind.');
