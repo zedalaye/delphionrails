@@ -94,7 +94,8 @@ begin
   Result := 0;
   while not Stopped do
   begin
-    sleep(1);
+    if not SwitchToThread then
+      sleep(1);
     ProcessEvents;
   end;
 end;

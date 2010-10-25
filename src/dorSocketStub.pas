@@ -534,10 +534,14 @@ end;
 procedure TCustomObserver.ProcessEvents;
 var
   Event: ISuperObject;
+  proc: TEventProc;
 begin
   for Event in ExtractEvents do
     if ObjectIsType(Event, stObject) and ObjectIsType(Event.AsObject['event'], stString) then
-      FEventProc[Event.S['event']](Event) else
+    begin
+      if FEventProc.TryGetValue(Event.S['event'], proc) then
+        proc(Event);
+    end else
       doOnInternalEvent(Event);
 end;
 
@@ -681,7 +685,8 @@ begin
           EventStorage.FObservers.Unlock;
         end;
       end;
-    sleep(1);
+    if not SwitchToThread then
+      Sleep(1);
   end;
   Result := 0;
 end;
