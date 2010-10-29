@@ -1011,7 +1011,9 @@ begin
   end;
 
 {$IFDEF CONSOLEAPP}
+{$IFDEF DEBUG}
   Writeln(FParams.AsString);
+{$ENDIF}
 {$ENDIF}
 end;
 
