@@ -634,6 +634,7 @@ begin
         ar.Add(Result as ISuperObject);
         Exit;
       end;
+      SwitchToThread;
     end;
   finally
     FCriticalSection.Leave;

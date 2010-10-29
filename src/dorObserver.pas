@@ -96,7 +96,9 @@ begin
         HandleException(etNormal);
 {$endif}
     end;
+{$IFDEF SWITCHTOTHREAD}
     if not SwitchToThread then
+{$ENDIF}
       sleep(1);
   end;
   Result := 0;

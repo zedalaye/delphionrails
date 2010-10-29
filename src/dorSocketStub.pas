@@ -685,7 +685,9 @@ begin
           EventStorage.FObservers.Unlock;
         end;
       end;
+{$IFDEF SWITCHTOTHREAD}
     if not SwitchToThread then
+{$ENDIF}
       Sleep(1);
   end;
   Result := 0;

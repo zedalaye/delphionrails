@@ -94,7 +94,9 @@ begin
   Result := 0;
   while not Stopped do
   begin
+{$IFDEF SWITCHTOTHREAD}
     if not SwitchToThread then
+{$ENDIF}
       sleep(1);
     ProcessEvents;
   end;

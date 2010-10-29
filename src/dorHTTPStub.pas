@@ -505,9 +505,11 @@ begin
 
   // SP expected
   if (str^ <> SP) then exit;
+  repeat
+    inc(str);
+  until str^ <> SP;
 
   // HTTP/
-  inc(str);
   if not ((str[0] = 'H') and (str[1] = 'T') and (str[2] = 'T') and
      (str[3] = 'P') and (str[4] = SL)) then
     exit;
@@ -1009,7 +1011,7 @@ begin
   end;
 
 {$IFDEF CONSOLEAPP}
-  //Writeln(FRequest.AsJSon(True, False));
+  Writeln(FParams.AsString);
 {$ENDIF}
 end;
 
