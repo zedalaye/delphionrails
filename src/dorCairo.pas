@@ -113,8 +113,8 @@ type
     function GetUserData: Pointer;
     function Copy: ICairoFontOptions;
     function GetStatus: TCairoStatus;
-    procedure Merge(const other: ICairoFontOptions);
-    function Equal(const other: ICairoFontOptions): Boolean;
+    procedure Merge(other: ICairoFontOptions);
+    function Equal(other: ICairoFontOptions): Boolean;
     function GetHash: Cardinal;
     procedure SetAntialias(antialias: TCairoAntialias);
     function GetAntialias: TCairoAntialias;
@@ -144,8 +144,8 @@ type
     function GetUserData: Pointer;
     function Copy: ICairoFontOptions;
     function GetStatus: TCairoStatus;
-    procedure Merge(const other: ICairoFontOptions);
-    function Equal(const other: ICairoFontOptions): Boolean;
+    procedure Merge(other: ICairoFontOptions);
+    function Equal(other: ICairoFontOptions): Boolean;
     function GetHash: Cardinal;
     procedure SetAntialias(antialias: TCairoAntialias);
     function GetAntialias: TCairoAntialias;
@@ -176,7 +176,7 @@ type
     procedure GetFontMatrix(var fontMatrix: TCairoMatrix);
     procedure GetCtm(var ctm: TCairoMatrix);
     procedure GetScaleMatrix(var scaleMatrix: TCairoMatrix);
-    procedure GetFontOptions(const options: ICairoFontOptions);
+    procedure GetFontOptions(options: ICairoFontOptions);
   end;
 
   TCairoScaledFont = class(TInterfacedObject, ICairoScaledFont)
@@ -199,7 +199,7 @@ type
     procedure GetFontMatrix(var fontMatrix: TCairoMatrix);
     procedure GetCtm(var ctm: TCairoMatrix);
     procedure GetScaleMatrix(var scaleMatrix: TCairoMatrix);
-    procedure GetFontOptions(const options: ICairoFontOptions);
+    procedure GetFontOptions(options: ICairoFontOptions);
   public
     constructor CreateInternal(scaledfont: PCairoScaledFont);
     constructor Create(fontFace: ICairoFontFace; const fontMatrix, ctm: TCairoMatrix; const options: ICairoFontOptions); virtual;
@@ -516,7 +516,7 @@ type
 
     (* Modify state *)
     procedure SetOperator(op: TCairoOperator);
-    procedure SetSource(const source: ICairoPattern);
+    procedure SetSource(source: ICairoPattern);
     procedure SetSourceColor(color: Cardinal);
     procedure SetSourceRGB(red, green, blue: Double);
     procedure SetSourceRGBA(red, green, blue, alpha: Double);
@@ -672,7 +672,7 @@ type
 
     (* Modify state *)
     procedure SetOperator(op: TCairoOperator);
-    procedure SetSource(const source: ICairoPattern);
+    procedure SetSource(source: ICairoPattern);
     procedure SetSourceColor(color: Cardinal);
     procedure SetSourceRGB(red, green, blue: Double);
     procedure SetSourceRGBA(red, green, blue, alpha: Double);
@@ -790,7 +790,7 @@ type
 {$ENDIF}
 
   public
-    constructor Create(const surface: ICairoSurface);
+    constructor Create(surface: ICairoSurface);
     destructor Destroy; override;
     property Context: PCairo read FContext;
   end;
@@ -1491,7 +1491,7 @@ begin
   Result := cairo_copy_path_flat(FContext);
 end;
 
-constructor TCairoContext.Create(const surface: ICairoSurface);
+constructor TCairoContext.Create(surface: ICairoSurface);
 begin
   CreateInternal(cairo_create(TCairoSurface(surface.GetUserData(nil)).FSurface));
 end;
@@ -1880,7 +1880,7 @@ begin
   cairo_set_scaled_font(FContext, TCairoScaledFont(scaledFont.GetUserData(nil)).FScaledFont);
 end;
 
-procedure TCairoContext.SetSource(const source: ICairoPattern);
+procedure TCairoContext.SetSource(source: ICairoPattern);
 begin
   cairo_set_source(FContext, TCairoPattern(source.GetUserData(nil)).FPattern);
 end;
@@ -2017,7 +2017,7 @@ begin
   inherited;
 end;
 
-function TCairoFontOptions.Equal(const other: ICairoFontOptions): Boolean;
+function TCairoFontOptions.Equal(other: ICairoFontOptions): Boolean;
 begin
   Result := cairo_font_options_equal(FFontOptions, TCairoFontOptions(other.GetUserData).FFontOptions) <> 0;
 end;
@@ -2057,7 +2057,7 @@ begin
   Result := Self;
 end;
 
-procedure TCairoFontOptions.Merge(const other: ICairoFontOptions);
+procedure TCairoFontOptions.Merge(other: ICairoFontOptions);
 begin
   cairo_font_options_merge(FFontOptions, TCairoFontOptions(other.GetUserData).FFontOptions);
 end;
@@ -2337,7 +2337,7 @@ begin
   cairo_scaled_font_get_font_matrix(FScaledFont, @fontMatrix);
 end;
 
-procedure TCairoScaledFont.GetFontOptions(const options: ICairoFontOptions);
+procedure TCairoScaledFont.GetFontOptions(options: ICairoFontOptions);
 begin
   cairo_scaled_font_get_font_options(FScaledFont, TCairoFontOptions(options.GetUserData).FFontOptions);
 end;
