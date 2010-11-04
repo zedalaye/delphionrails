@@ -202,7 +202,7 @@ type
     procedure GetFontOptions(options: ICairoFontOptions);
   public
     constructor CreateInternal(scaledfont: PCairoScaledFont);
-    constructor Create(fontFace: ICairoFontFace; const fontMatrix, ctm: TCairoMatrix; const options: ICairoFontOptions); virtual;
+    constructor Create(fontFace: ICairoFontFace; const fontMatrix, ctm: TCairoMatrix; options: ICairoFontOptions); virtual;
     destructor Destroy; override;
     property ScaledFont: PCairoScaledFont read FScaledFont;
   end;
@@ -214,7 +214,7 @@ type
     function UserRenderGlyph(glyph: Cardinal; cr: PCairo; extent: PCairoTextExtents): TCairoStatus; virtual; abstract;
     function UserUnicodeToGlyph(unicode: Cardinal; glyphIndex: PCardinal): TCairoStatus; virtual; abstract;
   public
-    constructor Create(fontFace: ICairoFontFace; const fontMatrix, ctm: TCairoMatrix; const options: ICairoFontOptions); override;
+    constructor Create(fontFace: ICairoFontFace; const fontMatrix, ctm: TCairoMatrix; options: ICairoFontOptions); override;
   end;
 
 {$ifdef CAIRO_HAS_WIN32_FONT}
@@ -252,7 +252,7 @@ type
     procedure WriteToPNG(const filename: string);
     procedure WriteToPNGStream(stream: TStream);
 {$endif}
-    procedure GetFontOptions(const options: ICairoFontOptions);
+    procedure GetFontOptions(options: ICairoFontOptions);
     procedure Flush;
     procedure MarkDirty;
     procedure MarkDirtyRectangle(x, y, width, height: Integer);
@@ -286,7 +286,7 @@ type
     procedure WriteToPNG(const filename: string);
     procedure WriteToPNGStream(stream: TStream);
 {$endif}
-    procedure GetFontOptions(const options: ICairoFontOptions);
+    procedure GetFontOptions(options: ICairoFontOptions);
     procedure Flush;
     procedure MarkDirty;
     procedure MarkDirtyRectangle(x, y, width, height: Integer);
@@ -558,8 +558,8 @@ type
     (* Painting functions *)
     procedure Paint;
     procedure PaintWithAlpha(alpha: Double);
-    procedure Mask(const pattern: ICairoPattern);
-    procedure MaskSurface(const surface: ICairoSurface; surfaceX, surfaceY: Double);
+    procedure Mask(pattern: ICairoPattern);
+    procedure MaskSurface(surface: ICairoSurface; surfaceX, surfaceY: Double);
     procedure Stroke;
     procedure StrokePreserve;
     procedure Fill;
@@ -588,11 +588,11 @@ type
     procedure SetFontSize(size: Double);
     procedure SetFontMatrix(const matrix: TCairoMatrix);
     procedure GetFontMatrix(var matrix: TCairoMatrix);
-    procedure SetFontOptions(const options: ICairoFontOptions);
+    procedure SetFontOptions(options: ICairoFontOptions);
     function GetFontOptions: ICairoFontOptions;
     procedure SetFontFace(fontFace: ICairoFontFace);
     function GetFontFace: ICairoFontFace;
-    procedure SetScaledFont(const scaledFont: ICairoScaledFont);
+    procedure SetScaledFont(scaledFont: ICairoScaledFont);
     function GetScaledFont: ICairoScaledFont;
     procedure ShowText(const utf8: UTF8String);
     procedure ShowGlyphs(glyphs: PCairoGlyph; numGlyphs: Integer);
@@ -630,7 +630,7 @@ type
 
     (* SVG *)
 {$IFDEF CAIRO_HAS_RSVG_FUNCTIONS}
-    function RenderSVG(const svg: IRSVGObject; const id: RawByteString = ''): Boolean;
+    function RenderSVG(svg: IRSVGObject; const id: RawByteString = ''): Boolean;
 {$ENDIF}
 
 
@@ -714,8 +714,8 @@ type
     (* Painting functions *)
     procedure Paint;
     procedure PaintWithAlpha(alpha: Double);
-    procedure Mask(const pattern: ICairoPattern);
-    procedure MaskSurface(const surface: ICairoSurface; surfaceX, surfaceY: Double);
+    procedure Mask(pattern: ICairoPattern);
+    procedure MaskSurface(surface: ICairoSurface; surfaceX, surfaceY: Double);
     procedure Stroke;
     procedure StrokePreserve;
     procedure Fill;
@@ -744,11 +744,11 @@ type
     procedure SetFontSize(size: Double);
     procedure SetFontMatrix(const matrix: TCairoMatrix);
     procedure GetFontMatrix(var matrix: TCairoMatrix);
-    procedure SetFontOptions(const options: ICairoFontOptions);
+    procedure SetFontOptions(options: ICairoFontOptions);
     function GetFontOptions: ICairoFontOptions;
     procedure SetFontFace(fontFace: ICairoFontFace);
     function GetFontFace: ICairoFontFace;
-    procedure SetScaledFont(const scaledFont: ICairoScaledFont);
+    procedure SetScaledFont(scaledFont: ICairoScaledFont);
     function GetScaledFont: ICairoScaledFont;
     procedure ShowText(const utf8: UTF8String);
     procedure ShowGlyphs(glyphs: PCairoGlyph; numGlyphs: Integer);
@@ -786,7 +786,7 @@ type
 
     (* SVG *)
 {$IFDEF CAIRO_HAS_RSVG_FUNCTIONS}
-    function RenderSVG(const svg: IRSVGObject; const id: RawByteString = ''): Boolean;
+    function RenderSVG(svg: IRSVGObject; const id: RawByteString = ''): Boolean;
 {$ENDIF}
 
   public
@@ -1069,7 +1069,7 @@ begin
   cairo_surface_get_fallback_resolution(FSurface, @xPixelsPerInch, @yPixelsPerInch);
 end;
 
-procedure TCairoSurface.GetFontOptions(const options: ICairoFontOptions);
+procedure TCairoSurface.GetFontOptions(options: ICairoFontOptions);
 begin
   cairo_surface_get_font_options(FSurface, TCairoFontOptions(options.GetUserData).FFontOptions);
 end;
@@ -1697,12 +1697,12 @@ begin
   cairo_line_to(FContext, x, y);
 end;
 
-procedure TCairoContext.Mask(const pattern: ICairoPattern);
+procedure TCairoContext.Mask(pattern: ICairoPattern);
 begin
   cairo_mask(FContext, TCairoPattern(pattern.GetUserData(nil)).FPattern);
 end;
 
-procedure TCairoContext.MaskSurface(const surface: ICairoSurface; surfaceX,
+procedure TCairoContext.MaskSurface(surface: ICairoSurface; surfaceX,
   surfaceY: Double);
 begin
   cairo_mask_surface(FContext, TCairoSurface(surface.GetUserData(nil)).FSurface, surfaceX, surfaceY);
@@ -1835,7 +1835,7 @@ begin
   cairo_set_font_matrix(FContext, @matrix);
 end;
 
-procedure TCairoContext.SetFontOptions(const options: ICairoFontOptions);
+procedure TCairoContext.SetFontOptions(options: ICairoFontOptions);
 begin
   cairo_set_font_options(FContext, TCairoFontOptions(options.GetUserData).FFontOptions);
 end;
@@ -1875,7 +1875,7 @@ begin
   cairo_set_operator(FContext, op);
 end;
 
-procedure TCairoContext.SetScaledFont(const scaledFont: ICairoScaledFont);
+procedure TCairoContext.SetScaledFont(scaledFont: ICairoScaledFont);
 begin
   cairo_set_scaled_font(FContext, TCairoScaledFont(scaledFont.GetUserData(nil)).FScaledFont);
 end;
@@ -2294,7 +2294,7 @@ end;
 
 { TCairoScaledFont }
 
-constructor TCairoScaledFont.Create(fontFace: ICairoFontFace; const fontMatrix, ctm: TCairoMatrix; const options: ICairoFontOptions);
+constructor TCairoScaledFont.Create(fontFace: ICairoFontFace; const fontMatrix, ctm: TCairoMatrix; options: ICairoFontOptions);
 begin
   CreateInternal(
     cairo_scaled_font_create(
@@ -2520,7 +2520,7 @@ end;
 { TUserScaledFont }
 
 constructor TUserScaledFont.Create(fontFace: ICairoFontFace; const fontMatrix,
-  ctm: TCairoMatrix; const options: ICairoFontOptions);
+  ctm: TCairoMatrix; options: ICairoFontOptions);
 begin
   inherited;
   with TCairoFontFace(fontFace.GetUserData(nil)) do
