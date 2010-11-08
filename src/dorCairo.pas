@@ -40,7 +40,7 @@ uses sysutils, classes, dorCairolib
 , windows
 {$ENDIF}
 {$IFDEF CAIRO_HAS_RSVG_FUNCTIONS}
-,rsvg
+,dorRSvg
 {$ENDIF}
 ;
 
@@ -943,7 +943,7 @@ const
 
 implementation
 {$IFDEF CAIRO_HAS_RSVG_FUNCTIONS}
-uses rsvglib, math;
+uses dorRSvglib, math;
 {$ENDIF}
 
 procedure CairoCheck(AStatus: TCairoStatus);
@@ -1432,7 +1432,7 @@ begin
 end;
 
 {$IFDEF CAIRO_HAS_RSVG_FUNCTIONS}
-function TCairoContext.RenderSVG(const svg: IRSVGObject; const id: RawByteString): Boolean;
+function TCairoContext.RenderSVG(svg: IRSVGObject; const id: RawByteString): Boolean;
 begin
   if id <> '' then
     Result := rsvg_handle_render_cairo_sub(svg.Handle, FContext, PAnsiChar(id)) else
