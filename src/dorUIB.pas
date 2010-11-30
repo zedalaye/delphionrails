@@ -68,7 +68,7 @@ type
   end;
 
 implementation
-uses sysutils;
+uses sysutils, Generics.Collections;
 
 { TDBUIBConnection }
 
@@ -133,6 +133,16 @@ end;
 { TDBUIBContext }
 
 constructor TDBUIBContext.Create(const Connection: TDBUIBConnection; const Options: ISuperObject);
+var
+  params: RawByteString;
+  lockread, lockwrite: string;
+  opt: TTransParams;
+  prm: TTransParam;
+  obj, arr: ISuperObject;
+  dic: TDictionary<string, TTransParam>;
+{$IFDEF FB20_UP}
+  locktimeout: Integer;
+{$ENDIF}
 begin
   inherited Create(stObject);
   DataPtr := Self;
@@ -140,8 +150,75 @@ begin
   FConnection := Connection;
   AsObject['connection'] := Connection;
   FTrHandle := nil;
+  if ObjectIsType(Options, stObject) then
+  begin
+    lockread := '';
+    lockwrite := '';
+    for obj in Options.N['lockread'] do
+      if lockread <> '' then
+        lockread := lockread + ',' + obj.AsString else
+        lockread := obj.AsString;
+
+    for obj in Options.N['lockwrite'] do
+      if lockwrite <> '' then
+        lockwrite := lockwrite + ',' + obj.AsString else
+        lockwrite := obj.AsString;
+
+    opt := [];
+{$IFDEF FB20_UP}
+    locktimeout := 0;
+{$ENDIF}
+    arr := Options.AsObject['options'];
+    if ObjectIsType(arr, stArray) and (arr.AsArray.Length > 0) then
+    begin
+      dic := TDictionary<string, TTransParam>.Create(Ord(High(TTransParam)) + 1);
+      try
+        dic.Add('consistency', tpConsistency);
+        dic.Add('concurrency', tpConcurrency);
+      {$IFNDEF FB_21UP}
+        dic.Add('shared', tpShared);
+        dic.Add('protected', tpProtected);
+        dic.Add('exclusive', tpExclusive);
+      {$ENDIF}
+        dic.Add('wait', tpWait);
+        dic.Add('nowait', tpNowait);
+        dic.Add('read', tpRead);
+        dic.Add('write', tpWrite);
+        dic.Add('lockread', tpLockRead);
+        dic.Add('lockwrite', tpLockWrite);
+        dic.Add('verbtime', tpVerbTime);
+        dic.Add('committime', tpCommitTime);
+        dic.Add('ignorelimbo', tpIgnoreLimbo);
+        dic.Add('readcommitted', tpReadCommitted);
+        dic.Add('autocommit', tpAutoCommit);
+        dic.Add('recversion', tpRecVersion);
+        dic.Add('norecversion', tpNoRecVersion);
+        dic.Add('restartrequests', tpRestartRequests);
+        dic.Add('noautoundo', tpNoAutoUndo);
+      {$IFDEF FB20_UP}
+        dic.Add('locktimeout', tpLockTimeout);
+      {$ENDIF}
+        for obj in arr do
+          if ObjectIsType(obj, stString) then
+            if dic.TryGetValue(LowerCase(obj.AsString), prm) then
+              Include(opt, prm);
+      finally
+        dic.Free;
+      end;
+{$IFDEF FB20_UP}
+      if tpLockTimeout in opt then
+        locktimeout := Options.I['locktimeout'];
+{$ENDIF}
+    end;
+    if opt = [] then
+      opt := [tpConcurrency,tpWait,tpWrite];
+
+    CreateTRParams(opt, lockread, lockwrite{$IFDEF FB20_UP}, locktimeout{$ENDIF});
+  end else
+    params := '';
+
   with FConnection, FLibrary do
-    TransactionStart(FTrHandle, FDbHandle);
+    TransactionStart(FTrHandle, FDbHandle, params);
 end;
 
 destructor TDBUIBContext.Destroy;
