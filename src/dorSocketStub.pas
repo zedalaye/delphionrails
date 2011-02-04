@@ -791,7 +791,7 @@ begin
     raise Exception.Create('can''t bind.');
   end;
 
-  if (listen(FSocketHandle, 15) <> 0) then
+  if (listen(FSocketHandle, 200) <> 0) then
   begin
     Stop;
     raise Exception.Create('can''t listen.');

@@ -1012,7 +1012,7 @@ begin
 
 {$IFDEF CONSOLEAPP}
 {$IFDEF DEBUG}
-  Writeln(FParams.AsString);
+  //Writeln(FParams.AsString);
 {$ENDIF}
 {$ENDIF}
 end;
