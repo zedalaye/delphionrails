@@ -135,7 +135,15 @@ type
   function blob(const filename: string): ISuperObject; overload;
   function blob(buffer: Pointer; len: Integer): ISuperObject; overload;
 
+  function GUIDToHex(const g: TGUID): string;
+
 implementation
+
+function GUIDToHex(const g: TGUID): string;
+begin
+  SetLength(Result, sizeof(g) * 2);
+  BinToHex(@g, PChar(Result), sizeof(g));
+end;
 
 function DecodeValue(const s: SOString): ISuperObject; inline;
 begin
