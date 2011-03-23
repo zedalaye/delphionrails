@@ -225,8 +225,8 @@ begin
         begin
           S[i] := #0;
           obj := Result[S];
-          if sep = '&' then
-            value := DecodeValue(PChar(@S[i+1])) else
+//          if sep = '&' then
+//            value := DecodeValue(PChar(@S[i+1])) else
             value := TSuperObject.Create(PSOChar(@S[i+1]));
           if obj = nil then
             Result[S] := value else
@@ -248,8 +248,8 @@ begin
       begin
         value := TSuperObject.Create(S);
         if value = nil then
-          if sep = '&' then
-            value := DecodeValue(PChar(s)) else
+//          if sep = '&' then
+//            value := DecodeValue(PChar(s)) else
             value := TSuperObject.Create(s);
         Result.AsArray.Add(value);
       end;
