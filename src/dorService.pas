@@ -380,9 +380,7 @@ begin
        if not DeleteService(Service) then
          raise Exception.CreateFmt('DeleteService failed - %s', [SysErrorMessage(GetLastError)]);
        CloseServiceHandle(Service);
-     end
-     else
-       raise Exception.CreateFmt('OpenService failed - %s', [SysErrorMessage(GetLastError)]);
+     end;
      CloseServiceHandle(SCManager);
   end
   else
