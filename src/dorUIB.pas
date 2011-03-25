@@ -332,7 +332,7 @@ var
             if FSQLResult.Data.sqlvar[i].SqlSubType > 1 then
               Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsString[i])) else
               Result.AsArray.Add(TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[i])));
-          uftSmallint, uftInteger, uftInt64: Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsInteger[i]));
+          uftSmallint, uftInteger, uftInt64: Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsInt64[i]));
           uftNumeric:
             begin
               if FSQLResult.SQLScale[i] >= -4 then
@@ -372,7 +372,7 @@ var
                SetValue(TSuperObject.Create(FSQLResult.AsString[i])) else
                SetValue(TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[i])));
           uftSmallint, uftInteger, uftInt64:
-            SetValue(TSuperObject.Create(FSQLResult.AsInteger[i]));
+            SetValue(TSuperObject.Create(FSQLResult.AsInt64[i]));
           uftNumeric:
             begin
               if FSQLResult.SQLScale[i] >= -4 then
