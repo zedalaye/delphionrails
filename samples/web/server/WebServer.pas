@@ -31,8 +31,13 @@ begin
   end;
 end;
 
+function GetSLLHandler(socket: LongInt): IReadWrite;
+begin
+  Result := TSSLRWSocket.Create(socket, True, True, 'delphionrails',
+   'server.crt', 'server.key', '') as IReadWrite;
+end;
+
 initialization
-  TSocketServer.CreateServer(81, '0.0.0.0', THTTPConnection);
+  TSocketServer.CreateServer(80, '0.0.0.0', THTTPConnection);
+  TSocketServer.CreateServer(443, '0.0.0.0', THTTPConnection, GetSLLHandler);
 end.
-
-

@@ -17,7 +17,7 @@ unit dorSocketStub;
 
 interface
 uses
-  Windows, Winsock,
+  Windows, Winsock, dorOpenSSL,
   {$IFDEF UNIX}baseunix,{$ENDIF}
   Generics.Collections,
   dorUtils, superobject;
@@ -141,7 +141,30 @@ type
     destructor Destroy; override;
   end;
 
-  TOnSocketStub = reference to function(socket: LongInt): IReadWrite;
+  TSSLRWSocket = class(TInterfacedObject, IReadWrite)
+  private
+    FSocket: LongInt;
+    FOwned: Boolean;
+    FReadTimeout: Cardinal;
+    FWriteTimeout: Cardinal;
+    // SSL
+    FCtx: PSSL_CTX;
+    FSsl: PSSL;
+    FPassword: AnsiString;
+    FConnected: Boolean;
+    procedure CloseSSL;
+  protected
+    function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
+    function Write(var buf; len, Timeout: Cardinal): Cardinal; virtual;
+    procedure Close;
+  public
+    class constructor Create;
+    constructor Create(Socket: LongInt; Owned: Boolean; VerifyCert: Boolean;
+      const password, CertificateFile, PrivateKeyFile, CertCAFile: AnsiString); virtual;
+    destructor Destroy; override;
+  end;
+
+  TOnSocketStub = function(socket: LongInt): IReadWrite;
 
   TAbstractServer = class(TDORThread)
   private
@@ -894,6 +917,160 @@ end;
 procedure TClientStub.Release;
 begin
   FSource := nil;
+end;
+
+{ TSSLRWSocket }
+
+function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
+  this: TSSLRWSocket): Integer; cdecl;
+var
+  password: AnsiString;
+begin
+  password := this.FPassword;
+  if Length(password) > (Size - 1) then
+    SetLength(password, Size - 1);
+  Result := Length(password);
+  Move(PAnsiChar(password)^, buffer^, Result + 1);
+end;
+
+procedure TSSLRWSocket.Close;
+begin
+  if FOwned then
+    CloseSocket(FSocket);
+  FSocket := INVALID_SOCKET;
+end;
+
+procedure TSSLRWSocket.CloseSSL;
+begin
+  FConnected := False;
+  if Fssl <> nil then
+  begin
+    SSL_free(FSsl);
+    FSsl := nil;
+  end;
+  if Fctx <> nil then
+  begin
+
+    SSL_CTX_free(FCtx);
+    FCtx := nil;
+  end;
+end;
+
+constructor TSSLRWSocket.Create(Socket: Integer; Owned: Boolean;
+  VerifyCert: Boolean; const password, CertificateFile,
+  PrivateKeyFile, CertCAFile: AnsiString);
+label
+  error;
+begin
+  inherited Create;
+  FSocket := Socket;
+  FOwned := Owned;
+  FReadTimeout := 0;
+  FWriteTimeout := 0;
+
+  // SSL
+  FCtx := nil;
+  FSsl := nil;
+  FConnected := False;
+
+  FPassword := password;
+  FCtx := SSL_CTX_new(SSLv23_method);
+  SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
+  if VerifyCert then
+    SSL_CTX_set_verify(FCtx, SSL_VERIFY_PEER, nil) else
+    SSL_CTX_set_verify(FCtx, SSL_VERIFY_NONE, nil);
+  SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
+  SSL_CTX_set_default_passwd_cb(FCtx, @SSLPasswordCallback);
+
+  if CertificateFile <> '' then
+    if SSL_CTX_use_certificate_chain_file(FCtx, PAnsiChar(CertificateFile)) <> 1 then
+      if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(CertificateFile), SSL_FILETYPE_PEM) <> 1 then
+        if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(CertificateFile), SSL_FILETYPE_ASN1) <> 1 then
+          goto error;
+
+  if PrivateKeyFile <> '' then
+    if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(PrivateKeyFile), SSL_FILETYPE_PEM) <> 1 then
+      if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(PrivateKeyFile), SSL_FILETYPE_ASN1) <> 1 then
+        goto error;
+
+  if CertCAFile <> '' then
+    if SSL_CTX_load_verify_locations(FCtx, PAnsiChar(CertCAFile), nil) <> 1 then
+      goto error;
+
+  FSsl := SSL_new(FCtx);
+  if FSsl = nil then
+    goto error;
+
+  if SSL_set_fd(FSsl, FSocket) < 1 then
+    goto error;
+
+  if SSL_accept(FSsl) < 1 then
+    goto error;
+
+  FConnected := True;
+  Exit;
+error:
+  CloseSSL;
+end;
+
+class constructor TSSLRWSocket.Create;
+begin
+  SSL_library_init;
+  //SSL_load_error_strings;
+  OPENSSL_add_all_algorithms_noconf;
+  //RAND_screen;
+end;
+
+destructor TSSLRWSocket.Destroy;
+begin
+  Close;
+  inherited;
+end;
+
+function TSSLRWSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
+var
+ p: PByte;
+begin
+  if (FReadTimeout <> Timeout) then
+  begin
+    setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @Timeout, SizeOf(Timeout));
+    FReadTimeout := Timeout;
+  end;
+
+  Result := 0;
+  p := @Buf;
+
+  if FConnected then
+  begin
+    while len > 0 do
+      if SSL_read(FSsl, p, 1) = 1 then
+      begin
+        Dec(len, 1);
+        Inc(p);
+        Inc(Result);
+      end else
+        Break;
+  end else
+    while len > 0 do
+      if Winsock.recv(FSocket, p^, 1, 0) = 1 then
+      begin
+        Dec(len, 1);
+        Inc(p);
+        Inc(Result);
+      end else
+        Break;
+end;
+
+function TSSLRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
+begin
+  if (FReadTimeout <> Timeout) then
+  begin
+    setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
+    FWriteTimeout := Timeout;
+  end;
+  if FConnected then
+    Result := SSL_write(FSsl, @buf, len) else
+    Result := Winsock.send(FSocket, buf, len, 0);
 end;
 
 initialization
