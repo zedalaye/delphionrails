@@ -11,6 +11,7 @@ type
   end;
 
 implementation
+uses dorOpenSSL;
 
 { THTTPConnection }
 
@@ -33,8 +34,9 @@ end;
 
 function GetSLLHandler(socket: LongInt): IReadWrite;
 begin
-  Result := TSSLRWSocket.Create(socket, True, True, 'delphionrails',
-   'server.crt', 'server.key', '') as IReadWrite;
+  Result := TSSLRWSocket.Create(socket, True,
+    SSL_VERIFY_PEER {or SSL_VERIFY_FAIL_IF_NO_PEER_CERT},
+    'delphionrails', 'server.crt', 'server.key', 'cacert.pem') as IReadWrite;
 end;
 
 initialization

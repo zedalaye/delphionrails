@@ -192,10 +192,11 @@ const
   function SSL_CTX_load_verify_locations(ctx: PSSL_CTX; const CAfile: PAnsiChar; const CApath: PAnsiChar):Integer; cdecl; external SSLEAY;
   function SSL_new(ctx: PSSL_CTX):PSSL; cdecl; external SSLEAY;
   procedure SSL_free(ssl: PSSL); cdecl; external SSLEAY;
+  function SSL_connect(ssl: PSSL):Integer; cdecl; external SSLEAY;
   function SSL_accept(ssl: PSSL):Integer; cdecl; external SSLEAY;
   function SSL_shutdown(ssl: PSSL):Integer; cdecl; external SSLEAY;
-  function SSL_read(ssl: PSSL; buf: PByte; num: Integer): Integer; cdecl; external SSLEAY;
-  function SSL_write(ssl: PSSL; const buf: PByte; num: Integer): Integer; cdecl; external SSLEAY;
+  function SSL_read(ssl: PSSL; buf: Pointer; num: Integer): Integer; cdecl; external SSLEAY;
+  function SSL_write(ssl: PSSL; const buf: Pointer; num: Integer): Integer; cdecl; external SSLEAY;
   procedure SSL_CTX_set_verify(ctx: PSSL_CTX; mode: Integer; arg2: Pointer); cdecl; external SSLEAY;
   procedure OPENSSL_add_all_algorithms_noconf; cdecl; external LIBEAY;
 
@@ -256,5 +257,10 @@ begin
     OutStream.Write(outbuffer, sizeof(TAesBlock)-m) else
     OutStream.Write(outbuffer, sizeof(TAesBlock));
 end;
+
+initialization
+  SSL_library_init;
+  //SSL_load_error_strings;
+  OPENSSL_add_all_algorithms_noconf;
 
 end.

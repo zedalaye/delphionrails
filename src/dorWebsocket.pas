@@ -1,7 +1,7 @@
 unit dorWebsocket;
 
 interface
-uses SysUtils, WinSock, dorHTTP;
+uses SysUtils, WinSock, dorHTTP, dorOpenSSL;
 
 type
   TWSMessage = reference to procedure(const msg: string);
@@ -44,7 +44,17 @@ type
     FOnAddField: TOnHTTPAddField;
     FReadyState: TWSReadyState;
     FSocket: TSocket;
+    // SSL
+    FCtx: PSSL_CTX;
+    FSsl: PSSL;
+    FPassword: AnsiString;
+    FCertificateFile: AnsiString;
+    FPrivateKeyFile: AnsiString;
+    FCertCAFile: AnsiString;
     procedure Listen;
+    procedure HTTPWriteLine(const data: RawByteString);
+    function SockSend(var Buf; len, flags: Integer): Integer;
+    function SockRecv(var Buf; len, flags: Integer): Integer;
   protected
     function getReadyState: TWSReadyState; virtual;
     procedure Send(const data: string);
@@ -61,7 +71,9 @@ type
     procedure SetOnMessage(const value: TWSMessage);
     procedure SetOnAddField(const value: TOnHTTPAddField);
   public
-    constructor Create; virtual;
+    constructor Create(const password: AnsiString = '';
+      const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
+      const CertCAFile: AnsiString = ''); virtual;
     destructor Destroy; override;
     class constructor Create;
     class destructor Destroy;
@@ -104,9 +116,9 @@ type
 (******************************************************************************)
 
 function WS_ParseURL(const uri: PChar; out domain: AnsiString; out port: Word;
-  out get: RawByteString): Boolean;
+  out get: RawByteString; out ssl: Boolean): Boolean;
 type
-  TState = (sStart, sDomain, sPort);
+  TState = (sStart, sDomain, sPort, sSSL);
 var
   p, d, dot1, dot2: PChar;
   s: TState;
@@ -141,6 +153,7 @@ begin
   domain := 'localhost';
   port := 80;
   get := '/';
+  ssl := False;
 
   d := nil;
   dot1 := nil;
@@ -156,10 +169,35 @@ begin
           case o of
             0: case p^ of 'w', 'W': Inc(o) else Exit(False) end;
             1: case p^ of 's', 'S': Inc(o) else Exit(False) end;
-            2: if (p^ = ':') then Inc(o) else Exit(False);
+            2: case p^ of
+                 's', 'S':
+                   begin
+                     s := sSSL;
+                     port := 443;
+                     Inc(o);
+                   end;
+                 ':': Inc(o);
+               else
+                 Exit(False);
+               end;
             3: if (p^ = '/') then Inc(o) else Exit(False);
             4: if (p^ = '/') then
                begin
+                 s := sDomain;
+                 o := 0; pushdot
+               end else
+                 Exit(False);
+          end;
+        sSSL:
+          case o of
+            0: case p^ of 'w', 'W': Inc(o) else Exit(False) end;
+            1: case p^ of 's', 'S': Inc(o) else Exit(False) end;
+            2: case p^ of 's', 'S': Inc(o) else Exit(False) end;
+            3: case p^ of ':'     : Inc(o) else Exit(False) end;
+            4: if (p^ = '/') then Inc(o) else Exit(False);
+            5: if (p^ = '/') then
+               begin
+                 ssl := True;
                  s := sDomain;
                  o := 0; pushdot
                end else
@@ -283,6 +321,18 @@ begin
   number := bigendian(number)
 end;
 
+function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
+  this: TWebSocket): Integer; cdecl;
+var
+  password: AnsiString;
+begin
+  password := this.FPassword;
+  if Length(password) > (Size - 1) then
+    SetLength(password, Size - 1);
+  Result := Length(password);
+  Move(PAnsiChar(password)^, buffer^, Result + 1);
+end;
+
 { TWebSocket }
 
 procedure TWebSocket.Close;
@@ -291,25 +341,37 @@ begin
   begin
     FReadyState := rsClosing;
     closesocket(FSocket);
+    Sleep(1); // let the listen thread close
     FSocket := INVALID_SOCKET;
     FReadyState := rsClosed;
     if Assigned(FOnClose) then
       FOnClose();
   end;
+  if Fssl <> nil then
+  begin
+    SSL_free(FSsl);
+    FSsl := nil;
+  end;
+  if Fctx <> nil then
+  begin
+    SSL_CTX_free(FCtx);
+    FCtx := nil;
+  end;
 end;
 
-procedure HTTPWriteLine(socket: TSocket; const data: RawByteString);
+procedure TWebSocket.HTTPWriteLine(const data: RawByteString);
 var
   rb: RawByteString;
 begin
   rb := RawByteString(data) + #13#10;
-  WinSock.send(socket, PAnsiChar(rb)^, Length(rb), 0);
+  SockSend(PAnsiChar(rb)^, Length(rb), 0);
 end;
 
 procedure TWebSocket.Open(const url: string; const origin: RawByteString = 'null');
 var
   domain: AnsiString;
   uri: RawByteString;
+  ssl: Boolean;
   port: Word;
   host: PHostEnt;
   addr: TSockAddrIn;
@@ -329,7 +391,7 @@ begin
 
   FReadyState := rsConnecting;
   // parse
-  if not WS_ParseURL(PChar(url), domain, port, uri) then
+  if not WS_ParseURL(PChar(url), domain, port, uri, ssl) then
   begin
     if Assigned(FOnError) then
       FOnError(Format('Can''t parse url: %s', [url]));
@@ -367,31 +429,80 @@ begin
       Exit;
     end;
 
+    if ssl then
+    begin
+      FCtx := SSL_CTX_new(SSLv23_method);
+      SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
+
+      SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
+      SSL_CTX_set_default_passwd_cb(FCtx, @SSLPasswordCallback);
+
+      if FCertificateFile <> '' then
+        if SSL_CTX_use_certificate_chain_file(FCtx, PAnsiChar(FCertificateFile)) <> 1 then
+          if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_PEM) <> 1 then
+            if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_ASN1) <> 1 then
+            begin
+              if Assigned(FOnError) then
+                FOnError('SSL: Can''t use certificate');
+              Exit;
+            end;
+
+      if FPrivateKeyFile <> '' then
+        if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_PEM) <> 1 then
+          if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_ASN1) <> 1 then
+          begin
+            if Assigned(FOnError) then
+              FOnError('SSL: Can''t use key file');
+            Exit;
+          end;
+
+      if FCertCAFile <> '' then
+        if SSL_CTX_load_verify_locations(FCtx, PAnsiChar(FCertCAFile), nil) <> 1 then
+        begin
+          if Assigned(FOnError) then
+            FOnError('SSL: Can''t use CA Cert');
+          Exit;
+        end;
+
+      FSsl := SSL_new(FCtx);
+      SSL_set_fd(FSsl, FSocket);
+      if SSL_connect(FSsl) <> 1 then
+      begin
+        if Assigned(FOnError) then
+          FOnError('SSL: connection error');
+        Exit;
+      end;
+    end;
+
     //uri := HTTPEncode(uri);
-    HTTPWriteLine(FSocket, 'GET ' + uri + ' HTTP/1.1');
-    HTTPWriteLine(FSocket, 'Upgrade: WebSocket');
-    HTTPWriteLine(FSocket, 'Connection: Upgrade');
-    HTTPWriteLine(FSocket, 'Host: ' + domain);
-    HTTPWriteLine(FSocket, 'Origin: ' + origin);
-    HTTPWriteLine(FSocket, 'Sec-WebSocket-Key1: ' + RawbyteString(WS_GenerateKeyNumber(challenge.num1)));
-    HTTPWriteLine(FSocket, 'Sec-WebSocket-Key2: ' + RawbyteString(WS_GenerateKeyNumber(challenge.num2)));
+    HTTPWriteLine('GET ' + uri + ' HTTP/1.1');
+    HTTPWriteLine('Upgrade: WebSocket');
+    HTTPWriteLine('Connection: Upgrade');
+    HTTPWriteLine('Host: ' + domain);
+    HTTPWriteLine('Origin: ' + origin);
+    HTTPWriteLine('Sec-WebSocket-Key1: ' + RawbyteString(WS_GenerateKeyNumber(challenge.num1)));
+    HTTPWriteLine('Sec-WebSocket-Key2: ' + RawbyteString(WS_GenerateKeyNumber(challenge.num2)));
     if Assigned(FOnAddField) then
       FOnAddField(function (const key: string; const value: RawByteString): Boolean begin
-        HTTPWriteLine(FSocket, RawbyteString(key) + ': ' + value);
+        HTTPWriteLine(RawbyteString(key) + ': ' + value);
         Result := True;
       end);
 
   //  writeline('Sec-WebSocket-Protocol: sample');
-    HTTPWriteLine(FSocket, '');
+    HTTPWriteLine('');
     for i := 0 to 7 do
       challenge.key3[i] := Random(256);
-    WinSock.send(FSocket, challenge.key3, SizeOf(challenge.key3), 0);
+    SockSend(challenge.key3, SizeOf(challenge.key3), 0);
 
     dic := TDictionary<string,RawByteString>.Create;
     try
       ReadTimeOut := 3000;
       setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
-      if not HTTPParse(FSocket,
+      if not HTTPParse(
+        function (var buf; len: Integer): Integer
+        begin
+          Result := SockRecv(buf, len, 0)
+        end,
         function (code: Integer; const mesg: RawByteString): Boolean
           begin
             Result := code = 101;
@@ -432,7 +543,7 @@ begin
         end;
 
       MD5(@challenge, SizeOf(challenge), @md5_expected);
-      if recv(FSocket, md5_returned, SizeOf(md5_returned), 0) <> SizeOf(md5_returned) then
+      if SockRecv(md5_returned, SizeOf(md5_returned), 0) <> SizeOf(md5_returned) then
       begin
         if Assigned(FOnError) then
           FOnError('Server didn''t send challenge response');
@@ -480,11 +591,18 @@ begin
   inherited;
 end;
 
-constructor TWebSocket.Create;
+constructor TWebSocket.Create(const password, CertificateFile,
+  PrivateKeyFile, CertCAFile: AnsiString);
 begin
   inherited Create;
   FReadyState := rsClosed;
   FSocket := INVALID_SOCKET;
+  FCtx := nil;
+  FSsl := nil;
+  FPassword := password;
+  FCertificateFile := CertificateFile;
+  FPrivateKeyFile := PrivateKeyFile;
+  FCertCAFile := CertCAFile;
 end;
 
 function TWebSocket.getReadyState: TWSReadyState;
@@ -501,7 +619,7 @@ begin
       rb: RawByteString;
     begin
       st := True;
-      while (FReadyState = rsOpen) and (recv(FSocket, c, 1, 0) = 1) do
+      while (FReadyState = rsOpen) and (SockRecv(c, 1, 0) = 1) do
       begin
         if st then
           case c of
@@ -540,7 +658,7 @@ var
   rb: RawByteString;
 begin
   rb := #$00 + RawByteString(UTF8String(data)) + #$FF;
-  WinSock.send(FSocket, PAnsiChar(rb)^, Length(rb), 0);
+  SockSend(PAnsiChar(rb)^, Length(rb), 0);
 end;
 
 procedure TWebSocket.SetOnAddField(const value: TOnHTTPAddField);
@@ -566,6 +684,20 @@ end;
 procedure TWebSocket.SetOnOpen(const value: TProc);
 begin
   FOnOpen := value;
+end;
+
+function TWebSocket.SockSend(var Buf; len, flags: Integer): Integer;
+begin
+  if FSsl <> nil then
+    Result := SSL_write(FSsl, @Buf, len) else
+    Result := WinSock.send(FSocket, Buf, len, flags);
+end;
+
+function TWebSocket.SockRecv(var Buf; len, flags: Integer): Integer;
+begin
+  if FSsl <> nil then
+    Result := SSL_read(FSsl, @Buf, len) else
+    Result := recv(FSocket, Buf, len, flags);
 end;
 
 class destructor TWebSocket.Destroy;
@@ -599,9 +731,5 @@ begin
 end;
 
 {$ENDREGION}
-
-
-
-
-
 end.
+

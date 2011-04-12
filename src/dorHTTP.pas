@@ -4,11 +4,13 @@ interface
 uses WinSock;
 
 type
+  TOnHTTPReceive = reference to function(var Buf; len: Integer): Integer;
   TOnHTTPField = reference to function(const key: string; const value: RawByteString): Boolean;
   TOnHTTPAddField = reference to procedure(const add: TOnHTTPField);
   TOnHTTPResponse = reference to function(code: Integer; const mesg: RawByteString): Boolean;
 
-function HTTPParse(socket: TSocket; const onResponse: TOnHTTPResponse;
+
+function HTTPParse(receive: TOnHTTPReceive; const onResponse: TOnHTTPResponse;
   const onfield: TOnHTTPField): Boolean;
 
 function HTTPEncode(const AStr: string): RawByteString;
@@ -23,7 +25,7 @@ uses SysUtils;
 (* parse HTTP header fields                                                   *)
 (******************************************************************************)
 
-function HTTPParse(socket: TSocket;
+function HTTPParse(receive: TOnHTTPReceive;
   const onResponse: TOnHTTPResponse;
   const onfield: TOnHTTPField): Boolean;
 var
@@ -33,7 +35,7 @@ var
 begin
   st := 0;
   pos := 0;
-  while WinSock.recv(socket, c, 1, 0) = 1 do
+  while receive(c, 1) = 1 do
   begin
     case st of
       // proto HTTP
