@@ -174,6 +174,8 @@ const
   PSSL = Pointer;
   PSSL_CTX = Pointer;
   PSSL_METHOD = Pointer;
+  PX509 = Pointer;
+  PX509_NAME = Pointer;
 
   function SSL_library_init: Integer; cdecl; external SSLEAY;
   function SSL_CTX_set_cipher_list(arg0: PSSL_CTX; str: PAnsiChar): Integer; cdecl; external SSLEAY;
@@ -199,6 +201,20 @@ const
   function SSL_write(ssl: PSSL; const buf: Pointer; num: Integer): Integer; cdecl; external SSLEAY;
   procedure SSL_CTX_set_verify(ctx: PSSL_CTX; mode: Integer; arg2: Pointer); cdecl; external SSLEAY;
   procedure OPENSSL_add_all_algorithms_noconf; cdecl; external LIBEAY;
+
+  function SSL_get_peer_certificate(ssl: PSSL): PX509; cdecl; external SSLEAY;
+  procedure X509_free(x509: PX509); cdecl; external LIBEAY;
+  function X509_NAME_oneline(name: PX509_NAME; buf: PAnsiChar; size: Integer): PAnsiChar; cdecl; external LIBEAY;
+  function X509_get_subject_name(x509: PX509): PX509_NAME; cdecl; external LIBEAY;
+  function X509_get_issuer_name(x509: PX509): PX509_NAME; cdecl; external LIBEAY;
+
+type
+  TOnX509KeyValue = reference to function(const key, value: AnsiString): Boolean;
+
+  function X509NameOneline(const name: PX509_NAME): AnsiString;
+  function X509NameParse(const name: PX509_NAME; const onkey: TOnX509KeyValue): Boolean;
+  function X509NameFind(const name: PX509_NAME; const key: AnsiString): AnsiString;
+
 
 implementation
 
@@ -258,9 +274,97 @@ begin
     OutStream.Write(outbuffer, sizeof(TAesBlock));
 end;
 
+function X509NameOneline(const name: PX509_NAME): AnsiString;
+var
+  buff: array[0..1024] of AnsiChar;
+begin
+  if name <> nil then
+    Result := X509_NAME_oneline(name, @buff, SizeOf(buff)) else
+    Result := '';
+end;
+
+function X509NameParse(const name: PX509_NAME; const onkey: TOnX509KeyValue): Boolean;
+type
+  TState = (stStart, stkey, stValue);
+var
+  buff: array[0..1024] of AnsiChar;
+  p: PAnsiChar;
+  st: TState;
+  key, value: AnsiString;
+begin
+  if (name <> nil) and Assigned(onkey) then
+  begin
+    Result := True;
+    p := X509_NAME_oneline(name, @buff, SizeOf(buff));
+    if p <> nil then
+    begin
+      st := stStart;
+      while True do
+      begin
+        case st of
+          stStart:
+            if (p^ = '/') then
+            begin
+              key := '';
+              st := stkey;
+            end else
+              Exit(False);
+          stkey:
+            case p^ of
+              '=':
+                begin
+                  value := '';
+                  st := stValue;
+                end;
+              #0: Exit(False);
+            else
+              key := key + p^;
+            end;
+          stValue:
+            case p^ of
+              '/':
+                begin
+                  if not onkey(key, value) then
+                    Exit(True);
+                  key := '';
+                  st := stkey;
+                end;
+               #0:
+                 begin
+                   onkey(key, value);
+                   Exit(True);
+                 end;
+            else
+              value := value + p^;
+            end;
+        end;
+        Inc(p);
+      end;
+    end;
+  end else
+    Result := False;
+end;
+
+function X509NameFind(const name: PX509_NAME; const key: AnsiString): AnsiString;
+var
+  return: AnsiString;
+begin
+  return := '';
+  X509NameParse(name,
+    function(const k, v: AnsiString): Boolean
+    begin
+      if k = key then
+      begin
+        Return := v;
+        Result := False;
+      end else
+        Result := True;
+    end);
+  Result := return;
+end;
+
 initialization
   SSL_library_init;
-  //SSL_load_error_strings;
   OPENSSL_add_all_algorithms_noconf;
 
 end.

@@ -123,6 +123,10 @@ type
   ['{EA82DA8F-F2AB-4B93-AAAA-E388C9E72F20}']
     function Read(var buf; len, Timeout: Cardinal): Cardinal;
     function Write(var buf; len, Timeout: Cardinal): Cardinal;
+    function IsSSL: Boolean;
+    function HavePeerCertificate: Boolean;
+    function SSLSubject(const key: AnsiString): AnsiString;
+    function SSLIssuer(const key: AnsiString): AnsiString;
     procedure Close;
   end;
 
@@ -135,6 +139,10 @@ type
   protected
     function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
     function Write(var buf; len, Timeout: Cardinal): Cardinal; virtual;
+    function IsSSL: Boolean; virtual;
+    function HavePeerCertificate: Boolean; virtual;
+    function SSLSubject(const key: AnsiString): AnsiString; virtual;
+    function SSLIssuer(const key: AnsiString): AnsiString; virtual;
     procedure Close;
   public
     constructor Create(Socket: LongInt; Owned: Boolean); virtual;
@@ -150,12 +158,17 @@ type
     // SSL
     FCtx: PSSL_CTX;
     FSsl: PSSL;
+    FX509: PX509;
     FPassword: AnsiString;
     FConnected: Boolean;
     procedure CloseSSL;
   protected
     function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
     function Write(var buf; len, Timeout: Cardinal): Cardinal; virtual;
+    function IsSSL: Boolean; virtual;
+    function HavePeerCertificate: Boolean; virtual;
+    function SSLSubject(const key: AnsiString): AnsiString; virtual;
+    function SSLIssuer(const key: AnsiString): AnsiString; virtual;
     procedure Close;
   public
     constructor Create(Socket: LongInt; Owned: Boolean; Verify: Integer;
@@ -743,6 +756,16 @@ begin
   inherited;
 end;
 
+function TRWSocket.HavePeerCertificate: Boolean;
+begin
+  Result := False;
+end;
+
+function TRWSocket.IsSSL: Boolean;
+begin
+  Result := False;
+end;
+
 function TRWSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
 var
  p: PByte;
@@ -765,6 +788,16 @@ begin
       Break;
 end;
 
+
+function TRWSocket.SSLIssuer(const key: AnsiString): AnsiString;
+begin
+  Result := '';
+end;
+
+function TRWSocket.SSLSubject(const key: AnsiString): AnsiString;
+begin
+  Result := '';
+end;
 
 function TRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
 begin
@@ -942,6 +975,7 @@ begin
   begin
     CloseSocket(FSocket);
     Sleep(1);
+    CloseSSL;
   end;
   FSocket := INVALID_SOCKET;
 end;
@@ -949,6 +983,11 @@ end;
 procedure TSSLRWSocket.CloseSSL;
 begin
   FConnected := False;
+  if FX509 <> nil then
+  begin
+    X509_free(FX509);
+    FX509 := nil;
+  end;
   if Fssl <> nil then
   begin
     SSL_free(FSsl);
@@ -1010,6 +1049,8 @@ begin
   if SSL_accept(FSsl) <> 1 then
     goto error;
 
+  FX509 := SSL_get_peer_certificate(FSsl);
+
   FConnected := True;
   Exit;
 error:
@@ -1020,6 +1061,16 @@ destructor TSSLRWSocket.Destroy;
 begin
   Close;
   inherited;
+end;
+
+function TSSLRWSocket.HavePeerCertificate: Boolean;
+begin
+  Result := FX509 <> nil;
+end;
+
+function TSSLRWSocket.IsSSL: Boolean;
+begin
+  Result := True;
 end;
 
 function TSSLRWSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
@@ -1047,6 +1098,20 @@ begin
         Break;
   end else
     Result := 0;
+end;
+
+function TSSLRWSocket.SSLIssuer(const key: AnsiString): AnsiString;
+begin
+  if FX509 <> nil then
+    Result := X509NameFind(X509_get_issuer_name(FX509), key) else
+    Result := '';
+end;
+
+function TSSLRWSocket.SSLSubject(const key: AnsiString): AnsiString;
+begin
+  if FX509 <> nil then
+    Result := X509NameFind(X509_get_subject_name(FX509), key) else
+    Result := '';
 end;
 
 function TSSLRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;

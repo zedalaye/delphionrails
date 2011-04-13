@@ -34,6 +34,10 @@ type
     class function Context: TSuperRttiContext; virtual;
     class procedure Redirect(const location: string); overload;
     class procedure Redirect(const controler, action: string; const id: string = ''); overload;
+    class function HaveSLL: Boolean; virtual;
+    class function HavePeerCertificate: Boolean; virtual;
+    class function SSLSubject(const key: AnsiString): AnsiString; virtual;
+    class function SSLIssuer(const key: AnsiString): AnsiString; virtual;
   public
     procedure Invoke; virtual;
   end;
@@ -51,6 +55,16 @@ end;
 class function TActionController.ErrorCode: Integer;
 begin
   Result := (CurrentThread as THTTPStub).ErrorCode;
+end;
+
+class function TActionController.HavePeerCertificate: Boolean;
+begin
+  Result := (CurrentThread as TClientStub).Source.HavePeerCertificate;
+end;
+
+class function TActionController.HaveSLL: Boolean;
+begin
+  Result := (CurrentThread as TClientStub).Source.IsSSL;
 end;
 
 procedure TActionController.Invoke;
@@ -120,6 +134,16 @@ end;
 class procedure TActionController.SetErrorCode(code: Integer);
 begin
   (CurrentThread as THTTPStub).ErrorCode := code;
+end;
+
+class function TActionController.SSLIssuer(const key: AnsiString): AnsiString;
+begin
+  Result := (CurrentThread as TClientStub).Source.SSLIssuer(key);
+end;
+
+class function TActionController.SSLSubject(const key: AnsiString): AnsiString;
+begin
+  Result := (CurrentThread as TClientStub).Source.SSLSubject(key);
 end;
 
 end.
