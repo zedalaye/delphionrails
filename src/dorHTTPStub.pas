@@ -280,6 +280,7 @@ begin
     obj.SaveTo(StreamA);
 
     // zlib
+    StreamA.Seek(0, soFromBeginning);
     CompressStream(StreamA, StreamB, 4);
 
     // aes
@@ -316,6 +317,7 @@ begin
 
     // zlib
     StreamA.Seek(0, soFromBeginning);
+    StreamB.Seek(0, soFromBeginning);
     DecompressStream(StreamB, StreamA);
     StreamA.Size := StreamA.Position;
 
@@ -1229,6 +1231,7 @@ begin
   begin
     streamout := TPooledMemoryStream.Create;
     try
+      stream.Seek(0, soFromBeginning);
       CompressStream(stream, streamout, FCompressLevel);
       // don't send first 2 bytes !
       WriteLine(format(AnsiString('Content-Length: %d'), [streamout.size - 2]));
