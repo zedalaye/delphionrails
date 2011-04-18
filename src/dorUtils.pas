@@ -534,7 +534,8 @@ type
   TGzFlag = (fText, fHcrc, fExtra, fName, fComment);
   TGzFlags = set of TGzFlag;
   TGzHeader = packed record
-    ID: Word;
+    ID1: Byte;
+    ID2: Byte;
     CM: Byte;
     FLG: TGzFlags;
     MTIME: array[0..3] of Byte;
@@ -547,7 +548,7 @@ var
   c: AnsiChar;
 begin
   if inStream.Read(header, SizeOf(header)) <> SizeOf(header) then Exit(False);
-  if header.Id <> $8B1F then Exit(False);
+  if (header.ID1 <> 31) or (header.ID2 <> 139) then Exit(False);
   if header.CM <> 8 then Exit(False);
 
   if fExtra in header.FLG then

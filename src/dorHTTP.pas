@@ -4,28 +4,164 @@ interface
 uses WinSock;
 
 type
-  TOnHTTPReceive = reference to function(var Buf; len: Integer): Integer;
-  TOnHTTPField = reference to function(const key: string; const value: RawByteString): Boolean;
+  TOnHTTPReadWrite = reference to function(var Buf; len: Integer): Integer;
+  TOnHTTPField = reference to function(const key: RawByteString; const value: RawByteString): Boolean;
   TOnHTTPAddField = reference to procedure(const add: TOnHTTPField);
   TOnHTTPResponse = reference to function(code: Integer; const mesg: RawByteString): Boolean;
+  TOnHTTPHeaderField = reference to function(group: Integer; const key: RawByteString; const value: RawByteString): Boolean;
 
 
-function HTTPParse(receive: TOnHTTPReceive; const onResponse: TOnHTTPResponse;
+function HTTPParse(const receive: TOnHTTPReadWrite; const onResponse: TOnHTTPResponse;
   const onfield: TOnHTTPField): Boolean;
 
 function HTTPEncode(const AStr: string): RawByteString;
 function HTTPDecode(const AStr: string): RawByteString;
 function HttpResponseStrings(code: integer): RawByteString;
+function HTTPParseURL(const uri: PChar; out protocol: string;
+  out domain: AnsiString; out port: Word; out path: RawByteString): Boolean;
+function HTTPParseHeader(const header: RawByteString; const onfield: TOnHTTPHeaderField): Boolean;
+function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
 
 implementation
-uses SysUtils;
+uses SysUtils, dorPunyCode;
+
+function HTTPParseURL(const uri: PChar; out protocol: string;
+  out domain: AnsiString; out port: Word; out path: RawByteString): Boolean;
+type
+  TState = (sStart, stSlash, sDomain, sPort);
+var
+  p, d, dot1, dot2: PChar;
+  s: TState;
+  o: Integer;
+  procedure pushdot;
+  begin
+    if dot1 = nil then
+      dot1 := p else
+      begin
+        dot2 := dot1;
+        dot1 := p;
+      end;
+  end;
+
+  procedure getdomain;
+  var
+    len: Cardinal;
+  begin
+    if dot2 = nil then pushdot;
+    Inc(dot2);
+    if (PunycodeEncode(dot1-dot2, PPunyCode(dot2), len) = pcSuccess) and
+      (Cardinal(dot1-dot2 + 1) <> len) then
+    begin
+      SetLength(domain, len);
+      PunycodeEncode(dot1-dot2, PPunyCode(dot2), len, PByte(domain));
+      domain := AnsiString(Copy(d, 0, dot2 - d)) + 'xn--' +
+        domain + AnsiString(Copy(dot1, 0, p - dot1));
+    end else
+      SetString(domain, d,  p - d);
+  end;
+begin
+  protocol := '';
+  domain := 'localhost';
+  port := 0;
+  path := '/';
+
+  d := nil;
+  dot1 := nil;
+  dot2 := nil;
+  p := uri;
+  s := sStart;
+  o := 0;
+
+  while True do
+    begin
+      case s of
+        sStart:
+          case p^ of
+            ':':
+              begin
+                protocol := LowerCase(protocol);
+                s := stSlash;
+                o := 0;
+              end;
+            #0 : Exit(False);
+          else
+            protocol := protocol + p^;
+          end;
+        stSlash:
+          case o of
+            0: if p^ = '/' then Inc(o) else Exit(False);
+            1: if p^ = '/' then
+               begin
+                 s := sDomain;
+                 o := 0;
+                 pushdot;
+               end else
+                 Exit(False);
+          else
+            Exit(False)
+          end;
+        sDomain:
+          case o of
+            0:
+             begin
+               case p^ of
+                 #0: Exit(True);
+                 '.': dot1 := p;
+               end;
+               d := p;
+               inc(o);
+             end
+          else
+            case p^ of
+              ':':
+                begin
+                  if p - d >= 1 then
+                    getdomain;
+                  s := sPort;
+                  port := 0;
+                  o := 0;
+                end;
+              '/':
+                begin
+                  if p - d >= 1 then
+                    getdomain;
+                  path := HTTPEncode(p);
+                  Exit(True);
+                end;
+              '.': pushdot;
+              #0 :
+                begin
+                  if p - d >= 1 then
+                    getdomain;
+                  Exit(True);
+                end;
+            end;
+          end;
+        sPort:
+          case p^ of
+            '0'..'9': port := port * 10 + Ord(p^) - Ord('0');
+            '/':
+              begin
+                path := HTTPEncode(p);
+                Exit(True);
+              end;
+            #0: Exit(True);
+          else
+            Exit(False);
+          end;
+      else
+        Exit(False);
+      end;
+      Inc(p);
+    end;
+end;
 
 (******************************************************************************)
 (* HTTPParse                                                                  *)
 (* parse HTTP header fields                                                   *)
 (******************************************************************************)
 
-function HTTPParse(receive: TOnHTTPReceive;
+function HTTPParse(const receive: TOnHTTPReadWrite;
   const onResponse: TOnHTTPResponse;
   const onfield: TOnHTTPField): Boolean;
 var
@@ -49,7 +185,7 @@ begin
              4: if c <> '/' then Exit(False);
              5: if c <> '1' then Exit(False);
              6: if c <> '.' then Exit(False);
-             7: if c <> '1' then Exit(False); // only 1.1 have upgrade
+             7: if not (c in ['0', '1']) then Exit(False);
              8: if (c = ' ') then begin st := 1; pos := 0; Continue; end else Exit(False);
            end;
            inc(pos);
@@ -90,7 +226,7 @@ begin
       // field name
       4:
         case c of
-          'a'..'z', 'A'..'Z', '0'..'1', '-': key := key + c;
+          'a'..'z', 'A'..'Z', '0'..'9', '-': key := key + c;
           ':': st := 5;
           #13: st := -1;
         else
@@ -111,7 +247,7 @@ begin
          begin
            st := 4;
            if Assigned(onfield) then
-             if not onfield(string(key), value) then
+             if not onfield(key, value) then
                Exit(False);
            key := '';
            value := '';
@@ -191,6 +327,211 @@ begin
     Inc(Sp);
   end;
   SetLength(Result, Rp - PAnsiChar(Result));
+end;
+
+function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
+type
+  TState = (stStart, stCR1, stLF1, stChunk, stCR2, stLF2, stCR3, stLF3);
+label
+  redo;
+var
+  c: AnsiChar;
+  st: TState;
+  size, len, rcv: Integer;
+  buff: array[0..1023] of AnsiChar;
+begin
+  st := stStart;
+  len := 0;
+  while True do
+  begin
+    if read(c, 1) <> 1 then Exit(False);
+redo:
+    case st of
+      stStart:
+        case c of
+          'A'..'F': len := (len * 16) + (Ord(c) - 55);
+          'a'..'f': len := (len * 16) + (Ord(c) - 87);
+          '0'..'9': len := (len * 16) + (Ord(c) - 48);
+          #13: st := stLF1;
+        else
+          st := stCR1;
+        end;
+      stCR1: if c = #13 then st := stLF1;
+      stLF1: if c = #10 then
+        begin
+          st := stChunk;
+          goto redo;
+        end else Exit(False);
+      stChunk:
+        begin
+          size := len;
+          while size > 0 do
+          begin
+            if size >= SizeOf(buff) then
+            begin
+              rcv := read(buff, SizeOf(buff));
+              if rcv <> SizeOf(buff) then
+                Exit(False);
+            end else
+            begin
+              rcv := read(buff, size);
+              if rcv <> size then
+                Exit(False);
+            end;
+            Dec(size, rcv);
+            Write(buff, rcv);
+          end;
+          st := stCR2;
+        end;
+      stCR2:
+        case c of
+          #13: st := stLF2;
+          #10:
+            begin
+              st := stLF2;
+              goto redo;
+            end
+        else
+          Exit(False);
+        end;
+      stLF2:
+        if c = #10 then
+        begin
+          if len > 0 then
+          begin
+            st := stStart;
+            len := 0;
+          end else
+            Exit(True);
+        end else
+          Exit(False);
+    end;
+  end;
+end;
+
+function HTTPParseHeader(const header: RawByteString; const onfield: TOnHTTPHeaderField): Boolean;
+const
+  delimiters = [';', '=', ',', ' ', #0];
+type
+  TState = (stStart, stEat, stKey, stKeyEnd, stValue, stValueEnd);
+var
+  group: Integer;
+  p: PAnsiChar;
+  st, saved: TState;
+  k, v: RawByteString;
+label
+  redo;
+begin
+  group := 0;
+  p := PAnsiChar(header);
+  st := stEat;
+  saved := stStart;
+  while True do
+  begin
+redo:
+    case st of
+      stEat:
+        begin
+          if p^ <> ' ' then
+          begin
+            st := saved;
+            goto redo;
+          end;
+        end;
+      stStart:
+        case p^ of
+          ';':
+            begin
+              inc(group);
+              st := stEat;
+              saved := stStart;
+            end;
+          #0 : Exit(True);
+        else
+          st := stEat;
+          saved := stKey;
+          goto redo;
+        end;
+      stKey:
+        if not (p^ in delimiters) then
+          k := k + p^ else
+          begin
+            st := stEat;
+            saved := stKeyEnd;
+            goto redo;
+          end;
+      stKeyEnd:
+        case p^ of
+          ';':
+            begin
+              if not onfield(group, k, '') then
+                Exit(True);
+              Inc(group);
+              k := '';
+              st := stEat;
+              saved := stKey;
+            end;
+          ',':
+            begin
+              if not onfield(group, k, '') then
+                Exit(True);
+              k := '';
+              st := stEat;
+              saved := stKey;
+            end;
+          '=':
+            begin
+              st := stEat;
+              saved := stValue;
+            end;
+          #0:
+            begin
+              onfield(group, k, '');
+              Exit(True);
+            end;
+        else
+          Exit(False);
+        end;
+      stValue:
+        if not (p^ in delimiters) then
+          v := v + p^ else
+          begin
+            st := stEat;
+            saved := stValueEnd;
+            goto redo;
+          end;
+      stValueEnd:
+        case p^ of
+          ';':
+            begin
+              if not onfield(group, k, v) then
+                Exit(True);
+              Inc(group);
+              k := '';
+              v := '';
+              st := stEat;
+              saved := stKey;
+            end;
+          ',':
+            begin
+              if not onfield(group, k, v) then
+                Exit(True);
+              k := '';
+              v := '';
+              st := stEat;
+              saved := stKey;
+            end;
+          #0:
+            begin
+              onfield(group, k, v);
+              Exit(True);
+            end;
+        else
+          Exit(False);
+        end;
+    end;
+    inc(p);
+  end;
 end;
 
 function HttpResponseStrings(code: integer): RawByteString;

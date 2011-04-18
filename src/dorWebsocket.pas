@@ -115,150 +115,6 @@ type
 (* WEBSOCKET                                                                  *)
 (******************************************************************************)
 
-function WS_ParseURL(const uri: PChar; out domain: AnsiString; out port: Word;
-  out get: RawByteString; out ssl: Boolean): Boolean;
-type
-  TState = (sStart, sDomain, sPort, sSSL);
-var
-  p, d, dot1, dot2: PChar;
-  s: TState;
-  o: Integer;
-  procedure pushdot;
-  begin
-    if dot1 = nil then
-      dot1 := p else
-      begin
-        dot2 := dot1;
-        dot1 := p;
-      end;
-  end;
-
-  procedure getdomain;
-  var
-    len: Cardinal;
-  begin
-    if dot2 = nil then pushdot;
-    Inc(dot2);
-    if (PunycodeEncode(dot1-dot2, PPunyCode(dot2), len) = pcSuccess) and
-      (Cardinal(dot1-dot2 + 1) <> len) then
-    begin
-      SetLength(domain, len);
-      PunycodeEncode(dot1-dot2, PPunyCode(dot2), len, PByte(domain));
-      domain := AnsiString(Copy(d, 0, dot2 - d)) + 'xn--' +
-        domain + AnsiString(Copy(dot1, 0, p - dot1));
-    end else
-      SetString(domain, d,  p - d);
-  end;
-begin
-  domain := 'localhost';
-  port := 80;
-  get := '/';
-  ssl := False;
-
-  d := nil;
-  dot1 := nil;
-  dot2 := nil;
-  p := uri;
-  s := sStart;
-  o := 0;
-
-  while True do
-    begin
-      case s of
-        sStart:
-          case o of
-            0: case p^ of 'w', 'W': Inc(o) else Exit(False) end;
-            1: case p^ of 's', 'S': Inc(o) else Exit(False) end;
-            2: case p^ of
-                 's', 'S':
-                   begin
-                     s := sSSL;
-                     port := 443;
-                     Inc(o);
-                   end;
-                 ':': Inc(o);
-               else
-                 Exit(False);
-               end;
-            3: if (p^ = '/') then Inc(o) else Exit(False);
-            4: if (p^ = '/') then
-               begin
-                 s := sDomain;
-                 o := 0; pushdot
-               end else
-                 Exit(False);
-          end;
-        sSSL:
-          case o of
-            0: case p^ of 'w', 'W': Inc(o) else Exit(False) end;
-            1: case p^ of 's', 'S': Inc(o) else Exit(False) end;
-            2: case p^ of 's', 'S': Inc(o) else Exit(False) end;
-            3: case p^ of ':'     : Inc(o) else Exit(False) end;
-            4: if (p^ = '/') then Inc(o) else Exit(False);
-            5: if (p^ = '/') then
-               begin
-                 ssl := True;
-                 s := sDomain;
-                 o := 0; pushdot
-               end else
-                 Exit(False);
-          end;
-        sDomain:
-          case o of
-            0:
-             begin
-               case p^ of
-                 #0: Exit(True);
-                 '.': dot1 := p;
-               end;
-               d := p;
-               inc(o);
-             end
-          else
-            case p^ of
-              ':':
-                begin
-                  if p - d >= 1 then
-                    getdomain;
-                  s := sPort;
-                  port := 0;
-                  o := 0;
-                end;
-              '/':
-                begin
-                  if p - d >= 1 then
-                    getdomain;
-                  get := HTTPEncode(p);
-                  Exit(True);
-                end;
-              '.': pushdot;
-              #0 :
-                begin
-                  if p - d >= 1 then
-                    getdomain;
-                  Exit(True);
-                end;
-            end;
-          end;
-        sPort:
-          case p^ of
-            '0'..'9': port := port * 10 + Ord(p^) - Ord('0');
-            '/':
-              begin
-                get := HTTPEncode(p);
-                Exit(True);
-              end;
-            #0: Exit(True);
-          else
-            Exit(False);
-          end;
-      else
-        Exit(False);
-      end;
-      Inc(p);
-    end;
-end;
-
 function WS_GenerateKeyNumber(out number: Cardinal): string;
 var
   spaces, max, n, i, pos: Integer;
@@ -370,6 +226,7 @@ end;
 procedure TWebSocket.Open(const url: string; const origin: RawByteString = 'null');
 var
   domain: AnsiString;
+  protocol: string;
   uri: RawByteString;
   ssl: Boolean;
   port: Word;
@@ -391,12 +248,30 @@ begin
 
   FReadyState := rsConnecting;
   // parse
-  if not WS_ParseURL(PChar(url), domain, port, uri, ssl) then
+  if not ParseURL(PChar(url), protocol, domain, port, uri) then
   begin
     if Assigned(FOnError) then
       FOnError(Format('Can''t parse url: %s', [url]));
     Exit;
   end;
+
+  if protocol = 'ws' then
+  begin
+    ssl := False;
+    if port = 0 then
+      port := 80;
+  end else
+    if protocol = 'wss' then
+    begin
+      ssl := True;
+      if port = 0 then
+        port := 443;
+    end else
+      begin
+        if Assigned(FOnError) then
+          FOnError('Invalid protocol');
+        Exit;
+      end;
 
   // find host
   host := gethostbyname(PAnsiChar(domain));
