@@ -320,7 +320,6 @@ begin
   FDomain := Domain;
   FPort := Port;
   LoadDefaultHeader;
-  FRequestHeader.AddOrSetValue('host', FDomain);
 keepsocket:
   FAsync := async;
   FUser := user;
@@ -482,6 +481,11 @@ var
   read: Integer;
 begin
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
+
+  if ((FSsl = nil) and (FPort <> 80)) or ((FSsl <> nil) and (FPort <> 443)) then
+    FRequestHeader.AddOrSetValue('host', FDomain + ':' + RawByteString(IntToStr(FPort))) else
+    FRequestHeader.AddOrSetValue('host', FDomain);
+
   for pair in FRequestHeader do
     HTTPWriteLine(pair.Key + ': ' + pair.Value);
 
@@ -491,7 +495,7 @@ begin
     begin
       if cookiecount > 0 then
         cookie := cookie + '; ' else
-        cookie := 'Cookie: ';
+        cookie := 'cookie: ';
       cookie := cookie + cook.Key + '=' + cook.Value.value;
       Inc(cookiecount);
     end;
@@ -500,7 +504,7 @@ begin
 
   if (data <> nil) and (data.Size > 0) then
   begin
-    HTTPWriteLine('content-lenght: ' + RawByteString(IntToStr(data.Size)));
+    HTTPWriteLine('content-length: ' + RawByteString(IntToStr(data.Size)));
     HTTPWriteLine('');
     data.Seek(0, soFromBeginning);
     repeat
