@@ -80,7 +80,7 @@ type
   end;
 
 implementation
-uses Classes, dorMD5, dorPunyCode, Generics.Collections;
+uses Classes, AnsiStrings, dorMD5, dorPunyCode, Generics.Collections;
 
 (******************************************************************************)
 (* TThreadIt                                                                  *)
@@ -234,7 +234,7 @@ var
   addr: TSockAddrIn;
   i: Integer;
   ReadTimeOut: Integer;
-  dic: TDictionary<string,RawByteString>;
+  dic: TDictionary<RawByteString, RawByteString>;
   value: RawByteString;
   challenge: packed record
     num1, num2: Cardinal;
@@ -248,7 +248,7 @@ begin
 
   FReadyState := rsConnecting;
   // parse
-  if not ParseURL(PChar(url), protocol, domain, port, uri) then
+  if not HTTPParseURL(PChar(url), protocol, domain, port, uri) then
   begin
     if Assigned(FOnError) then
       FOnError(Format('Can''t parse url: %s', [url]));
@@ -358,7 +358,7 @@ begin
     HTTPWriteLine('Sec-WebSocket-Key1: ' + RawbyteString(WS_GenerateKeyNumber(challenge.num1)));
     HTTPWriteLine('Sec-WebSocket-Key2: ' + RawbyteString(WS_GenerateKeyNumber(challenge.num2)));
     if Assigned(FOnAddField) then
-      FOnAddField(function (const key: string; const value: RawByteString): Boolean begin
+      FOnAddField(function (const key: RawByteString; const value: RawByteString): Boolean begin
         HTTPWriteLine(RawbyteString(key) + ': ' + value);
         Result := True;
       end);
@@ -369,7 +369,7 @@ begin
       challenge.key3[i] := Random(256);
     SockSend(challenge.key3, SizeOf(challenge.key3), 0);
 
-    dic := TDictionary<string,RawByteString>.Create;
+    dic := TDictionary<RawByteString, RawByteString>.Create;
     try
       ReadTimeOut := 3000;
       setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
@@ -384,7 +384,7 @@ begin
             if not Result and Assigned(FOnError) then
               FOnError(Format('Invalid response code: %d %s', [code, mesg]));
           end,
-        function (const key: string; const value: RawByteString): Boolean
+        function (const key: RawByteString; const value: RawByteString): Boolean
         begin
           dic.AddOrSetValue(lowercase(key), value);
           Result := True;

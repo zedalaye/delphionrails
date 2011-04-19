@@ -330,6 +330,7 @@ var
 //  pair: TPair<RawByteString, RawByteString>;
 begin
   FReadError := False;
+  FResponseData.Size := 0;
   if not HTTPParse(
     function (var buf; len: Integer): Integer
     begin
@@ -643,7 +644,7 @@ begin
   FRequestHeader.Clear;
   FRequestHeader.Add('accept', '*/*');
   FRequestHeader.Add('accept-charset', 'utf-8;q=0.7,*;q=0.3');
-//  FRequestHeader.Add('accept-encoding', 'deflate,gzip');
+  FRequestHeader.Add('accept-encoding', 'deflate,gzip');
   FRequestHeader.Add('accept-language', 'en-US;q=0.6,en;q=0.4');
   FRequestHeader.Add('cache-control', 'max-age=0');
   FRequestHeader.Add('connection', 'keep-alive');
