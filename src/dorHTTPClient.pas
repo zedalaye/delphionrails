@@ -26,7 +26,8 @@ type
     procedure SetRequestHeader(const header, value: RawByteString);
     function GetRequestHeader(const header: RawByteString): RawByteString;
     function GetResponseHeader(const header: RawByteString): RawByteString;
-    function Send: Boolean;
+    function Send(data: TStream = nil): Boolean;
+    function SendText(const data: string; encoding: TEncoding = nil): Boolean;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
     procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
@@ -45,7 +46,12 @@ type
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
   private
   type
-    TOnHeaderEvent = reference to procedure(const value: RawByteString);
+    TOnHeaderEvent = reference to function(const value: RawByteString): Boolean;
+    TCookie = record
+      path: RawByteString;
+      domain: RawByteString;
+      value: RawByteString;
+    end;
   private
     FSocket: TSocket;
     FDomain: AnsiString;
@@ -59,6 +65,7 @@ type
     FRequestHeader: TDictionary<RawByteString, RawByteString>;
     FResponseHeader: TDictionary<RawByteString, RawByteString>;
     FResponseEvents: TDictionary<RawByteString, TOnHeaderEvent>;
+    FCookies: TDictionary<RawByteString, TCookie>;
 
     FStatus: Word;
     FStatusText: RawByteString;
@@ -84,7 +91,7 @@ type
 
     procedure SetReadyState(ready: TReadyState);
     function Receive: Boolean;
-    procedure SendHeaders;
+    procedure SendHeaders(data: TStream);
     function TCPConnect(const domain: RawByteString; port: Word; ssl: Boolean): Boolean;
     procedure TCPDisconnect;
     function TCPReconnect: Boolean;
@@ -95,13 +102,14 @@ type
     procedure SetRequestHeader(const header, value: RawByteString);
     function GetRequestHeader(const header: RawByteString): RawByteString;
     function GetResponseHeader(const header: RawByteString): RawByteString;
-    function Send: Boolean;
+    function Send(data: TStream): Boolean;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
     procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
     function GetOnReadyStateChange: TOnReadyStateChange;
     function GetResponseStream: TStream;
     function GetResponseText: string;
+    function SendText(const data: string; encoding: TEncoding): Boolean;
   public
     constructor Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
       const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = ''); virtual;
@@ -143,6 +151,7 @@ begin
   FResponseHeader.Clear;
   FStatus := 0;
   FStatusText := '';
+  FCookies.Clear;
 end;
 
 constructor THTTPRequest.Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
@@ -159,6 +168,7 @@ begin
   FResponseData := TPooledMemoryStream.Create;
   FRequestHeader := TDictionary<RawByteString, RawByteString>.Create;
   FResponseHeader := TDictionary<RawByteString, RawByteString>.Create;
+  FCookies := TDictionary<RawByteString, TCookie>.Create;
   FCharsets := TDictionary<RawByteString, Integer>.Create;
   LoadCharsets;
   FResponseEvents := TDictionary<RawByteString, TOnHeaderEvent>.Create;
@@ -174,6 +184,7 @@ begin
   FResponseHeader.Free;
   FCharsets.Free;
   FResponseEvents.Free;
+  FCookies.Free;
   inherited;
 end;
 
@@ -219,7 +230,7 @@ begin
   try
     if FResponseHeader.TryGetValue('content-type', contenttype) then
     begin
-      HTTPParseHeader(contenttype, function (group: Integer; const key: RawByteString;
+      HTTPParseHeader(contenttype, True, function (group: Integer; const key: RawByteString;
         const value: RawByteString): Boolean
       begin
         if LowerCase(key) = 'charset' then
@@ -273,10 +284,12 @@ var
   Domain: AnsiString;
   Port: Word;
   ssl: Boolean;
-  //errcode, errcodelen: Integer;
 label
   error, keepsocket;
 begin
+  if not (FReadyState in [rsUninitialized, rsLoaded]) then
+    raise EHTTPRequest.Create('Connextion is not ready');
+
   if not HTTPParseURL(PChar(url), protocol, Domain, Port, FPath) then
     Exit(False);
 
@@ -327,10 +340,11 @@ var
   buff: array[0..1023] of AnsiChar;
   strm: TPooledMemoryStream;
   encoding: TContentEncoding;
-//  pair: TPair<RawByteString, RawByteString>;
 begin
   FReadError := False;
   FResponseData.Size := 0;
+  FResponseHeader.Clear;
+
   if not HTTPParse(
     function (var buf; len: Integer): Integer
     begin
@@ -348,9 +362,6 @@ begin
       Result := True;
     end) then
       Exit(False);
-
-//  for pair in FResponseHeader do
-//    Writeln(pair.Key, ':', pair.Value);
 
   if FResponseHeader.TryGetValue('content-encoding', str) then
   begin
@@ -436,31 +447,85 @@ begin
   Result := True;
 end;
 
-function THTTPRequest.Send: Boolean;
+function THTTPRequest.Send(data: TStream): Boolean;
 begin
   if FReadyState <> rsOpen then
     raise EHTTPRequest.Create('socket is not open');
-  SendHeaders;
+  SendHeaders(data);
+
   Result := Receive;
+  // reconnect ?
   if FReadError then
   begin
     if TCPReconnect then
     begin
-      SendHeaders;
+      SendHeaders(data);
       Result := Receive;
     end;
   end;
+  // redirect ?
+  if Result and ((FStatus = 301) or (FStatus = 302)) and FResponseHeader.TryGetValue('location', FPath) then
+  begin
+    SetReadyState(rsOpen);
+    Result := Send(data);
+  end;
+
 end;
 
-procedure THTTPRequest.SendHeaders;
+procedure THTTPRequest.SendHeaders(data: TStream);
 var
   pair: TPair<RawByteString, RawByteString>;
+  cook: TPair<RawByteString, TCookie>;
+  cookie: RawByteString;
+  cookiecount: Integer;
+  buffer: array[0..1023] of AnsiChar;
+  read: Integer;
 begin
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
   for pair in FRequestHeader do
     HTTPWriteLine(pair.Key + ': ' + pair.Value);
-  HTTPWriteLine('');
+
+  cookiecount := 0;
+  for cook in FCookies do
+    if Pos(cook.Value.path, FPath) = 1 then
+    begin
+      if cookiecount > 0 then
+        cookie := cookie + '; ' else
+        cookie := 'Cookie: ';
+      cookie := cookie + cook.Key + '=' + cook.Value.value;
+      Inc(cookiecount);
+    end;
+  if cookiecount > 0 then
+    HTTPWriteLine(cookie);
+
+  if (data <> nil) and (data.Size > 0) then
+  begin
+    HTTPWriteLine('content-lenght: ' + RawByteString(IntToStr(data.Size)));
+    HTTPWriteLine('');
+    data.Seek(0, soFromBeginning);
+    repeat
+      read := data.Read(buffer, SizeOf(buffer));
+      if read > 0 then
+        SockSend(buffer, read);
+    until read = 0;
+
+  end else
+    HTTPWriteLine('');
   SetReadyState(rsSent);
+end;
+
+function THTTPRequest.SendText(const data: string; encoding: TEncoding): Boolean;
+var
+  stream: TStringStream;
+begin
+  if encoding = nil then
+    encoding := TEncoding.UTF8;
+  stream := TStringStream.Create(data, encoding);
+  try
+    Result := Send(stream);
+  finally
+    stream.Free;
+  end;
 end;
 
 procedure THTTPRequest.SetOnReadyStateChange(const ready: TOnReadyStateChange);
@@ -478,7 +543,7 @@ end;
 procedure THTTPRequest.SetRequestHeader(const header, value: RawByteString);
 begin
   if FReadyState <> rsOpen then
-    raise EHTTPRequest.Create('socket is not open');
+    raise EHTTPRequest.Create('Connection is not open');
   FRequestHeader.AddOrSetValue(LowerCase(header), value);
 end;
 
@@ -486,9 +551,8 @@ procedure THTTPRequest.SetResponseHeader(const header, value: RawByteString);
 var
   event: TOnHeaderEvent;
 begin
-  FResponseHeader.AddOrSetValue(header, value);
-  if FResponseEvents.TryGetValue(header, event) then
-    event(value);
+  if not FResponseEvents.TryGetValue(header, event) or event(value) then
+    FResponseHeader.AddOrSetValue(header, value);
 end;
 
 function THTTPRequest.SockRecv(var Buf; len: Integer): Integer;
@@ -653,19 +717,28 @@ end;
 
 procedure THTTPRequest.LoadEvents;
 begin
-  FResponseEvents.Add('set-cookie', procedure (const value: RawByteString)
+  FResponseEvents.Add('set-cookie',
+    function (const value: RawByteString): Boolean
+    var
+      name: RawByteString;
+      cookie: TCookie;
     begin
-      HTTPParseHeader(value, function(group: Integer; const key: RawByteString; const value: RawByteString): Boolean
+      if HTTPParseHeader(value, False,
+        function(group: Integer; const key: RawByteString; const value: RawByteString): Boolean
         begin
           if group = 0 then
           begin
-            writeln(key, '=', value);
-
-            Result := True;
+            name := key;
+            cookie.value := value;
           end else
-            Result := False;
-
-        end);
+            if key = 'path' then
+               cookie.path := value else
+               if key = 'domain' then
+                 cookie.domain := value;
+          Result := True;
+        end) then
+          FCookies.AddOrSetValue(name, cookie);
+      Result := False;
     end);
 end;
 

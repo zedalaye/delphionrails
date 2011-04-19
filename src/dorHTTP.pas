@@ -19,7 +19,7 @@ function HTTPDecode(const AStr: string): RawByteString;
 function HttpResponseStrings(code: integer): RawByteString;
 function HTTPParseURL(const uri: PChar; out protocol: string;
   out domain: AnsiString; out port: Word; out path: RawByteString): Boolean;
-function HTTPParseHeader(const header: RawByteString; const onfield: TOnHTTPHeaderField): Boolean;
+function HTTPParseHeader(const header: RawByteString; subkeys: Boolean; const onfield: TOnHTTPHeaderField): Boolean;
 function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
 
 implementation
@@ -409,9 +409,7 @@ redo:
   end;
 end;
 
-function HTTPParseHeader(const header: RawByteString; const onfield: TOnHTTPHeaderField): Boolean;
-const
-  delimiters = [';', '=', ',', ' ', #0];
+function HTTPParseHeader(const header: RawByteString; subkeys: Boolean; const onfield: TOnHTTPHeaderField): Boolean;
 type
   TState = (stStart, stEat, stKey, stKeyEnd, stValue, stValueEnd);
 var
@@ -419,9 +417,17 @@ var
   p: PAnsiChar;
   st, saved: TState;
   k, v: RawByteString;
+  delimiters: set of AnsiChar;
 label
   redo;
 begin
+  delimiters := [';', '=', #0];
+  if subkeys then
+  begin
+    Include(delimiters, ',');
+    Include(delimiters, ' ');
+  end;
+
   group := 0;
   p := PAnsiChar(header);
   st := stEat;
