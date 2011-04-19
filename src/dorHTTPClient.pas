@@ -54,6 +54,7 @@ type
     end;
   private
     FSocket: TSocket;
+    FProtocol: string;
     FDomain: AnsiString;
     FPort: Word;
     FPath: RawByteString;
@@ -280,7 +281,7 @@ end;
 function THTTPRequest.Open(const method: RawByteString; const url: string; async: Boolean;
   const user, password: string): Boolean;
 var
-  protocol: string;
+  Protocol: string;
   Domain: AnsiString;
   Port: Word;
   ssl: Boolean;
@@ -290,36 +291,42 @@ begin
   if not (FReadyState in [rsUninitialized, rsLoaded]) then
     raise EHTTPRequest.Create('Connextion is not ready');
 
-  if not HTTPParseURL(PChar(url), protocol, Domain, Port, FPath) then
-    Exit(False);
-
-  if protocol = 'http' then
-  begin
-    ssl := False;
-    if Port = 0 then
-      Port := 80;
-  end else
-    if protocol = 'https' then
+  if (url <> '') and (url[1] = '/') then
+    FPath := HTTPEncode(url) else
     begin
-      ssl := True;
-      if Port = 0 then
-        Port := 443;
-    end else
-      Exit(False);
+      if not HTTPParseURL(PChar(url), Protocol, Domain, Port, FPath) then
+        Exit(False);
 
-  if (FSocket <> INVALID_SOCKET) then
-  begin
-    if (FDomain = Domain) and (FPort = Port) and (ssl = (FSsl <> nil)) then
-      goto keepsocket else
-      Abort;
-  end;
+      if Protocol = 'http' then
+      begin
+        ssl := False;
+        if Port = 0 then
+          Port := 80;
+      end else
+        if Protocol = 'https' then
+        begin
+          ssl := True;
+          if Port = 0 then
+            Port := 443;
+        end else
+          Exit(False);
 
-  if not TCPConnect(Domain, Port, ssl) then
-    goto error;
+      if (FSocket <> INVALID_SOCKET) then
+      begin
+        if (FDomain = Domain) and (FPort = Port) and (ssl = (FSsl <> nil)) then
+          goto keepsocket else
+          Abort;
+      end;
 
-  FDomain := Domain;
-  FPort := Port;
-  LoadDefaultHeader;
+      if not TCPConnect(Domain, Port, ssl) then
+        goto error;
+
+      FProtocol := Protocol;
+      FDomain := Domain;
+      FPort := Port;
+      LoadDefaultHeader;
+    end;
+
 keepsocket:
   FAsync := async;
   FUser := user;
@@ -447,6 +454,8 @@ begin
 end;
 
 function THTTPRequest.Send(data: TStream): Boolean;
+var
+  uri: RawByteString;
 begin
   if FReadyState <> rsOpen then
     raise EHTTPRequest.Create('socket is not open');
@@ -463,12 +472,12 @@ begin
     end;
   end;
   // redirect ?
-  if Result and ((FStatus = 301) or (FStatus = 302)) and FResponseHeader.TryGetValue('location', FPath) then
+  if Result and ((FStatus = 301) or (FStatus = 302)) and FResponseHeader.TryGetValue('location', uri) then
   begin
-    SetReadyState(rsOpen);
-    Result := Send(data);
+    Result := Open(FMethod, string(uri), FAsync, FUser, FPassword);
+    if Result then
+      Result := Send(data);
   end;
-
 end;
 
 procedure THTTPRequest.SendHeaders(data: TStream);
