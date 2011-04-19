@@ -731,9 +731,9 @@ begin
             name := key;
             cookie.value := value;
           end else
-            if key = 'path' then
+            if SameText(key, RawByteString('path')) then
                cookie.path := value else
-               if key = 'domain' then
+               if SameText(key, RawByteString('domain')) then
                  cookie.domain := value;
           Result := True;
         end) then
