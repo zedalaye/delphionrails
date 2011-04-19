@@ -483,8 +483,8 @@ begin
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
 
   if ((FSsl = nil) and (FPort <> 80)) or ((FSsl <> nil) and (FPort <> 443)) then
-    FRequestHeader.AddOrSetValue('host', FDomain + ':' + RawByteString(IntToStr(FPort))) else
-    FRequestHeader.AddOrSetValue('host', FDomain);
+    HTTPWriteLine('host: ' + FDomain + ':' + RawByteString(IntToStr(FPort))) else
+    HTTPWriteLine('host: ' + FDomain);
 
   for pair in FRequestHeader do
     HTTPWriteLine(pair.Key + ': ' + pair.Value);
