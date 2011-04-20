@@ -2,7 +2,7 @@ unit dorHTTPClient;
 
 interface
 uses
-  SysUtils, Generics.Collections, WinSock, Classes;
+  SysUtils, dorUtils, Generics.Collections, WinSock, Classes;
 
 type
  IHTTPRequest = interface;
@@ -32,6 +32,7 @@ type
     function GetStatusText: RawByteString;
     procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
     function GetOnReadyStateChange: TOnReadyStateChange;
+    function GetReadyState: TReadyState;
     function GetResponseStream: TStream;
     function GetResponseText: string;
 
@@ -41,16 +42,31 @@ type
     property OnReadyStateChange: TOnReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
     property ResponseStream: TStream read GetResponseStream;
     property ResponseText: string read GetResponseText;
+    property ReadyState: TReadyState read GetReadyState;
   end;
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
   private
   type
     TOnHeaderEvent = reference to function(const value: RawByteString): Boolean;
+    TContentEncoding = (
+      encUnknown,
+      encDeflate,
+      encGZIP);
     TCookie = record
       path: RawByteString;
       domain: RawByteString;
       value: RawByteString;
+    end;
+    TThreadAsync = class(TThread)
+    private
+      FThis: IHTTPRequest;
+      FData: TPooledMemoryStream;
+    protected
+      procedure Execute; override;
+    public
+      constructor Create(const this: IHTTPRequest; data: TStream);
+      destructor Destroy; override;
     end;
   private
     FSocket: TSocket;
@@ -74,6 +90,8 @@ type
     FReadyState: TReadyState;
     FCharsets: TDictionary<RawByteString, Integer>;
     FReadError: Boolean;
+    FRedirectCount: Integer;
+
     // SSL
     FCtx: Pointer;
     FSsl: Pointer;
@@ -97,6 +115,9 @@ type
     procedure TCPDisconnect;
     function TCPReconnect: Boolean;
 
+    function InternalSend(data: TSTream): Boolean;
+    function InternalOpen(const method: RawByteString; const url: string; async: Boolean; const user, password: string): Boolean;
+    function IsRedirecting: Boolean;
   protected
     function Open(const method: RawByteString; const url: string; async: Boolean; const user, password: string): Boolean;
     procedure Abort;
@@ -106,6 +127,7 @@ type
     function Send(data: TStream): Boolean;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
+    function GetReadyState: TReadyState;
     procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
     function GetOnReadyStateChange: TOnReadyStateChange;
     function GetResponseStream: TStream;
@@ -120,14 +142,7 @@ type
   end;
 
 implementation
-uses Windows, AnsiStrings, ZLib, dorUtils, dorOpenSSL, dorHTTP;
-
-type
-  TContentEncoding = (
-    encUnknown,
-    encDeflate,
-    encGZIP
-  );
+uses Windows, AnsiStrings, ZLib, dorOpenSSL, dorHTTP;
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: THTTPRequest): Integer; cdecl;
@@ -192,6 +207,11 @@ end;
 function THTTPRequest.GetOnReadyStateChange: TOnReadyStateChange;
 begin
   Result := FOnReadyStateChange;
+end;
+
+function THTTPRequest.GetReadyState: TReadyState;
+begin
+  Result := FReadyState;
 end;
 
 function THTTPRequest.GetRequestHeader(
@@ -278,8 +298,8 @@ begin
   SockSend(PAnsiChar(rb)^, Length(rb));
 end;
 
-function THTTPRequest.Open(const method: RawByteString; const url: string; async: Boolean;
-  const user, password: string): Boolean;
+function THTTPRequest.InternalOpen(const method: RawByteString;
+  const url: string; async: Boolean; const user, password: string): Boolean;
 var
   Protocol: string;
   Domain: AnsiString;
@@ -288,9 +308,6 @@ var
 label
   error, keepsocket;
 begin
-  if not (FReadyState in [rsUninitialized, rsLoaded]) then
-    raise EHTTPRequest.Create('Connextion is not ready');
-
   if (url <> '') and (url[1] = '/') then
     FPath := HTTPEncode(url) else
     begin
@@ -337,6 +354,48 @@ keepsocket:
 error:
   Abort;
   Result := False;
+end;
+
+function THTTPRequest.InternalSend(data: TSTream): Boolean;
+var
+  str: RawByteString;
+begin
+  SendHeaders(data);
+  Result := Receive;
+  // Reconnect ?
+  if FReadError then
+  begin
+    if TCPReconnect then
+    begin
+      SendHeaders(data);
+      Result := Receive;
+    end;
+  end;
+
+  // Redirect ?
+  if Result and IsRedirecting and FResponseHeader.TryGetValue('location', str) then
+  begin
+    Inc(FRedirectCount);
+    if FRedirectCount > 10 then
+      raise EHTTPRequest.Create('Too many redirections');
+
+    Result := InternalOpen(FMethod, string(str), FAsync, FUser, FPassword);
+    if Result then
+      Result := InternalSend(data);
+  end;
+end;
+
+function THTTPRequest.IsRedirecting: Boolean;
+begin
+  Result := (FStatus = 301) or (FStatus = 302);
+end;
+
+function THTTPRequest.Open(const method: RawByteString; const url: string; async: Boolean;
+  const user, password: string): Boolean;
+begin
+  if not (FReadyState in [rsUninitialized, rsLoaded]) then
+    raise EHTTPRequest.Create('Connextion is not ready');
+  Result := InternalOpen(method, url, async, user, password);
 end;
 
 function THTTPRequest.Receive: Boolean;
@@ -448,35 +507,22 @@ begin
     end;
     FResponseData.Seek(0, soFromBeginning);
   end;
-
-  SetReadyState(rsLoaded);
   Result := True;
 end;
 
 function THTTPRequest.Send(data: TStream): Boolean;
-var
-  uri: RawByteString;
 begin
   if FReadyState <> rsOpen then
     raise EHTTPRequest.Create('socket is not open');
-  SendHeaders(data);
-
-  Result := Receive;
-  // reconnect ?
-  if FReadError then
+  FRedirectCount := 0;
+  if FAsync then
   begin
-    if TCPReconnect then
-    begin
-      SendHeaders(data);
-      Result := Receive;
-    end;
-  end;
-  // redirect ?
-  if Result and ((FStatus = 301) or (FStatus = 302)) and FResponseHeader.TryGetValue('location', uri) then
+    TThreadAsync.Create(Self, data);
+    Result := True;
+  end else
   begin
-    Result := Open(FMethod, string(uri), FAsync, FUser, FPassword);
-    if Result then
-      Result := Send(data);
+    Result := InternalSend(data);
+    SetReadyState(rsLoaded);
   end;
 end;
 
@@ -510,6 +556,9 @@ begin
     end;
   if cookiecount > 0 then
     HTTPWriteLine(cookie);
+
+  if (FUser <> '') and (FPassword <> '') then
+    HTTPWriteLine('authorization: Basic ' + RawByteString(StrTobase64(FUser + ':' + FPassword)));
 
   if (data <> nil) and (data.Size > 0) then
   begin
@@ -550,7 +599,10 @@ procedure THTTPRequest.SetReadyState(ready: TReadyState);
 begin
   FReadyState := ready;
   if Assigned(FOnReadyStateChange) then
-    FOnReadyStateChange(Self)
+    if FAsync then
+      TThread.Synchronize(nil, procedure
+        begin FOnReadyStateChange(Self) end) else
+      FOnReadyStateChange(Self)
 end;
 
 procedure THTTPRequest.SetRequestHeader(const header, value: RawByteString);
@@ -753,6 +805,35 @@ begin
           FCookies.AddOrSetValue(name, cookie);
       Result := False;
     end);
+end;
+
+{ THTTPRequest.TThreadAsync }
+
+constructor THTTPRequest.TThreadAsync.Create(const this: IHTTPRequest; data: TStream);
+begin
+  FreeOnTerminate := True;
+  FThis := this;
+  if data <> nil then
+  begin
+    FData := TPooledMemoryStream.Create;
+    FData.LoadFromStream(data);
+  end else
+    FData := nil;
+  inherited Create(False);
+end;
+
+destructor THTTPRequest.TThreadAsync.Destroy;
+begin
+  if FData <> nil then
+    FData.Free;
+  FThis := nil;
+  inherited;
+end;
+
+procedure THTTPRequest.TThreadAsync.Execute;
+begin
+  THTTPRequest(FThis).InternalSend(FData);
+  THTTPRequest(FThis).SetReadyState(rsLoaded);
 end;
 
 end.
