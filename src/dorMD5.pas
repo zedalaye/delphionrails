@@ -40,7 +40,8 @@ type
 procedure MD5Init(context: PMD5Ctx);
 procedure MD5Update(context: PMD5Ctx; input: PByte; inputLen: Cardinal);
 procedure MD5Final(digest: PByte; context: PMD5Ctx);
-procedure MD5(input: PByte; len: Cardinal; output: PByte);
+procedure MD5(input: PByte; len: Cardinal; output: PByte); overload;
+function MD5(const Value: RawByteString): RawByteString; overload;
 
 implementation
 
@@ -350,6 +351,12 @@ begin
   MD5Init(@context);
   MD5Update(@context, input, len);
   MD5Final(output, @context);
+end;
+
+function MD5(const Value: RawByteString): RawByteString; overload;
+begin
+  SetLength(Result, 16);
+  MD5(PByte(Value), Length(Value), PByte(Result));
 end;
 
 end.
