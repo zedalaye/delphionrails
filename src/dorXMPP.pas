@@ -417,7 +417,7 @@ redo:
             for mechanism in anode.Children do
               if ((FSsl <> nil) or (xoPlaintextAuth in options)) and (mechanism.Text = 'PLAIN') then
               begin
-                SendFmt(XML_AUTH_PLAIN, [StrTobase64(#0+user+#0+pass+#0)]);
+                SendFmt(XML_AUTH_PLAIN, [StrTobase64(#0+user+#0+pass)]);
                 Result := True;
                 Break;
               end else
