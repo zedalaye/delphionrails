@@ -777,6 +777,7 @@ begin
   FRequestHeader.Add('accept-language', 'en-US;q=0.6,en;q=0.4');
   FRequestHeader.Add('cache-control', 'max-age=0');
   FRequestHeader.Add('connection', 'keep-alive');
+  FRequestHeader.Add('keep-alive', '300');
   FRequestHeader.Add('user-agent', 'Mozilla/5.0');
 end;
 
