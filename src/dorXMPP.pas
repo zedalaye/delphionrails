@@ -29,6 +29,8 @@ type
   TXMPPEvent = reference to function(const sender: IXMPPClient; const node: IXMLNode): Boolean;
   TXMPPReadyState = (rsOffline, rsConnecting, rsOpen, rsClosing);
   TXMPPReadyStateChange = reference to procedure(const xmpp: IXMPPClient);
+  TXMPPOption = (xoDontForceEncryption, xoPlaintextAuth);
+  TXMPPOptions = set of TXMPPOption;
 
   IXMPPClient = interface
     ['{FD2264FF-460E-4DCD-BA8B-D1D7BCB45E6A}']
@@ -36,7 +38,8 @@ type
     procedure Send(const data: string);
     procedure SendFmt(const data: string; params: array of const);
     procedure Close;
-    procedure Open(const url, user, domain, pass: string; ForceEncryption: Boolean = True);
+    procedure Open(const url, user, domain, pass: string;
+      const resource: string = ''; options: TXMPPOptions = []);
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
 
@@ -70,7 +73,7 @@ type
     FPrivateKeyFile: AnsiString;
     FCertCAFile: AnsiString;
     function StartSSL: Boolean;
-    procedure Listen(const user, domain, pass: string; ForceEncryption: Boolean);
+    procedure Listen(const user, domain, pass, resource: string; options: TXMPPOptions);
     function SockSend(var Buf; len, flags: Integer): Integer;
     function SockRecv(var Buf; len, flags: Integer): Integer;
     procedure SetReadyState(rs: TXMPPReadyState);
@@ -78,7 +81,8 @@ type
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
     function getReadyState: TXMPPReadyState; virtual;
-    procedure Open(const url, user, domain, pass: string; ForceEncryption: Boolean);
+    procedure Open(const url, user, domain, pass, resource: string;
+      options: TXMPPOptions);
     procedure SendFmt(const data: string; params: array of const);
     procedure Send(const data: string);
     procedure Close;
@@ -136,7 +140,7 @@ begin
     case st of
       stStartKey:
         case p^ of
-          ',':;
+          ',', ' ':;
           #0: Exit;
         else
           key1 := p;
@@ -254,7 +258,7 @@ begin
   end;
 end;
 
-procedure TXMPPClient.Open(const url, user, domain, pass: string; ForceEncryption: Boolean);
+procedure TXMPPClient.Open(const url, user, domain, pass, resource: string; options: TXMPPOptions);
 var
   dom: AnsiString;
   protocol: string;
@@ -312,7 +316,7 @@ begin
     Exit;
   end;
 
-  TThreadIt.Create(procedure begin listen(user, domain, pass, ForceEncryption) end);
+  TThreadIt.Create(procedure begin listen(user, domain, pass, resource, Options) end);
 end;
 
 class constructor TXMPPClient.Create;
@@ -350,13 +354,13 @@ begin
   Result := FReadyState;
 end;
 
-procedure TXMPPClient.Listen(const user, domain, pass: string; ForceEncryption: Boolean);
+procedure TXMPPClient.Listen(const user, domain, pass, resource: string; options: TXMPPOptions);
 const
   XML_STREAM_STREAM = '<stream:stream to="%s" xmlns="jabber:client" xmlns:stream="http://etherx.jabber.org/streams" version="1.0">';
   XML_STARTTLS = '<starttls xmlns="%s"/>';
   XML_AUTH_PLAIN = '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="PLAIN" xmlns:ga="http://www.google.com/talk/protocol/auth" ga:client-uses-full-bind-result="true">%s</auth>';
   XML_AUTH_MD5 = '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="DIGEST-MD5" xmlns:ga="http://www.google.com/talk/protocol/auth" ga:client-uses-full-bind-result="true"/>';
-  XML_IQ_BIND = '<iq type="set"><bind xmlns="urn:ietf:params:xml:ns:xmpp-bind"/></iq>';
+  XML_IQ_BIND = '<iq type="set"><bind xmlns="urn:ietf:params:xml:ns:xmpp-bind"><resource>%s</resource></bind></iq>';
   XML_IQ_SESSION = '<iq type="set"><session xmlns="urn:ietf:params:xml:ns:xmpp-session"/></iq>';
 var
   stack: TStack<IXMLNode>;
@@ -390,7 +394,7 @@ redo:
       begin
         Result := True;
         anode := n.FindChild('starttls');
-        if (anode <> nil) and (ForceEncryption or (anode.FindChild('required') <> nil)) then
+        if (anode <> nil) and (not (xoDontForceEncryption in options) or (anode.FindChild('required') <> nil)) then
         begin
           //>>> starttls
           SendFmt(XML_STARTTLS, [anode.Attr['xmlns']]);
@@ -411,9 +415,9 @@ redo:
           begin
             Result := False;
             for mechanism in anode.Children do
-              if mechanism.Text = 'PLAIN' then
+              if ((FSsl <> nil) or (xoPlaintextAuth in options)) and (mechanism.Text = 'PLAIN') then
               begin
-                SendFmt(XML_AUTH_PLAIN, [StrTobase64(#0+user+#0+pass)]);
+                SendFmt(XML_AUTH_PLAIN, [StrTobase64(#0+user+#0+pass+#0)]);
                 Result := True;
                 Break;
               end else
@@ -491,7 +495,7 @@ redo:
             end;
           end else
           begin
-            if n.FindChild('bind') <> nil then Send(XML_IQ_BIND);
+            if n.FindChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
             if n.FindChild('session') <> nil then Send(XML_IQ_SESSION);
             //write('<presence/>');
             SetReadyState(rsOpen);
