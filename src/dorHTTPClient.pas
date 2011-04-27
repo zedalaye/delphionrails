@@ -2,7 +2,7 @@ unit dorHTTPClient;
 
 interface
 uses
-  SysUtils, dorUtils, Generics.Collections, WinSock, Classes;
+  SysUtils, AnsiStrings, dorUtils, Generics.Collections, WinSock, Classes;
 
 type
  IHTTPRequest = interface;
@@ -156,7 +156,7 @@ type
   end;
 
 implementation
-uses Windows, AnsiStrings, ZLib, dorOpenSSL, dorHTTP;
+uses Windows, ZLib, dorOpenSSL, dorHTTP;
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: THTTPRequest): Integer; cdecl;
@@ -284,7 +284,7 @@ begin
       HTTPParseHeader(contenttype.value, True, function (group: Integer; const key: RawByteString;
         const value: RawByteString): Boolean
       begin
-        if SameText(key, RawbyteString('charset')) then
+        if AnsiStrings.SameText(key, 'charset') then
         begin
           if FCharsets.TryGetValue(LowerCase(value), charset) then
           case charset of
@@ -344,7 +344,7 @@ begin
       if not HTTPParseURL(PChar(url), Protocol, Domain, Port, FPath) then
         Exit(False);
 
-      if SameText(Protocol, RawbyteString('http')) then
+      if SameText(Protocol, 'http') then
       begin
         ssl := False;
         if Port = 0 then
@@ -466,17 +466,17 @@ begin
 
   if FResponseHeader.TryGetValue('content-encoding', str) then
   begin
-    if SameText(str.value, RawbyteString('deflate')) then
+    if AnsiStrings.SameText(str.value, 'deflate') then
     begin
       encoding := encDeflate;
     end else
-    if SameText(str.value, RawbyteString('gzip')) then
+    if AnsiStrings.SameText(str.value, 'gzip') then
       encoding := encGZIP else
       encoding := encUnknown;
   end else
     encoding := encUnknown;
 
-  if FResponseHeader.TryGetValue('transfer-encoding', str) and SameText(str.value, RawbyteString('chunked')) then
+  if FResponseHeader.TryGetValue('transfer-encoding', str) and AnsiStrings.SameText(str.value, 'chunked') then
   begin
     if not HTTPReadChunked(
       function (var buf; len: Integer): Integer
@@ -613,7 +613,7 @@ begin
   begin
     data.Seek(0, soFromBeginning);
 
-    if SameText(GetRequestHeader('Content-Encoding'), 'deflate') then
+    if AnsiStrings.SameText(GetRequestHeader('Content-Encoding'), 'deflate') then
     begin
       deflate := TPooledMemoryStream.Create;
       CompressStream(data, deflate);
@@ -862,9 +862,9 @@ begin
             name := key;
             cookie.value := value;
           end else
-            if SameText(key, RawByteString('path')) then
+            if AnsiStrings.SameText(key, 'path') then
                cookie.path := value else
-               if SameText(key, RawByteString('domain')) then
+               if AnsiStrings.SameText(key, 'domain') then
                  cookie.domain := value;
           Result := True;
         end) then
