@@ -16,6 +16,13 @@ type
 
   TOnReadyStateChange = reference to procedure(const request: IHTTPRequest);
 
+  THTTPHeader = record
+    name, value: RawByteString;
+    class function Make(const name, value: RawByteString): THTTPHeader; static;
+  end;
+
+  THeaderCollection = TDictionary<RawByteString,THTTPHeader>.TValueCollection;
+
   EHTTPRequest = exception;
 
   IHTTPRequest = interface
@@ -35,6 +42,8 @@ type
     function GetReadyState: TReadyState;
     function GetResponseStream: TStream;
     function GetResponseText: string;
+    function GetRequestHeaders: THeaderCollection;
+    function GetResponseHeaders: THeaderCollection;
 
     property RequestHeader[const header: RawByteString]: RawByteString read GetRequestHeader write SetRequestHeader;
     property Status: Word read GetStatus;
@@ -79,8 +88,8 @@ type
     FUser: string;
     FPassword: string;
     FResponseData: TStream;
-    FRequestHeader: TDictionary<RawByteString, RawByteString>;
-    FResponseHeader: TDictionary<RawByteString, RawByteString>;
+    FRequestHeader: TDictionary<RawByteString, THTTPHeader>;
+    FResponseHeader: TDictionary<RawByteString, THTTPHeader>;
     FResponseEvents: TDictionary<RawByteString, TOnHeaderEvent>;
     FCookies: TDictionary<RawByteString, TCookie>;
 
@@ -117,6 +126,7 @@ type
 
     function InternalSend(data: TSTream): Boolean;
     function InternalOpen(const method: RawByteString; const url: string; async: Boolean; const user, password: string): Boolean;
+    procedure InternalSetRequestHeader(const header, value: RawByteString);
     function IsRedirecting: Boolean;
   protected
     function Open(const method: RawByteString; const url: string; async: Boolean; const user, password: string): Boolean;
@@ -133,6 +143,8 @@ type
     function GetResponseStream: TStream;
     function GetResponseText: string;
     function SendText(const data: string; encoding: TEncoding): Boolean;
+    function GetRequestHeaders: THeaderCollection;
+    function GetResponseHeaders: THeaderCollection;
   public
     constructor Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
       const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = ''); virtual;
@@ -182,8 +194,8 @@ begin
   FPrivateKeyFile := PrivateKeyFile;
   FCertCAFile := CertCAFile;
   FResponseData := TPooledMemoryStream.Create;
-  FRequestHeader := TDictionary<RawByteString, RawByteString>.Create;
-  FResponseHeader := TDictionary<RawByteString, RawByteString>.Create;
+  FRequestHeader := TDictionary<RawByteString, THTTPHeader>.Create;
+  FResponseHeader := TDictionary<RawByteString, THTTPHeader>.Create;
   FCookies := TDictionary<RawByteString, TCookie>.Create;
   FCharsets := TDictionary<RawByteString, Integer>.Create;
   LoadCharsets;
@@ -216,15 +228,31 @@ end;
 
 function THTTPRequest.GetRequestHeader(
   const header: RawByteString): RawByteString;
+var
+  rec: THTTPHeader;
 begin
-  if not FRequestHeader.TryGetValue(LowerCase(header), Result) then
+  if FRequestHeader.TryGetValue(LowerCase(header), rec) then
+    Result := rec.value else
     Result := '';
 end;
 
-function THTTPRequest.GetResponseHeader(const header: RawByteString): RawByteString;
+function THTTPRequest.GetRequestHeaders: THeaderCollection;
 begin
-  if (FReadyState < rsReceiving) or not FResponseHeader.TryGetValue(LowerCase(header), Result) then
+  Result := FRequestHeader.Values;
+end;
+
+function THTTPRequest.GetResponseHeader(const header: RawByteString): RawByteString;
+var
+  rec: THTTPHeader;
+begin
+  if (FReadyState >= rsReceiving) and FResponseHeader.TryGetValue(LowerCase(header), rec) then
+    Result := rec.value else
     Result := '';
+end;
+
+function THTTPRequest.GetResponseHeaders: THeaderCollection;
+begin
+  Result := FResponseHeader.Values;
 end;
 
 function THTTPRequest.GetResponseStream: TStream;
@@ -240,7 +268,7 @@ var
   encoding: TEncoding;
   charset: Integer;
   freecharset: Boolean;
-  contenttype: RawByteString;
+  contenttype: THTTPHeader;
 begin
   if FReadyState <> rsLoaded then
     raise EHTTPRequest.Create('document is not loaded');
@@ -251,10 +279,10 @@ begin
   try
     if FResponseHeader.TryGetValue('content-type', contenttype) then
     begin
-      HTTPParseHeader(contenttype, True, function (group: Integer; const key: RawByteString;
+      HTTPParseHeader(contenttype.value, True, function (group: Integer; const key: RawByteString;
         const value: RawByteString): Boolean
       begin
-        if LowerCase(key) = 'charset' then
+        if SameText(key, RawbyteString('charset')) then
         begin
           if FCharsets.TryGetValue(LowerCase(value), charset) then
           case charset of
@@ -314,13 +342,13 @@ begin
       if not HTTPParseURL(PChar(url), Protocol, Domain, Port, FPath) then
         Exit(False);
 
-      if Protocol = 'http' then
+      if SameText(Protocol, RawbyteString('http')) then
       begin
         ssl := False;
         if Port = 0 then
           Port := 80;
       end else
-        if Protocol = 'https' then
+        if SameText(Protocol, RawbyteString('https')) then
         begin
           ssl := True;
           if Port = 0 then
@@ -358,7 +386,7 @@ end;
 
 function THTTPRequest.InternalSend(data: TSTream): Boolean;
 var
-  str: RawByteString;
+  str: THTTPHeader;
 begin
   SendHeaders(data);
   Result := Receive;
@@ -379,10 +407,16 @@ begin
     if FRedirectCount > 10 then
       raise EHTTPRequest.Create('Too many redirections');
 
-    Result := InternalOpen(FMethod, string(str), FAsync, FUser, FPassword);
+    Result := InternalOpen(FMethod, string(str.value), FAsync, FUser, FPassword);
     if Result then
       Result := InternalSend(data);
   end;
+end;
+
+procedure THTTPRequest.InternalSetRequestHeader(const header,
+  value: RawByteString);
+begin
+  FRequestHeader.AddOrSetValue(LowerCase(header), THTTPHeader.Make(header, value));
 end;
 
 function THTTPRequest.IsRedirecting: Boolean;
@@ -394,13 +428,13 @@ function THTTPRequest.Open(const method: RawByteString; const url: string; async
   const user, password: string): Boolean;
 begin
   if not (FReadyState in [rsUninitialized, rsLoaded]) then
-    raise EHTTPRequest.Create('Connextion is not ready');
+    raise EHTTPRequest.Create('Connection is not ready');
   Result := InternalOpen(method, url, async, user, password);
 end;
 
 function THTTPRequest.Receive: Boolean;
 var
-  str: RawByteString;
+  str: THTTPHeader;
   len, rcv: Integer;
   buff: array[0..1023] of AnsiChar;
   strm: TPooledMemoryStream;
@@ -423,24 +457,24 @@ begin
     end,
     function (const key: RawByteString; const value: RawByteString): Boolean
     begin
-      SetResponseHeader(LowerCase(key), value);
+      SetResponseHeader(key, value);
       Result := True;
     end) then
       Exit(False);
 
   if FResponseHeader.TryGetValue('content-encoding', str) then
   begin
-    if (str = 'deflate') then
+    if SameText(str.value, RawbyteString('deflate')) then
     begin
       encoding := encDeflate;
     end else
-    if (str = 'gzip') then
+    if SameText(str.value, RawbyteString('gzip')) then
       encoding := encGZIP else
       encoding := encUnknown;
   end else
     encoding := encUnknown;
 
-  if FResponseHeader.TryGetValue('transfer-encoding', str) and (str = 'chunked') then
+  if FResponseHeader.TryGetValue('transfer-encoding', str) and SameText(str.value, RawbyteString('chunked')) then
   begin
     if not HTTPReadChunked(
       function (var buf; len: Integer): Integer
@@ -455,7 +489,7 @@ begin
         Exit(False);
   end else
   if FResponseHeader.TryGetValue('content-length', str) and
-    TryStrToInt(string(str), len) and (len > 0) then
+    TryStrToInt(string(str.value), len) and (len > 0) then
   begin
     while len > 0 do
     begin
@@ -528,7 +562,7 @@ end;
 
 procedure THTTPRequest.SendHeaders(data: TStream);
 var
-  pair: TPair<RawByteString, RawByteString>;
+  pair: THTTPHeader;
   cook: TPair<RawByteString, TCookie>;
   cookie: RawByteString;
   cookiecount: Integer;
@@ -538,11 +572,11 @@ begin
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
 
   if ((FSsl = nil) and (FPort <> 80)) or ((FSsl <> nil) and (FPort <> 443)) then
-    HTTPWriteLine('host: ' + FDomain + ':' + RawByteString(IntToStr(FPort))) else
-    HTTPWriteLine('host: ' + FDomain);
+    HTTPWriteLine('Host: ' + FDomain + ':' + RawByteString(IntToStr(FPort))) else
+    HTTPWriteLine('Host: ' + FDomain);
 
-  for pair in FRequestHeader do
-    HTTPWriteLine(pair.Key + ': ' + pair.Value);
+  for pair in FRequestHeader.Values do
+    HTTPWriteLine(pair.name + ': ' + pair.value);
 
   cookiecount := 0;
   for cook in FCookies do
@@ -550,7 +584,7 @@ begin
     begin
       if cookiecount > 0 then
         cookie := cookie + '; ' else
-        cookie := 'cookie: ';
+        cookie := 'Cookie: ';
       cookie := cookie + cook.Key + '=' + cook.Value.value;
       Inc(cookiecount);
     end;
@@ -558,11 +592,11 @@ begin
     HTTPWriteLine(cookie);
 
   if (FUser <> '') and (FPassword <> '') then
-    HTTPWriteLine('authorization: Basic ' + RawByteString(StrTobase64(FUser + ':' + FPassword)));
+    HTTPWriteLine('Authorization: Basic ' + RawByteString(StrTobase64(FUser + ':' + FPassword)));
 
   if (data <> nil) and (data.Size > 0) then
   begin
-    HTTPWriteLine('content-length: ' + RawByteString(IntToStr(data.Size)));
+    HTTPWriteLine('Content-Length: ' + RawByteString(IntToStr(data.Size)));
     HTTPWriteLine('');
     data.Seek(0, soFromBeginning);
     repeat
@@ -609,15 +643,17 @@ procedure THTTPRequest.SetRequestHeader(const header, value: RawByteString);
 begin
   if FReadyState <> rsOpen then
     raise EHTTPRequest.Create('Connection is not open');
-  FRequestHeader.AddOrSetValue(LowerCase(header), value);
+  InternalSetRequestHeader(header, value);
 end;
 
 procedure THTTPRequest.SetResponseHeader(const header, value: RawByteString);
 var
   event: TOnHeaderEvent;
+  low: RawByteString;
 begin
-  if not FResponseEvents.TryGetValue(header, event) or event(value) then
-    FResponseHeader.AddOrSetValue(header, value);
+  low := LowerCase(header);
+  if not FResponseEvents.TryGetValue(low, event) or event(value) then
+    FResponseHeader.AddOrSetValue(low, THTTPHeader.Make(header, value));
 end;
 
 function THTTPRequest.SockRecv(var Buf; len: Integer): Integer;
@@ -771,14 +807,14 @@ end;
 procedure THTTPRequest.LoadDefaultHeader;
 begin
   FRequestHeader.Clear;
-  FRequestHeader.Add('accept', '*/*');
-  FRequestHeader.Add('accept-charset', 'utf-8;q=0.7,*;q=0.3');
-  FRequestHeader.Add('accept-encoding', 'deflate,gzip');
-  FRequestHeader.Add('accept-language', 'en-US;q=0.6,en;q=0.4');
-  FRequestHeader.Add('cache-control', 'max-age=0');
-  FRequestHeader.Add('connection', 'keep-alive');
-  FRequestHeader.Add('keep-alive', '300');
-  FRequestHeader.Add('user-agent', 'Mozilla/5.0');
+  InternalSetRequestHeader('Accept', '*/*');
+  InternalSetRequestHeader('Accept-Charset', 'utf-8;q=0.7,*;q=0.3');
+  InternalSetRequestHeader('Accept-Encoding', 'deflate,gzip');
+  InternalSetRequestHeader('Accept-Language', 'en-US;q=0.6,en;q=0.4');
+  InternalSetRequestHeader('Cache-Control', 'max-age=0');
+  InternalSetRequestHeader('Connection', 'keep-alive');
+  InternalSetRequestHeader('Keep-Alive', '300');
+  InternalSetRequestHeader('User-Agent', 'Mozilla/5.0');
 end;
 
 procedure THTTPRequest.LoadEvents;
@@ -835,6 +871,15 @@ procedure THTTPRequest.TThreadAsync.Execute;
 begin
   THTTPRequest(FThis).InternalSend(FData);
   THTTPRequest(FThis).SetReadyState(rsLoaded);
+end;
+
+{ THTTPHeader }
+
+class function THTTPHeader.Make(const name,
+  value: RawByteString): THTTPHeader;
+begin
+  Result.name := name;
+  Result.value := value;
 end;
 
 end.
