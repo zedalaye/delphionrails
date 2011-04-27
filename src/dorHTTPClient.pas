@@ -35,6 +35,7 @@ type
     function GetResponseHeader(const header: RawByteString): RawByteString;
     function Send(data: TStream = nil): Boolean;
     function SendText(const data: string; encoding: TEncoding = nil): Boolean;
+    function SendFile(const FileName: string): Boolean;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
     procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
@@ -135,6 +136,8 @@ type
     function GetRequestHeader(const header: RawByteString): RawByteString;
     function GetResponseHeader(const header: RawByteString): RawByteString;
     function Send(data: TStream): Boolean;
+    function SendText(const data: string; encoding: TEncoding): Boolean;
+    function SendFile(const FileName: string): Boolean;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
     function GetReadyState: TReadyState;
@@ -142,7 +145,6 @@ type
     function GetOnReadyStateChange: TOnReadyStateChange;
     function GetResponseStream: TStream;
     function GetResponseText: string;
-    function SendText(const data: string; encoding: TEncoding): Boolean;
     function GetRequestHeaders: THeaderCollection;
     function GetResponseHeaders: THeaderCollection;
   public
@@ -560,6 +562,18 @@ begin
   end;
 end;
 
+function THTTPRequest.SendFile(const FileName: string): Boolean;
+var
+  stream: TFileStream;
+begin
+  stream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+  try
+    Result := Send(stream);
+  finally
+    stream.Free;
+  end;
+end;
+
 procedure THTTPRequest.SendHeaders(data: TStream);
 var
   pair: THTTPHeader;
@@ -568,6 +582,7 @@ var
   cookiecount: Integer;
   buffer: array[0..1023] of AnsiChar;
   read: Integer;
+  deflate: TPooledMemoryStream;
 begin
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
 
@@ -596,15 +611,29 @@ begin
 
   if (data <> nil) and (data.Size > 0) then
   begin
-    HTTPWriteLine('Content-Length: ' + RawByteString(IntToStr(data.Size)));
-    HTTPWriteLine('');
     data.Seek(0, soFromBeginning);
+
+    if SameText(GetRequestHeader('Content-Encoding'), 'deflate') then
+    begin
+      deflate := TPooledMemoryStream.Create;
+      CompressStream(data, deflate);
+      data := deflate;
+      data.Seek(2, soFromBeginning);
+    end else
+      deflate := nil;
+
+
+    HTTPWriteLine('Content-Length: ' + RawByteString(IntToStr(data.Size - data.Position)));
+    HTTPWriteLine('');
+
     repeat
       read := data.Read(buffer, SizeOf(buffer));
       if read > 0 then
         SockSend(buffer, read);
     until read = 0;
 
+    if deflate <> nil then
+      deflate.Free;
   end else
     HTTPWriteLine('');
   SetReadyState(rsSent);
