@@ -10,7 +10,8 @@ type
     // Could be used for somethingelse later
     class procedure Register;
     class function Return: ISuperoBject;
-    class function Response: THTTPMessage;
+    class function Response: THTTPMessage; virtual;
+    class function Request: THTTPMessage; virtual;
     class procedure Render(const obj: ISuperObject; format: boolean = false); overload;
     class procedure Render(const str: string); overload;
     class function ErrorCode: Integer; virtual;
@@ -70,6 +71,11 @@ end;
 class procedure TActionView.Render(const str: string);
 begin
   (CurrentThread as THTTPStub).Render(str);
+end;
+
+class function TActionView.Request: THTTPMessage;
+begin
+  Result := (CurrentThread as THTTPStub).Request;
 end;
 
 class function TActionView.Response: THTTPMessage;
