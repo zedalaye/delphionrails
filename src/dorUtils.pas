@@ -123,7 +123,7 @@ function GetTickCount: Cardinal;
 {$ENDIF}
 
 implementation
-uses uiblib, dorOpenSSL;
+uses uiblib;
 
 const
   Base64Code: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
