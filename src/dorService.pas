@@ -93,6 +93,9 @@ var
 
 function Application: TDORService;
 begin
+{$IFDEF CONSOLEAPP}
+  AllocConsole;
+{$ENDIF}
   if FApplication = nil then
     FApplication := TDORService.Create;
   Result := FApplication;
