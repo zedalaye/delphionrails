@@ -20,13 +20,17 @@ unit dorXMPP;
 *)
 
 interface
-uses SysUtils, Windows, WinSock, dorXML, dorOpenSSL;
+uses SysUtils, Windows, WinSock, dorXML, dorOpenSSL, Generics.Collections;
 
 type
   IXMPPClient = interface;
 
+  TIQType = (iqGet, iqSet);
+  TIQResponse = (iqResult, iqError);
+
   TXMPPMessage = reference to procedure(const msg: string);
-  TXMPPEvent = reference to function(const sender: IXMPPClient; const node: IXMLNode): Boolean;
+  TXMPPIQEvent = reference to procedure(const sender: IXMPPClient; action: TIQType; const node: IXMLNode);
+  TXMPPIQResponse = reference to procedure(const sender: IXMPPClient; result: TIQResponse; const node: IXMLNode);
   TXMPPReadyState = (rsOffline, rsConnecting, rsOpen, rsClosing);
   TXMPPReadyStateChange = reference to procedure(const xmpp: IXMPPClient);
   TXMPPOption = (xoDontForceEncryption, xoPlaintextAuth);
@@ -37,6 +41,7 @@ type
     function GetReadyState: TXMPPReadyState;
     procedure Send(const data: string);
     procedure SendFmt(const data: string; params: array of const);
+    procedure SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
     procedure Close;
     procedure Open(const url, user, domain, pass: string;
       const resource: string = ''; options: TXMPPOptions = []);
@@ -44,13 +49,13 @@ type
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
 
     function GetOnError: TXMPPMessage;
-    function GetOnEvent: TXMPPEvent;
+    function GetOnIQ: TXMPPIQEvent;
 
     procedure SetOnError(const value: TXMPPMessage);
-    procedure SetOnEvent(const value: TXMPPEvent);
+    procedure SetOnIQ(const value: TXMPPIQEvent);
 
     property OnError: TXMPPMessage read GetOnError write SetOnError;
-    property OnEvent: TXMPPEvent read GetOnEvent write SetOnEvent;
+    property OnIQ: TXMPPIQEvent read GetOnIQ write SetOnIQ;
 
     property ReadyState: TXMPPReadyState read getReadyState;
     property OnReadyStateChange: TXMPPReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
@@ -59,12 +64,13 @@ type
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
   private
     FOnError: TXMPPMessage;
-    FOnEvent: TXMPPEvent;
+    FOnIQ: TXMPPIQEvent;
     FReadyState: TXMPPReadyState;
     FSocket: TSocket;
     FGenId: Integer;
     FOnStateChange: TXMPPReadyStateChange;
     FLockWrite: TRTLCriticalSection;
+    FLockEvents: TRTLCriticalSection;
     // SSL
     FCtx: PSSL_CTX;
     FSsl: PSSL;
@@ -72,6 +78,7 @@ type
     FCertificateFile: AnsiString;
     FPrivateKeyFile: AnsiString;
     FCertCAFile: AnsiString;
+    FEvents: TDictionary<Integer, TXMPPIQResponse>;
     function StartSSL: Boolean;
     procedure Listen(const user, domain, pass, resource: string; options: TXMPPOptions);
     function SockSend(var Buf; len, flags: Integer): Integer;
@@ -85,11 +92,12 @@ type
       options: TXMPPOptions);
     procedure SendFmt(const data: string; params: array of const);
     procedure Send(const data: string);
+    procedure SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
     procedure Close;
     function GetOnError: TXMPPMessage;
-    function GetOnEvent: TXMPPEvent;
+    function GetOnIQ: TXMPPIQEvent;
     procedure SetOnError(const value: TXMPPMessage);
-    procedure SetOnEvent(const value: TXMPPEvent);
+    procedure SetOnIQ(const value: TXMPPIQEvent);
   public
     constructor Create(const password: AnsiString = '';
       const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
@@ -101,12 +109,7 @@ type
 
 implementation
 uses
-  Classes, AnsiStrings, dorUtils, dorHTTP, Generics.Collections, dorMD5;
-
-procedure write;
-begin
-
-end;
+  Classes, AnsiStrings, dorUtils, dorHTTP, dorMD5;
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: TXMPPClient): Integer; cdecl;
@@ -330,6 +333,8 @@ destructor TXMPPClient.Destroy;
 begin
   Close;
   DeleteCriticalSection(FLockWrite);
+  DeleteCriticalSection(FLockEvents);
+  FEvents.Free;
   inherited;
 end;
 
@@ -347,6 +352,8 @@ begin
   FPrivateKeyFile := PrivateKeyFile;
   FCertCAFile := CertCAFile;
   InitializeCriticalSection(FLockWrite);
+  InitializeCriticalSection(FLockEvents);
+  FEvents := TDictionary<Integer, TXMPPIQResponse>.Create;
 end;
 
 function TXMPPClient.getReadyState: TXMPPReadyState;
@@ -366,10 +373,9 @@ var
   stack: TStack<IXMLNode>;
   n: IXMLNode;
   mustreconnect: Boolean;
-  events: TDictionary<string, TFunc<Boolean>>;
   ev: TFunc<Boolean>;
   reconnect: TProc;
-  _ret_: Boolean;
+  events: TDictionary<string, TFunc<Boolean>>;
 label
   redo;
 begin
@@ -495,20 +501,86 @@ redo:
             end;
           end else
           begin
+            writeln(events.Count);
             if n.FindChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
             if n.FindChild('session') <> nil then Send(XML_IQ_SESSION);
-            //write('<presence/>');
+            events.Add('iq',
+              function: Boolean
+              var
+                typ: string;
+                e: TFunc<Boolean>;
+              begin
+                if n.Attr.TryGetValue('type', typ) and
+                    events.TryGetValue('iq@' + typ, e) then
+                  Result := e else
+                  Result := True;
+              end);
+            events.Add('iq@get',
+              function: Boolean
+              begin
+                if Assigned(FOnIQ) then
+                  TThread.Synchronize(nil, procedure
+                    begin FOnIQ(Self, iqGet, n) end);
+                Result := True;
+              end);
+            events.Add('iq@set',
+              function: Boolean
+              begin
+                if Assigned(FOnIQ) then
+                  TThread.Synchronize(nil, procedure
+                    begin FOnIQ(Self, iqSet, n) end);
+                Result := True;
+              end);
+            events.Add('iq@result',
+              function: Boolean
+              var
+                idstr: string;
+                id: Integer;
+                rep: TXMPPIQResponse;
+              begin
+                if n.Attr.TryGetValue('id', idstr) and
+                  TryStrToInt(idstr, id) then
+                begin
+                  rep := nil;
+                  EnterCriticalSection(FLockEvents);
+                  try
+                    if FEvents.TryGetValue(id, rep) then
+                      FEvents.Remove(id);
+                  finally
+                    LeaveCriticalSection(FLockEvents);
+                  end;
+                  if Assigned(rep) then
+                    TThread.Synchronize(nil, procedure begin
+                      rep(Self, iqResult, n) end);
+                end;
+                Result := True;
+              end);
+            events.Add('iq@error',
+              function: Boolean
+              var
+                idstr: string;
+                id: Integer;
+                rep: TXMPPIQResponse;
+              begin
+                if n.Attr.TryGetValue('id', idstr) and
+                  TryStrToInt(idstr, id) then
+                begin
+                  rep := nil;
+                  EnterCriticalSection(FLockEvents);
+                  try
+                    if FEvents.TryGetValue(id, rep) then
+                      FEvents.Remove(id);
+                  finally
+                    LeaveCriticalSection(FLockEvents);
+                  end;
+                  if Assigned(rep) then
+                    TThread.Synchronize(nil, procedure begin
+                      rep(Self, iqError, n) end);
+                end;
+                Result := True;
+              end);
             SetReadyState(rsOpen);
           end;
-//          events.Add('iq', function: Boolean
-//            begin
-//              if n.FindChild('ping') <> nil then
-//                write('<iq from="%s" to="%s" id="%s" type="result"/>',
-//                  [n.Attr['to'], n.Attr['from'], n.Attr['id']]);
-//
-//
-//              Result := True;
-//            end);
         end;
         events.Remove('stream:features');
       end);
@@ -537,12 +609,12 @@ redo:
                 stack.Peek.Children.Add(n) else
                 if events.TryGetValue(n.Name, ev) then
                   Result := ev else
-                    if Assigned(FOnEvent) then
-                    begin
-                      TThread.Synchronize(nil, procedure begin _ret_ := FOnEvent(Self, n) end);
-                      Result := _ret_;
-                    end else
-                      Result := True;
+//                    if Assigned(FOnIQ) then
+//                    begin
+//                      TThread.Synchronize(nil, procedure begin _ret_ := FOnIQ(Self, n) end);
+//                      Result := _ret_;
+//                    end else
+                  Result := True;
             end;
           xtAttribute:
             begin
@@ -580,9 +652,9 @@ begin
   FOnError := value;
 end;
 
-procedure TXMPPClient.SetOnEvent(const value: TXMPPEvent);
+procedure TXMPPClient.SetOnIQ(const value: TXMPPIQEvent);
 begin
-  FOnEvent := value;
+  FOnIQ := value;
 end;
 
 procedure TXMPPClient.SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
@@ -654,20 +726,45 @@ end;
 
 procedure TXMPPClient.SendFmt(const data: string; params: array of const);
 begin
-  EnterCriticalSection(FLockWrite);
-  try
-    Send(Format(data, params));
-  finally
-    LeaveCriticalSection(FLockWrite);
+  Send(Format(data, params));
+end;
+
+procedure TXMPPClient.SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
+const
+  Typ: array[TIQType] of string = ('get', 'set');
+var
+  req: string;
+  id: Integer;
+begin
+  id := InterlockedIncrement(FGenId);
+  req := Format('<iq type="%s" id="%d"', [Typ[action], id]);
+  if dest <> '' then
+    req := req + ' to="' + dest + '"';
+  req := req + '>' + data + '</iq>';
+
+  if Assigned(callback) then
+  begin
+    EnterCriticalSection(FLockEvents);
+    try
+      FEvents.Add(id, callback);
+    finally
+      LeaveCriticalSection(FLockEvents);
+    end;
   end;
+  Send(req);
 end;
 
 procedure TXMPPClient.Send(const data: string);
 var
   rb: UTF8String;
 begin
-  rb := UTF8String(data);
-  SockSend(PAnsiChar(rb)^, Length(rb), 0);
+  EnterCriticalSection(FLockWrite);
+  try
+    rb := UTF8String(data);
+    SockSend(PAnsiChar(rb)^, Length(rb), 0);
+  finally
+    LeaveCriticalSection(FLockWrite);
+  end;
 end;
 
 function TXMPPClient.SockRecv(var Buf; len, flags: Integer): Integer;
@@ -687,9 +784,9 @@ begin
   Result := FOnError;
 end;
 
-function TXMPPClient.GetOnEvent: TXMPPEvent;
+function TXMPPClient.GetOnIQ: TXMPPIQEvent;
 begin
-  Result := FOnEvent;
+  Result := FOnIQ;
 end;
 
 function TXMPPClient.GetOnReadyStateChange: TXMPPReadyStateChange;
