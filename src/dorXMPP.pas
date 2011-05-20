@@ -27,10 +27,14 @@ type
 
   TIQType = (iqGet, iqSet);
   TIQResponse = (iqResult, iqError);
+  TMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
 
-  TXMPPMessage = reference to procedure(const msg: string);
+  TXMPPErrorEvent = reference to procedure(const msg: string);
   TXMPPIQEvent = reference to procedure(const sender: IXMPPClient; action: TIQType; const node: IXMLNode);
+  TXMPPEvent = reference to procedure(const sender: IXMPPClient; const node: IXMLNode);
   TXMPPIQResponse = reference to procedure(const sender: IXMPPClient; result: TIQResponse; const node: IXMLNode);
+  TXMPPMessageEvent = reference to procedure(const sender: IXMPPClient; typ: TMessageType; const node: IXMLNode);
+
   TXMPPReadyState = (rsOffline, rsConnecting, rsOpen, rsClosing);
   TXMPPReadyStateChange = reference to procedure(const xmpp: IXMPPClient);
   TXMPPOption = (xoDontForceEncryption, xoPlaintextAuth);
@@ -42,20 +46,27 @@ type
     procedure Send(const data: string);
     procedure SendFmt(const data: string; params: array of const);
     procedure SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
+
     procedure Close;
     procedure Open(const url, user, domain, pass: string;
       const resource: string = ''; options: TXMPPOptions = []);
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
 
-    function GetOnError: TXMPPMessage;
+    function GetOnError: TXMPPErrorEvent;
     function GetOnIQ: TXMPPIQEvent;
+    function GetOnPresence: TXMPPEvent;
+    function GetOnMessage: TXMPPMessageEvent;
 
-    procedure SetOnError(const value: TXMPPMessage);
+    procedure SetOnError(const value: TXMPPErrorEvent);
     procedure SetOnIQ(const value: TXMPPIQEvent);
+    procedure SetOnPresence(const value: TXMPPEvent);
+    procedure SetOnMessage(const value: TXMPPMessageEvent);
 
-    property OnError: TXMPPMessage read GetOnError write SetOnError;
+    property OnError: TXMPPErrorEvent read GetOnError write SetOnError;
     property OnIQ: TXMPPIQEvent read GetOnIQ write SetOnIQ;
+    property OnPresence: TXMPPEvent read GetOnPresence write SetOnPresence;
+    property OnMessage: TXMPPMessageEvent read GetOnMessage write SetOnMessage;
 
     property ReadyState: TXMPPReadyState read getReadyState;
     property OnReadyStateChange: TXMPPReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
@@ -63,8 +74,10 @@ type
 
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
   private
-    FOnError: TXMPPMessage;
+    FOnError: TXMPPErrorEvent;
     FOnIQ: TXMPPIQEvent;
+    FOnPresence: TXMPPEvent;
+    FOnMessage: TXMPPMessageEvent;
     FReadyState: TXMPPReadyState;
     FSocket: TSocket;
     FGenId: Integer;
@@ -94,10 +107,14 @@ type
     procedure Send(const data: string);
     procedure SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
     procedure Close;
-    function GetOnError: TXMPPMessage;
+    function GetOnError: TXMPPErrorEvent;
     function GetOnIQ: TXMPPIQEvent;
-    procedure SetOnError(const value: TXMPPMessage);
+    function GetOnPresence: TXMPPEvent;
+    function GetOnMessage: TXMPPMessageEvent;
+    procedure SetOnError(const value: TXMPPErrorEvent);
     procedure SetOnIQ(const value: TXMPPIQEvent);
+    procedure SetOnPresence(const value: TXMPPEvent);
+    procedure SetOnMessage(const value: TXMPPMessageEvent);
   public
     constructor Create(const password: AnsiString = '';
       const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
@@ -375,6 +392,9 @@ var
   mustreconnect: Boolean;
   ev: TFunc<Boolean>;
   reconnect: TProc;
+  doiqresult: TProc<TIQResponse>;
+  doiqevent: TProc<TIQType>;
+  domessage: TProc<TMessageType>;
   events: TDictionary<string, TFunc<Boolean>>;
 label
   redo;
@@ -384,7 +404,51 @@ begin
     stack.Clear;
     SendFmt(XML_STREAM_STREAM, [domain]);
     mustreconnect := True;
-  end;;
+  end;
+
+  doiqresult :=
+    procedure(resp: TIQResponse)
+    var
+      idstr: string;
+      id: Integer;
+      rep: TXMPPIQResponse;
+    begin
+      if n.Attr.TryGetValue('id', idstr) and
+        TryStrToInt(idstr, id) then
+      begin
+        rep := nil;
+        EnterCriticalSection(FLockEvents);
+        try
+          if FEvents.TryGetValue(id, rep) then
+            FEvents.Remove(id);
+        finally
+          LeaveCriticalSection(FLockEvents);
+        end;
+        if Assigned(rep) then
+          TThread.Synchronize(nil, procedure begin
+            rep(Self, resp, n) end);
+      end;
+    end;
+
+  doiqevent :=
+    procedure(event: TIQType)
+    begin
+      if Assigned(FOnIQ) then
+        TThread.Synchronize(nil,
+          procedure begin
+            FOnIQ(Self, iqSet, n)
+          end);
+    end;
+
+  domessage :=
+    procedure(typ: TMessageType)
+    begin
+      if Assigned(FOnMessage) then
+        TThread.Synchronize(nil,
+          procedure begin
+            FOnMessage(Self, typ, n)
+          end);
+    end;
 
   stack := TStack<IXMLNode>.Create;
   events := TDictionary<string, TFunc<Boolean>>.Create;
@@ -501,9 +565,16 @@ redo:
             end;
           end else
           begin
-            writeln(events.Count);
             if n.FindChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
             if n.FindChild('session') <> nil then Send(XML_IQ_SESSION);
+            events.Add('presence',
+              function: Boolean
+              begin
+                if Assigned(FOnPresence) then
+                TThread.Synchronize(nil, procedure begin
+                  FOnPresence(Self, n) end);
+                Result := True;
+              end);
             events.Add('iq',
               function: Boolean
               var
@@ -518,65 +589,59 @@ redo:
             events.Add('iq@get',
               function: Boolean
               begin
-                if Assigned(FOnIQ) then
-                  TThread.Synchronize(nil, procedure
-                    begin FOnIQ(Self, iqGet, n) end);
+                doiqevent(iqGet);
                 Result := True;
               end);
             events.Add('iq@set',
               function: Boolean
               begin
-                if Assigned(FOnIQ) then
-                  TThread.Synchronize(nil, procedure
-                    begin FOnIQ(Self, iqSet, n) end);
+                doiqevent(iqSet);
                 Result := True;
               end);
             events.Add('iq@result',
+              function: Boolean begin doiqresult(iqResult); result := True end);
+            events.Add('iq@error',
+              function: Boolean begin doiqresult(iqError); result := True end);
+            events.Add('message',
               function: Boolean
               var
-                idstr: string;
-                id: Integer;
-                rep: TXMPPIQResponse;
+                typ: string;
+                e: TFunc<Boolean>;
               begin
-                if n.Attr.TryGetValue('id', idstr) and
-                  TryStrToInt(idstr, id) then
+                if n.Attr.TryGetValue('type', typ) then
                 begin
-                  rep := nil;
-                  EnterCriticalSection(FLockEvents);
-                  try
-                    if FEvents.TryGetValue(id, rep) then
-                      FEvents.Remove(id);
-                  finally
-                    LeaveCriticalSection(FLockEvents);
-                  end;
-                  if Assigned(rep) then
-                    TThread.Synchronize(nil, procedure begin
-                      rep(Self, iqResult, n) end);
+                  if events.TryGetValue('message@' + typ, e) then
+                    Result := e else
+                    Result := True;
+                end else
+                begin
+                  domessage(mtNone);
+                  Result := True;
                 end;
+              end);
+            events.Add('message@normal', function: Boolean
+              begin
+                domessage(mtNormal);
                 Result := True;
               end);
-            events.Add('iq@error',
-              function: Boolean
-              var
-                idstr: string;
-                id: Integer;
-                rep: TXMPPIQResponse;
+            events.Add('message@chat', function: Boolean
               begin
-                if n.Attr.TryGetValue('id', idstr) and
-                  TryStrToInt(idstr, id) then
-                begin
-                  rep := nil;
-                  EnterCriticalSection(FLockEvents);
-                  try
-                    if FEvents.TryGetValue(id, rep) then
-                      FEvents.Remove(id);
-                  finally
-                    LeaveCriticalSection(FLockEvents);
-                  end;
-                  if Assigned(rep) then
-                    TThread.Synchronize(nil, procedure begin
-                      rep(Self, iqError, n) end);
-                end;
+                domessage(mtChat);
+                Result := True;
+              end);
+            events.Add('message@groupchat', function: Boolean
+              begin
+                domessage(mtGroupChat);
+                Result := True;
+              end);
+            events.Add('message@headline', function: Boolean
+              begin
+                domessage(mtHeadline);
+                Result := True;
+              end);
+            events.Add('message@error', function: Boolean
+              begin
+                domessage(mtError);
                 Result := True;
               end);
             SetReadyState(rsOpen);
@@ -609,11 +674,6 @@ redo:
                 stack.Peek.Children.Add(n) else
                 if events.TryGetValue(n.Name, ev) then
                   Result := ev else
-//                    if Assigned(FOnIQ) then
-//                    begin
-//                      TThread.Synchronize(nil, procedure begin _ret_ := FOnIQ(Self, n) end);
-//                      Result := _ret_;
-//                    end else
                   Result := True;
             end;
           xtAttribute:
@@ -647,7 +707,7 @@ redo:
     end);
 end;
 
-procedure TXMPPClient.SetOnError(const value: TXMPPMessage);
+procedure TXMPPClient.SetOnError(const value: TXMPPErrorEvent);
 begin
   FOnError := value;
 end;
@@ -655,6 +715,16 @@ end;
 procedure TXMPPClient.SetOnIQ(const value: TXMPPIQEvent);
 begin
   FOnIQ := value;
+end;
+
+procedure TXMPPClient.SetOnMessage(const value: TXMPPMessageEvent);
+begin
+  FOnMessage := value;
+end;
+
+procedure TXMPPClient.SetOnPresence(const value: TXMPPEvent);
+begin
+  FOnPresence := value;
 end;
 
 procedure TXMPPClient.SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
@@ -779,7 +849,7 @@ begin
   WSACleanup;
 end;
 
-function TXMPPClient.GetOnError: TXMPPMessage;
+function TXMPPClient.GetOnError: TXMPPErrorEvent;
 begin
   Result := FOnError;
 end;
@@ -787,6 +857,16 @@ end;
 function TXMPPClient.GetOnIQ: TXMPPIQEvent;
 begin
   Result := FOnIQ;
+end;
+
+function TXMPPClient.GetOnMessage: TXMPPMessageEvent;
+begin
+  Result := FonMessage;
+end;
+
+function TXMPPClient.GetOnPresence: TXMPPEvent;
+begin
+  Result := FOnPresence;
 end;
 
 function TXMPPClient.GetOnReadyStateChange: TXMPPReadyStateChange;
