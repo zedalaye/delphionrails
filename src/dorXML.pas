@@ -1,66 +1,155 @@
 unit dorXML;
 
 interface
-uses Classes, Generics.Collections;
-
-(******************************************************************************)
-(* XML Node                                                                   *)
-(* Simple XML tree node                                                       *)
-(******************************************************************************)
+uses SysUtils, Classes, Generics.Collections;
 
 type
+  TXMLSaveto = reference to procedure(const data: string);
+  TXMLNodeType = (ntNull, ntNode, ntText, ntCDATA);
+
   IXMLNode = interface
   ['{8A22EC91-113B-48DE-A58B-E920DED5F21D}']
-    function GetName: string;
-    function GetAttributes: TDictionary<string, string>;
-    function GetChildren: TList<IXMLNode>;
+    function GetName: RawByteString;
+    function GetAttributes: TDictionary<RawByteString, string>;
+    function GetChildNodes: TList<IXMLNode>;
     function GetText: string;
-    procedure SetText(const text: string);
-    function FindChildren(const name: string; out children: TList<IXMLNode>): Integer;
-    function FindChild(const name: string): IXMLNode;
-    property Name: string read GetName;
-    property Attr: TDictionary<string, string> read GetAttributes;
-    property Children: TList<IXMLNode> read GetChildren;
+    procedure SetText(const value: string);
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer;
+    function FirstChild(const name: RawByteString): IXMLNode;
+    function GetXML: string;
+    procedure SaveToXML(const writer: TXMLSaveto);
+    procedure SaveToText(const writer: TXMLSaveto);
+    function GetHasAttributes: Boolean;
+    function GetHasChildNodes: Boolean;
+    function GetDataType: TXMLNodeType;
+    procedure SetNullChild(const name: RawByteString; const value: string);
+    function GetNullChild(const name: RawByteString): string;
+    procedure SetNullAttr(const name: RawByteString; const value: string);
+    function GetNullAttr(const name: RawByteString): string;
+    function Append(const name: RawByteString): IXMLNode;
+
+    property Name: RawByteString read GetName;
+    property Attributes: TDictionary<RawByteString, string> read GetAttributes;
+    property ChildNodes: TList<IXMLNode> read GetChildNodes;
     property Text: string read GetText write SetText;
+    property Xml: string read GetXml;
+    property HasAttributes: Boolean read GetHasAttributes;
+    property HasChildNodes: Boolean read GetHasChildNodes;
+    property DataType: TXMLNodeType read GetDataType;
+    property NullChild[const name: RawByteString]: string read GetNullChild write SetNullChild;
+    property NullAttr[const name: RawByteString]: string read GetNullAttr write SetNullAttr;
   end;
 
-  TXMLNode = class(TInterfacedObject, IXMLNode)
-  private
-    FName: string;
-    FText: string;
-    FAttributes: TDictionary<string, string>;
-    FChildren: TList<IXMLNode>;
-    FChildIndex: TObjectDictionary<string, TList<IXMLNode>>;
-    procedure doNotify(Sender: TObject; const Item: IXMLNode;
-      Action: TCollectionNotification);
+  TXMLNodeNull = class(TInterfacedObject, IXMLNode)
+  protected
+    class procedure Escape(const str: string; const writer: TXMLSaveto);
+    { IXMLNode }
+    function GetName: RawByteString; virtual;
+    function GetAttributes: TDictionary<RawByteString, string>; virtual;
+    function GetChildNodes: TList<IXMLNode>; virtual;
+    function GetText: string; virtual;
+    procedure SetText(const value: string); virtual;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer; virtual;
+    function FirstChild(const name: RawByteString): IXMLNode; virtual;
+    function GetXML: string;
+    procedure SaveToXML(const writer: TXMLSaveto); virtual;
+    procedure SaveToText(const writer: TXMLSaveto); virtual;
+    function GetHasAttributes: Boolean; virtual;
+    function GetHasChildNodes: Boolean; virtual;
+    function GetDataType: TXMLNodeType; virtual;
+    procedure SetNullChild(const name: RawByteString; const value: string); virtual;
+    function GetNullChild(const name: RawByteString): string; virtual;
+    procedure SetNullAttr(const name: RawByteString; const value: string); virtual;
+    function GetNullAttr(const name: RawByteString): string; virtual;
+    function Append(const name: RawByteString): IXMLNode; virtual;
   public
-    constructor Create(const name: string);
-    destructor Destroy; override;
-    function GetName: string;
-    function GetAttributes: TDictionary<string, string>;
-    function GetChildren: TList<IXMLNode>;
-    function GetText: string;
-    procedure SetText(const text: string);
-    function FindChildren(const name: string; out children: TList<IXMLNode>): Integer;
-    function FindChild(const name: string): IXMLNode;
+    property Name: RawByteString read GetName;
+    property DataType: TXMLNodeType read GetDataType;
+    property Attributes: TDictionary<RawByteString, string> read GetAttributes;
+    property ChildNodes: TList<IXMLNode> read GetChildNodes;
+    property Text: string read GetText write SetText;
+    property Xml: string read GetXml;
+    property HasAttributes: Boolean read GetHasAttributes;
+    property HasChildNodes: Boolean read GetHasChildNodes;
+    property NullChild[const name: RawByteString]: string read GetNullChild write SetNullChild;
+    property NullAttr[const name: RawByteString]: string read GetNullAttr write SetNullAttr;
   end;
 
-type
+  TXMLNodeText = class(TXMLNodeNull)
+  private
+    FText: string;
+  protected
+    function GetName: RawByteString; override;
+    function GetText: string; override;
+    procedure SetText(const value: string); override;
+    procedure SaveToXML(const writer: TXMLSaveto); override;
+    procedure SaveToText(const writer: TXMLSaveto); override;
+    function GetDataType: TXMLNodeType; override;
+  public
+    constructor Create(const value: string); virtual;
+  end;
+
+  TXMLNodeCDATA = class(TXMLNodeNull)
+  private
+    FCDATA: string;
+  protected
+    function GetName: RawByteString; override;
+    function GetText: string; override;
+    procedure SetText(const value: string); override;
+    procedure SaveToXML(const writer: TXMLSaveto); override;
+    procedure SaveToText(const writer: TXMLSaveto); override;
+    function GetDataType: TXMLNodeType; override;
+  public
+    constructor Create(const value: string); virtual;
+  end;
+
+  TXMLNode = class(TXMLNodeNull)
+  private
+    FName: RawByteString;
+    FAttributes: TDictionary<RawByteString, string>;
+    FChildNodes: TList<IXMLNode>;
+    FChildIndex: TObjectDictionary<RawByteString, TList<IXMLNode>>;
+    procedure doNotifyChild(Sender: TObject; const Item: IXMLNode;
+      Action: TCollectionNotification);
+    procedure doNotifyAttr(Sender: TObject; const Item: RawByteString;
+      Action: TCollectionNotification);
+  protected
+    function GetName: RawByteString; override;
+    function GetAttributes: TDictionary<RawByteString, string>; override;
+    function GetChildNodes: TList<IXMLNode>; override;
+    procedure SetText(const value: string); override;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer; override;
+    function FirstChild(const name: RawByteString): IXMLNode; override;
+    procedure SaveToXML(const writer: TXMLSaveto); override;
+    procedure SaveToText(const writer: TXMLSaveto); override;
+    function GetHasAttributes: Boolean; override;
+    function GetHasChildNodes: Boolean; override;
+    function GetDataType: TXMLNodeType; override;
+    procedure SetNullChild(const name: RawByteString; const value: string); override;
+    function GetNullChild(const name: RawByteString): string; override;
+    procedure SetNullAttr(const name: RawByteString; const value: string); override;
+    function GetNullAttr(const name: RawByteString): string; override;
+    function Append(const name: RawByteString): IXMLNode; override;
+  public
+    constructor Create(const name: RawByteString); virtual;
+    destructor Destroy; override;
+  end;
+
+  TXMLNodeClass = class of TXMLNode;
+
   TXMLReader = reference to function(var c: AnsiChar): Boolean;
-  TXMLNodeType = (xtOpen, xtClose, xtAttribute, xtText);
-  TXMLEvent = reference to function(node: TXMLNodeType; const name, value: string): Boolean;
+  TXMLNodeState = (xtOpen, xtClose, xtAttribute, xtText, xtCData);
+  TXMLEvent = reference to function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean;
 
   function XMLParseSAX(cp: Cardinal; const reader: TXMLReader; const event: TXMLEvent): Boolean;
   function XMLParse(cp: Cardinal; const reader: TXMLReader): IXMLNode;
   function XMLParseStream(cp: Cardinal; stream: TStream): IXMLNode;
+  function XMLParseFile(cp: Cardinal; const filename: TFileName): IXMLNode;
+  function XMLParseString(const str: AnsiString): IXMLNode; overload;
+  function XMLParseString(const str: string): IXMLNode; overload;
 
 implementation
-uses Windows, Math, SysUtils;
-
-(******************************************************************************)
-(* TWriterString                                                              *)
-(* RawByteString Buffer                                                          *)
-(******************************************************************************)
+uses Windows, Math;
 
 type
   TWriterString = class
@@ -138,97 +227,6 @@ type
       FreeMem(FBuf)
   end;
 
-  constructor TXMLNode.Create(const name: string);
-  begin
-    FName := name;
-    FAttributes := nil;
-    FChildren := nil;
-  end;
-
-  destructor TXMLNode.Destroy;
-  begin
-    inherited;
-    if FAttributes <> nil then
-      FAttributes.Free;
-    if FChildren <> nil then
-    begin
-      FChildren.OnNotify := nil;
-      FChildren.Free;
-    end;
-    if FChildIndex <> nil then
-      FChildIndex.Free;
-  end;
-
-  function TXMLNode.GetName: string;
-  begin
-    Result := FName;
-  end;
-
-  function TXMLNode.GetAttributes: TDictionary<string, string>;
-  begin
-    if FAttributes = nil then
-      FAttributes := TDictionary<string, string>.Create;
-    Result := FAttributes;
-  end;
-
-  procedure TXMLNode.doNotify(Sender: TObject; const Item: IXMLNode;
-    Action: TCollectionNotification);
-  var
-    lst: TList<IXMLNode>;
-  begin
-    case Action of
-      cnAdded:
-        begin
-          if not FChildIndex.TryGetValue(Item.Name, lst) then
-          begin
-            lst := TList<IXMLNode>.Create;
-            FChildIndex.Add(Item.Name, lst);
-          end;
-          lst.Add(Item)
-        end;
-      cnRemoved, cnExtracted:
-        if FChildIndex.TryGetValue(Item.Name, lst) then
-          lst.Remove(Item);
-    end;
-  end;
-
-  function TXMLNode.GetChildren: TList<IXMLNode>;
-  begin
-    if FChildren = nil then
-    begin
-      FChildren := TList<IXMLNode>.Create;
-      FChildIndex := TObjectDictionary<string, TList<IXMLNode>>.Create([doOwnsValues]);
-      FChildren.OnNotify := doNotify;
-    end;
-    Result := FChildren;
-  end;
-
-  function TXMLNode.GetText: string;
-  begin
-    Result := FText;
-  end;
-
-  procedure TXMLNode.SetText(const text: string);
-  begin
-    FText := text;
-  end;
-
-  function TXMLNode.FindChildren(const name: string; out children: TList<IXMLNode>): Integer;
-  begin
-    if (FChildIndex <> nil) and FChildIndex.TryGetValue(name, children) then
-      Result := children.Count else
-      Result := 0;
-  end;
-
-  function TXMLNode.FindChild(const name: string): IXMLNode;
-  var
-    lst: TList<IXMLNode>;
-  begin
-    if FindChildren(name, lst) > 0 then
-      Result := lst[0] else
-      Result := nil;
-  end;
-
 (******************************************************************************)
 (* XMLParseSAX                                                              *)
 (******************************************************************************)
@@ -255,7 +253,7 @@ const
   type
     TXMLState = (xsStart, xsEatSpaces, xsElement, xsElementName, xsAttributes,
       xsAttributeName, xsEqual, xsAttributeValue, xsCloseEmptyElement,
-      xsTryCloseElement, xsCloseElementName, xsChildren, xsElementString,
+      xsTryCloseElement, xsCloseElementName, xsChildNodes, xsElementString,
       xsElementComment, xsCloseElementComment, xsElementPI, xsElementDataPI,
       xsCloseElementPI, xsElementCDATA, xsClodeElementCDATA, xsEscape,
       xsEscape_lt, xsEscape_gt, xsEscape_amp, xsEscape_apos, xsEscape_quot,
@@ -417,13 +415,13 @@ redo:
               Str.Append(@c, 1) else
               begin
                 Stack.name := Str.Data;
-                if not event(xtOpen, MBUDecode(Str.Data), '') then Exit(False);
+                if not event(xtOpen, Str.Data, '') then Exit(False);
                 Stack^.state := xsEatSpaces;
                 Stack^.savedstate := xsAttributes;
                 goto redo;
               end;
           end;
-        xsChildren:
+        xsChildNodes:
           begin
             case c of
               '<': Stack^.state := xsTryCloseElement;
@@ -467,7 +465,7 @@ redo:
                      Stack^.clazz := xcComment;
                    end;
               '?': begin
-                     Stack^.savedstate := xsChildren;
+                     Stack^.savedstate := xsChildNodes;
                      Stack^.state := xsEatSpaces;
                      StackUp;
                      Str.Reset;
@@ -475,7 +473,7 @@ redo:
                      Stack^.clazz := xcProcessInst;
                    end
             else
-              Stack^.state := xsChildren;
+              Stack^.state := xsChildNodes;
               StackUp;
               if (c in alphas) then
               begin
@@ -512,7 +510,7 @@ redo:
                    end;
               '>': begin
                      Stack^.state := xsEatSpaces;
-                     Stack^.savedstate := xsChildren;
+                     Stack^.savedstate := xsChildNodes;
                    end
             else
               if (c in alphas) then
@@ -550,7 +548,7 @@ redo:
               if (c = AChar) then
                 begin
                   if Stack.clazz <> xcProcessInst then
-                    if not event(xtAttribute, MBUDecode(Str.Data), MBUDecode(Value.Data)) then Exit(False);
+                    if not event(xtAttribute, Str.Data, MBUDecode(Value.Data)) then Exit(False);
                   Stack^.savedstate := xsAttributes;
                   Stack^.state := xsEatSpaces;
                 end else
@@ -650,7 +648,7 @@ redo:
                  if c <> '>' then Exit(False);
                  Stack^.state := xsEatSpaces;
                  if Stack^.prev <> nil then
-                    Stack^.savedstate := xsChildren else
+                    Stack^.savedstate := xsChildNodes else
                     Stack^.savedstate := xsStart;
                end;
             end;
@@ -689,9 +687,9 @@ redo:
               1: case c of
                  '>':
                    begin
-                     if not event(xtText, '', MBUDecode(Value.Data)) then Exit(False);
+                     if not event(xtCData, '', MBUDecode(Value.Data)) then Exit(False);
                      Stack^.state := xsEatSpaces;
-                     Stack^.savedstate := xsChildren;
+                     Stack^.savedstate := xsChildNodes;
                    end;
                  ']':
                    begin
@@ -889,7 +887,7 @@ begin
       begin
         Result := reader(c);
       end,
-      function(node: TXMLNodeType; const name, value: string): Boolean
+      function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean
       begin
         Result := True;
         case node of
@@ -897,15 +895,20 @@ begin
           xtClose:
             begin
               n := stack.Pop;
-              stack.Peek.Children.Add(n);
+              if stack.Count > 0 then
+                stack.Peek.ChildNodes.Add(n);
             end;
-          xtAttribute: stack.Peek.Attr.AddOrSetValue(name, value);
+          xtAttribute: stack.Peek.Attributes.AddOrSetValue(name, value);
           xtText:
-            with stack.Peek do
-              Text := Text + value;
+            stack.Peek.ChildNodes.Add(TXMLNodeText.Create(value));
+          xtCData:
+            stack.Peek.ChildNodes.Add(TXMLNodeCDATA.Create(value));
         end;
       end) then
-        Result := stack.Peek else
+      begin
+        Assert(n <> nil);
+        Result := n;
+      end else
         Result := nil;
   finally
     stack.Free;
@@ -918,6 +921,501 @@ begin
     begin
       Result := stream.Read(c, 1) = 1
     end);
+end;
+
+function XMLParseFile(cp: Cardinal; const filename: TFileName): IXMLNode;
+var
+  stream: TFileStream;
+begin
+  stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyNone);
+  try
+    Result := XMLParseStream(cp, stream);
+  finally
+    stream.Free;
+  end;
+end;
+
+function XMLParseString(const str: AnsiString): IXMLNode;
+var
+  p: PAnsiChar;
+begin
+  p := PAnsiChar(str);
+  Result := XMLParse(StringCodePage(str), function(var c: AnsiChar): Boolean
+    begin
+      if p^ <> #0 then
+      begin
+        c := p^;
+        inc(p);
+        Result := True;
+      end else
+        Result := False;
+    end);
+end;
+
+function XMLParseString(const str: string): IXMLNode;
+begin
+  Result := XMLParseString(AnsiString(UTF8String(str)));
+end;
+
+{ TXMLNodeNull }
+
+function TXMLNodeNull.FirstChild(const name: RawByteString): IXMLNode;
+begin
+  Result := nil;
+end;
+
+function TXMLNodeNull.Append(const name: RawByteString): IXMLNode;
+begin
+  Result := nil;
+end;
+
+class procedure TXMLNodeNull.Escape(const str: string; const writer: TXMLSaveto);
+var
+  p1, p2: PChar;
+  procedure push(const data: string);
+  begin
+    if p2 > p1 then
+      writer(Copy(p1, 0, p2-p1));
+    Inc(p2);
+    p1 := p2;
+    if data <> '' then
+      writer(data);
+  end;
+begin
+  p1 := PChar(str);
+  p2 := p1;
+
+  while True do
+    case p2^ of
+      '<': push('&lt;');
+      '>': push('&gt;');
+      '&': push('&amp;');
+      '"': push('&quot;');
+      #0 :
+        begin
+          push('');
+          Break;
+        end;
+    else
+      inc(p2);
+    end;
+end;
+
+function TXMLNodeNull.FindChildNodes(const name: RawByteString;
+  out ChildNodes: TList<IXMLNode>): Integer;
+begin
+  ChildNodes := nil;
+  Result := 0;
+end;
+
+function TXMLNodeNull.GetAttributes: TDictionary<RawByteString, string>;
+begin
+  Result := nil;
+end;
+
+function TXMLNodeNull.GetChildNodes: TList<IXMLNode>;
+begin
+  Result := nil;
+end;
+
+function TXMLNodeNull.GetHasAttributes: Boolean;
+begin
+  Result := False;
+end;
+
+function TXMLNodeNull.GetHasChildNodes: Boolean;
+begin
+  Result := False;
+end;
+
+function TXMLNodeNull.GetName: RawByteString;
+begin
+  Result := '#null';
+end;
+
+function TXMLNodeNull.GetDataType: TXMLNodeType;
+begin
+  Result := ntNull;
+end;
+
+function TXMLNodeNull.GetNullAttr(const name: RawByteString): string;
+begin
+  Result := '';
+end;
+
+function TXMLNodeNull.GetNullChild(const name: RawByteString): string;
+begin
+  Result := '';
+end;
+
+function TXMLNodeNull.GetText: string;
+var
+  sb: TStringBuilder;
+begin
+  sb := TStringBuilder.Create;
+  try
+    SaveToText(procedure (const data: string)
+      begin sb.Append(data) end);
+    result := sb.ToString;
+  finally
+    sb.Free;
+  end;
+end;
+
+function TXMLNodeNull.GetXML: string;
+var
+  sb: TStringBuilder;
+begin
+  sb := TStringBuilder.Create;
+  try
+    SaveToXML(procedure (const data: string)
+      begin sb.Append(data) end);
+    result := sb.ToString;
+  finally
+    sb.Free;
+  end;
+end;
+
+procedure TXMLNodeNull.SaveToText(const writer: TXMLSaveto);
+begin
+
+end;
+
+procedure TXMLNodeNull.SaveToXML(const writer: TXMLSaveto);
+begin
+
+end;
+
+procedure TXMLNodeNull.SetNullAttr(const name: RawByteString;
+  const value: string);
+begin
+
+end;
+
+procedure TXMLNodeNull.SetNullChild(const name: RawByteString;
+  const value: string);
+begin
+
+end;
+
+procedure TXMLNodeNull.SetText(const value: string);
+begin
+
+end;
+
+{ TXMLNodeText }
+
+constructor TXMLNodeText.Create(const value: string);
+begin
+  FText := value;
+end;
+
+function TXMLNodeText.GetName: RawByteString;
+begin
+  Result := '#text';
+end;
+
+function TXMLNodeText.GetText: string;
+begin
+  Result := FText;
+end;
+
+function TXMLNodeText.GetDataType: TXMLNodeType;
+begin
+  Result := ntText;
+end;
+
+procedure TXMLNodeText.SaveToText(const writer: TXMLSaveto);
+begin
+  Writer(FText);
+end;
+
+procedure TXMLNodeText.SaveToXML(const writer: TXMLSaveto);
+begin
+  Escape(FText, writer);
+end;
+
+procedure TXMLNodeText.SetText(const value: string);
+begin
+  FText := value;
+end;
+
+{ TXMLNodeCDATA }
+
+constructor TXMLNodeCDATA.Create(const value: string);
+begin
+  FCDATA := value;
+end;
+
+function TXMLNodeCDATA.GetName: RawByteString;
+begin
+  Result := '#cdata';
+end;
+
+function TXMLNodeCDATA.GetText: string;
+begin
+  Result := FCDATA;
+end;
+
+function TXMLNodeCDATA.GetDataType: TXMLNodeType;
+begin
+  Result := ntCDATA;
+end;
+
+procedure TXMLNodeCDATA.SaveToText(const writer: TXMLSaveto);
+begin
+  writer(FCDATA);
+end;
+
+procedure TXMLNodeCDATA.SaveToXML(const writer: TXMLSaveto);
+begin
+  writer('<![CDATA[');
+  SaveToText(writer);
+  writer(']]>');
+end;
+
+procedure TXMLNodeCDATA.SetText(const value: string);
+begin
+  FCDATA := value;
+end;
+
+{ TXMLNode }
+
+function TXMLNode.Append(const name: RawByteString): IXMLNode;
+begin
+  if name <> '' then
+  begin
+    Result := TXMLNode.Create(name);
+    ChildNodes.Add(Result);
+  end else
+    Result := nil;
+end;
+
+constructor TXMLNode.Create(const name: RawByteString);
+begin
+  FName := name;
+  FAttributes := nil;
+  FChildNodes := nil;
+end;
+
+destructor TXMLNode.Destroy;
+begin
+  inherited;
+  if FAttributes <> nil then
+  begin
+    FAttributes.OnKeyNotify := nil;
+    FAttributes.Free;
+  end;
+  if FChildNodes <> nil then
+  begin
+    FChildNodes.OnNotify := nil;
+    FChildNodes.Free;
+  end;
+  if FChildIndex <> nil then
+    FChildIndex.Free;
+end;
+
+function TXMLNode.GetName: RawByteString;
+begin
+  Result := FName;
+end;
+
+function TXMLNode.GetDataType: TXMLNodeType;
+begin
+  Result := ntNode;
+end;
+
+function TXMLNode.GetNullAttr(const name: RawByteString): string;
+begin
+  if not((FAttributes <> nil) and FAttributes.TryGetValue(name, Result)) then
+    Result := '';
+end;
+
+function TXMLNode.GetNullChild(const name: RawByteString): string;
+var
+  node: IXMLNode;
+begin
+  node := FirstChild(name);
+  if node <> nil then
+    Result := node.Text else
+    Result := '';
+end;
+
+function TXMLNode.GetAttributes: TDictionary<RawByteString, string>;
+begin
+  if FAttributes = nil then
+  begin
+    FAttributes := TDictionary<RawByteString, string>.Create;
+    FAttributes.OnKeyNotify := doNotifyAttr;
+  end;
+  Result := FAttributes;
+end;
+
+procedure TXMLNode.doNotifyAttr(Sender: TObject; const Item: RawByteString;
+  Action: TCollectionNotification);
+begin
+  if FAttributes.Count = 0 then
+  begin
+    FAttributes.Free;
+    FAttributes := nil;
+  end;
+end;
+
+procedure TXMLNode.doNotifyChild(Sender: TObject; const Item: IXMLNode;
+  Action: TCollectionNotification);
+var
+  lst: TList<IXMLNode>;
+begin
+  case Action of
+    cnAdded:
+      begin
+        if not FChildIndex.TryGetValue(Item.Name, lst) then
+        begin
+          lst := TList<IXMLNode>.Create;
+          FChildIndex.Add(Item.Name, lst);
+        end;
+        lst.Add(Item)
+      end;
+    cnRemoved, cnExtracted:
+      if FChildIndex.TryGetValue(Item.Name, lst) then
+        lst.Remove(Item);
+  end;
+  if FChildNodes.Count = 0 then
+  begin
+    FChildNodes.Free;
+    FChildNodes := nil;
+    FChildIndex.Free;
+    FChildIndex := nil;
+  end;
+end;
+
+function TXMLNode.GetChildNodes: TList<IXMLNode>;
+begin
+  if FChildNodes = nil then
+  begin
+    FChildNodes := TList<IXMLNode>.Create;
+    FChildIndex := TObjectDictionary<RawByteString, TList<IXMLNode>>.Create([doOwnsValues]);
+    FChildNodes.OnNotify := doNotifyChild;
+  end;
+  Result := FChildNodes;
+end;
+
+function TXMLNode.GetHasAttributes: Boolean;
+begin
+  Result := (FAttributes <> nil) and (FAttributes.Count > 0);
+end;
+
+function TXMLNode.GetHasChildNodes: Boolean;
+begin
+  Result := (FChildNodes <> nil) and (FChildNodes.Count > 0);
+end;
+
+procedure TXMLNode.SaveToText(const writer: TXMLSaveto);
+var
+  node: IXMLNode;
+begin
+  if HasChildNodes then
+    for node in ChildNodes do
+      node.SaveToText(writer);
+end;
+
+procedure TXMLNode.SaveToXML(const writer: TXMLSaveto);
+var
+  atr: TPair<RawByteString, string>;
+  node: IXMLNode;
+begin
+  writer('<');
+  writer(string(FName));
+  if HasAttributes then
+    for atr in Attributes do
+    begin
+      writer(' ');
+      writer(string(atr.Key));
+      writer('=');
+      writer('"');
+      escape(atr.Value, writer);
+      writer('"');
+    end;
+
+  if HasChildNodes then
+  begin
+    writer('>');
+    for node in ChildNodes do
+      node.SaveToXML(writer);
+    writer('</');
+    writer(string(FName));
+    writer('>');
+  end else
+    writer('/>');
+end;
+
+procedure TXMLNode.SetNullAttr(const name: RawByteString; const value: string);
+begin
+  if value <> '' then
+    Attributes.AddOrSetValue(name, value) else
+    if FAttributes <> nil then
+      FAttributes.Remove(name);
+end;
+
+procedure TXMLNode.SetNullChild(const name: RawByteString; const value: string);
+var
+  node: IXMLNode;
+begin
+  node := FirstChild(name);
+  if node <> nil then
+  begin
+    if value <> '' then
+      node.Text := value else
+      ChildNodes.Remove(node);
+  end else
+    if value <> '' then
+    begin
+      node := TXMLNode.Create(name);
+      node.Text := value;
+      ChildNodes.Add(node);
+    end;
+end;
+
+
+procedure TXMLNode.SetText(const value: string);
+begin
+  if FChildNodes <> nil then
+  begin
+    FChildNodes.OnNotify := nil;
+    try
+      FChildNodes.Clear;
+      FChildIndex.Clear;
+    finally
+      FChildNodes.OnNotify := doNotifyChild;
+    end;
+  end;
+  if value <> '' then
+    ChildNodes.Add(TXMLNodeText.Create(value)) else
+    begin
+      if FChildNodes <> nil then
+      begin
+        FChildNodes.Free;
+        FChildNodes := nil;
+        FChildIndex.Free;
+        FChildIndex := nil;
+      end;
+    end;
+end;
+
+function TXMLNode.FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer;
+begin
+  if (FChildIndex <> nil) and FChildIndex.TryGetValue(name, ChildNodes) then
+    Result := ChildNodes.Count else
+    Result := 0;
+end;
+
+function TXMLNode.FirstChild(const name: RawByteString): IXMLNode;
+var
+  lst: TList<IXMLNode>;
+begin
+  if FindChildNodes(name, lst) > 0 then
+    Result := lst[0] else
+    Result := nil;
 end;
 
 end.

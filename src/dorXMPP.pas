@@ -25,27 +25,36 @@ uses SysUtils, Windows, WinSock, dorXML, dorOpenSSL, Generics.Collections;
 type
   IXMPPClient = interface;
 
-  TIQType = (iqGet, iqSet);
-  TIQResponse = (iqResult, iqError);
+  IXMPPPresence = interface;
+  IXMPPIQ = interface;
+  IXMPPMessage = interface;
+
+  TIQType = (iqGet, iqSet, iqResult, iqError);
   TMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
 
   TXMPPErrorEvent = reference to procedure(const msg: string);
-  TXMPPIQEvent = reference to procedure(const sender: IXMPPClient; action: TIQType; const node: IXMLNode);
-  TXMPPEvent = reference to procedure(const sender: IXMPPClient; const node: IXMLNode);
-  TXMPPIQResponse = reference to procedure(const sender: IXMPPClient; result: TIQResponse; const node: IXMLNode);
-  TXMPPMessageEvent = reference to procedure(const sender: IXMPPClient; typ: TMessageType; const node: IXMLNode);
+  TXMPPIQEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPIQ);
+  TXMPPEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPPresence);
+  TXMPPIQResponse = reference to procedure(const sender: IXMPPClient; const node: IXMPPIQ);
+  TXMPPMessageEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPMessage);
 
   TXMPPReadyState = (rsOffline, rsConnecting, rsOpen, rsClosing);
   TXMPPReadyStateChange = reference to procedure(const xmpp: IXMPPClient);
   TXMPPOption = (xoDontForceEncryption, xoPlaintextAuth);
   TXMPPOptions = set of TXMPPOption;
 
+
+  TXMPPPresenceType = (ptNone, ptUnavailable, ptSubscribe, ptSubscribed,
+    ptUnsubscribe, ptUnsubscribed, ptProbe, ptError);
+  TXMPPPresenceShow = (psNone, psAway, psChat, psDnd, psXa);
+
   IXMPPClient = interface
     ['{FD2264FF-460E-4DCD-BA8B-D1D7BCB45E6A}']
     function GetReadyState: TXMPPReadyState;
+    procedure SendXML(const xml: IXMLNode);
     procedure Send(const data: string);
     procedure SendFmt(const data: string; params: array of const);
-    procedure SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
+    procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
 
     procedure Close;
     procedure Open(const url, user, domain, pass: string;
@@ -70,6 +79,95 @@ type
 
     property ReadyState: TXMPPReadyState read getReadyState;
     property OnReadyStateChange: TXMPPReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
+  end;
+
+  IXMPPPresence = interface(IXMLNode)
+    ['{AA624DDD-C548-462E-B381-8C7A1616CF49}']
+    function GetPresence: TXMPPPresenceType;
+    function GetShow: TXMPPPresenceShow;
+    function GetStatus: string;
+    function GetPriority: ShortInt;
+    function GetDest: string;
+    function GetSrc: string;
+    procedure SetPresence(const value: TXMPPPresenceType);
+    procedure SetShow(const value: TXMPPPresenceShow);
+    procedure SetStatus(const value: string);
+    procedure SetPriority(const value: ShortInt);
+    procedure SetDest(const value: string);
+    procedure SetSrc(const value: string);
+    property Presence: TXMPPPresenceType read GetPresence write SetPresence;
+    property Show: TXMPPPresenceShow read GetShow write SetShow;
+    property Status: string read GetStatus write SetStatus;
+    property Priority: ShortInt read GetPriority write SetPriority;
+    property Dest: string read GetDest write SetDest;
+    property Src: string read GetSrc write SetSrc;
+  end;
+
+  IXMPPIQ = interface(IXMLNode)
+    ['{2CF1E3EB-F59B-40E7-AAD8-E2CE31E3406B}']
+    function Reply: IXMPPIQ;
+    function GetDest: string;
+    function GetSrc: string;
+    function GetIQ: TIQType;
+    function GetId: string;
+    procedure SetDest(const value: string);
+    procedure SetSrc(const value: string);
+    procedure SetIQ(value: TIQType);
+    procedure SetId(const value: string);
+    property Dest: string read GetDest write SetDest;
+    property Src: string read GetSrc write SetSrc;
+    property IQ: TIQType read GetIQ write SetIQ;
+    property Id: string read GetId write SetId;
+  end;
+
+  IXMPPMessage = interface(IXMLNode)
+    ['{6E79F7DE-8E36-437D-A59A-16D836FF797E}']
+    function GetMessage: TMessageType;
+    function GetDest: string;
+    function GetSrc: string;
+    function GetId: string;
+    procedure SetMessage(const value: TMessageType);
+    procedure SetDest(const value: string);
+    procedure SetSrc(const value: string);
+    procedure SetId(const value: string);
+    property Dest: string read GetDest write SetDest;
+    property Src: string read GetSrc write SetSrc;
+    property Message: TMessageType read GetMessage write SetMessage;
+  end;
+
+  TXMPPMessage = class(TXMLNode, IXMPPPresence, IXMPPIQ, IXMPPMessage)
+  protected
+    function GetPresence: TXMPPPresenceType;
+    function GetShow: TXMPPPresenceShow;
+    function GetStatus: string;
+    function GetPriority: ShortInt;
+    function GetDest: string;
+    function GetSrc: string;
+    function GetIQ: TIQType;
+    function GetId: string;
+    function GetMessage: TMessageType;
+    procedure SetPresence(const value: TXMPPPresenceType);
+    procedure SetShow(const value: TXMPPPresenceShow);
+    procedure SetStatus(const value: string);
+    procedure SetPriority(const value: ShortInt);
+    procedure SetDest(const value: string);
+    procedure SetSrc(const value: string);
+    procedure SetIQ(value: TIQType);
+    procedure SetId(const value: string);
+    procedure SetMessage(const value: TMessageType);
+    function Reply: IXMPPIQ;
+
+    property Presence: TXMPPPresenceType read GetPresence write SetPresence;
+    property Show: TXMPPPresenceShow read GetShow write SetShow;
+    property Status: string read GetStatus write SetStatus;
+    property Priority: ShortInt read GetPriority write SetPriority;
+    property Dest: string read GetDest write SetDest;
+    property Src: string read GetSrc write SetSrc;
+    property Id: string read GetId write SetId;
+  public
+    class function CreatePresence(presence: TXMPPPresenceType = ptNone; show: TXMPPPresenceShow = psNone;
+      const Status: string = ''; Priority: ShortInt = 0; const src: string = ''; const dest: string = ''): IXMPPPresence;
+    class function CreateIQ(iq: TIQType = iqGet; const src: string = ''; const dest: string = ''; const id: string = ''): IXMPPIQ;
   end;
 
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
@@ -105,7 +203,7 @@ type
       options: TXMPPOptions);
     procedure SendFmt(const data: string; params: array of const);
     procedure Send(const data: string);
-    procedure SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
+    procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
     procedure Close;
     function GetOnError: TXMPPErrorEvent;
     function GetOnIQ: TXMPPIQEvent;
@@ -115,6 +213,7 @@ type
     procedure SetOnIQ(const value: TXMPPIQEvent);
     procedure SetOnPresence(const value: TXMPPEvent);
     procedure SetOnMessage(const value: TXMPPMessageEvent);
+    procedure SendXML(const xml: IXMLNode);
   public
     constructor Create(const password: AnsiString = '';
       const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
@@ -392,7 +491,7 @@ var
   mustreconnect: Boolean;
   ev: TFunc<Boolean>;
   reconnect: TProc;
-  doiqresult: TProc<TIQResponse>;
+  doiqresult: TProc<TIQType>;
   doiqevent: TProc<TIQType>;
   domessage: TProc<TMessageType>;
   events: TDictionary<string, TFunc<Boolean>>;
@@ -407,13 +506,13 @@ begin
   end;
 
   doiqresult :=
-    procedure(resp: TIQResponse)
+    procedure(resp: TIQType)
     var
       idstr: string;
       id: Integer;
       rep: TXMPPIQResponse;
     begin
-      if n.Attr.TryGetValue('id', idstr) and
+      if n.Attributes.TryGetValue('id', idstr) and
         TryStrToInt(idstr, id) then
       begin
         rep := nil;
@@ -426,7 +525,7 @@ begin
         end;
         if Assigned(rep) then
           TThread.Synchronize(nil, procedure begin
-            rep(Self, resp, n) end);
+            rep(Self, n as IXMPPIQ) end);
       end;
     end;
 
@@ -436,7 +535,7 @@ begin
       if Assigned(FOnIQ) then
         TThread.Synchronize(nil,
           procedure begin
-            FOnIQ(Self, iqSet, n)
+            FOnIQ(Self, n as IXMPPIQ)
           end);
     end;
 
@@ -446,7 +545,7 @@ begin
       if Assigned(FOnMessage) then
         TThread.Synchronize(nil,
           procedure begin
-            FOnMessage(Self, typ, n)
+            FOnMessage(Self, n as IXMPPMessage)
           end);
     end;
 
@@ -463,11 +562,11 @@ redo:
         anode, mechanism: IXMLNode;
       begin
         Result := True;
-        anode := n.FindChild('starttls');
-        if (anode <> nil) and (not (xoDontForceEncryption in options) or (anode.FindChild('required') <> nil)) then
+        anode := n.FirstChild('starttls');
+        if (anode <> nil) and (not (xoDontForceEncryption in options) or (anode.FirstChild('required') <> nil)) then
         begin
           //>>> starttls
-          SendFmt(XML_STARTTLS, [anode.Attr['xmlns']]);
+          SendFmt(XML_STARTTLS, [anode.Attributes['xmlns']]);
           //<<< proceed
           events.Add('proceed', function : Boolean
           begin
@@ -480,11 +579,11 @@ redo:
           events.Add('failure', function : Boolean begin Result := False end);
         end else
         begin
-          anode := n.FindChild('mechanisms');
+          anode := n.FirstChild('mechanisms');
           if anode <> nil then
           begin
             Result := False;
-            for mechanism in anode.Children do
+            for mechanism in anode.ChildNodes do
               if ((FSsl <> nil) or (xoPlaintextAuth in options)) and (mechanism.Text = 'PLAIN') then
               begin
                 SendFmt(XML_AUTH_PLAIN, [StrTobase64(#0+user+#0+pass)]);
@@ -511,10 +610,10 @@ redo:
 
                       if dic.TryGetValue('rspauth', rspauth) then
                       begin
-                        if rspauth = AnsiString(stack.Peek.Attr['<expected>'])  then
+                        if rspauth = AnsiString(stack.Peek.Attributes['<expected>'])  then
                         begin
                           Send('<response xmlns="urn:ietf:params:xml:ns:xmpp-sasl"/>');
-                          stack.Peek.Attr.Remove('<expected>');
+                          stack.Peek.Attributes.Remove('<expected>');
                           events.Remove('challenge');
                         end else
                           Exit(False);
@@ -533,7 +632,7 @@ redo:
                           ':00000001:' + cnonce + ':auth:' + strtohex(md5(a2))));
 
                         a2 := ':xmpp/' + realm;
-                        stack.Peek.Attr.Add('<expected>',
+                        stack.Peek.Attributes.Add('<expected>',
                           string(strtohex(md5(strtohex(md5(a1))+':' + dic['nonce'] +
                           ':00000001:' + cnonce + ':auth:' + strtohex(md5(a2))))));
 
@@ -565,14 +664,14 @@ redo:
             end;
           end else
           begin
-            if n.FindChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
-            if n.FindChild('session') <> nil then Send(XML_IQ_SESSION);
+            if n.FirstChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
+            if n.FirstChild('session') <> nil then Send(XML_IQ_SESSION);
             events.Add('presence',
               function: Boolean
               begin
                 if Assigned(FOnPresence) then
                 TThread.Synchronize(nil, procedure begin
-                  FOnPresence(Self, n) end);
+                  FOnPresence(Self, n as IXMPPPresence) end);
                 Result := True;
               end);
             events.Add('iq',
@@ -581,7 +680,7 @@ redo:
                 typ: string;
                 e: TFunc<Boolean>;
               begin
-                if n.Attr.TryGetValue('type', typ) and
+                if n.Attributes.TryGetValue('type', typ) and
                     events.TryGetValue('iq@' + typ, e) then
                   Result := e else
                   Result := True;
@@ -608,7 +707,7 @@ redo:
                 typ: string;
                 e: TFunc<Boolean>;
               begin
-                if n.Attr.TryGetValue('type', typ) then
+                if n.Attributes.TryGetValue('type', typ) then
                 begin
                   if events.TryGetValue('message@' + typ, e) then
                     Result := e else
@@ -656,40 +755,48 @@ redo:
       begin
         Result := SockRecv(c, 1, 0) = 1
       end,
-      function(node: TXMLNodeType; const name, value: string): Boolean
+      function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean
       begin
         Result := True;
         case node of
           xtOpen:
             begin
 {$IFDEF XMPP_DEBUG_CONSOLE}
-              writeln(StringOfChar(' ', stack.Count * 3) + 'node: ' + name);
+              writeln(StringOfChar(' ', stack.Count * 3) + 'node: ' + string(name));
 {$ENDIF}
-              stack.Push(TXMLNode.Create(name));
+              if (stack.Count = 1) then
+                stack.Push(TXMPPMessage.Create(name)) else
+                stack.Push(TXMLNode.Create(name));
             end;
           xtClose:
             begin
               n := stack.Pop;
               if stack.count > 1 then
-                stack.Peek.Children.Add(n) else
-                if events.TryGetValue(n.Name, ev) then
+                stack.Peek.ChildNodes.Add(n) else
+                if events.TryGetValue(string(n.Name), ev) then
                   Result := ev else
                   Result := True;
             end;
           xtAttribute:
             begin
 {$IFDEF XMPP_DEBUG_CONSOLE}
-              writeln(StringOfChar(' ', stack.Count * 3) + 'attr: ' + name + '=' + value);
+              writeln(StringOfChar(' ', stack.Count * 3) + 'attr: ' + string(name) + '=' + value);
 {$ENDIF}
-              stack.Peek.Attr.AddOrSetValue(name, value);
+              stack.Peek.Attributes.AddOrSetValue(name, value);
             end;
           xtText:
             begin
 {$IFDEF XMPP_DEBUG_CONSOLE}
               writeln(StringOfChar(' ', stack.Count * 3) + 'text: ' + value);
 {$ENDIF}
-              with stack.Peek do
-                Text := value;
+              stack.Peek.ChildNodes.Add(TXMLNodeText.Create(value));
+            end;
+          xtCData:
+            begin
+{$IFDEF XMPP_DEBUG_CONSOLE}
+              writeln(StringOfChar(' ', stack.Count * 3) + 'cdata: ' + value);
+{$ENDIF}
+              stack.Peek.ChildNodes.Add(TXMLNodeCDATA.Create(value));
             end;
         end;
       end);
@@ -799,19 +906,14 @@ begin
   Send(Format(data, params));
 end;
 
-procedure TXMPPClient.SendIQ(action: TIQType; const dest, data: string; const callback: TXMPPIQResponse);
-const
-  Typ: array[TIQType] of string = ('get', 'set');
+procedure TXMPPClient.SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
 var
   req: string;
   id: Integer;
 begin
   id := InterlockedIncrement(FGenId);
-  req := Format('<iq type="%s" id="%d"', [Typ[action], id]);
-  if dest <> '' then
-    req := req + ' to="' + dest + '"';
-  req := req + '>' + data + '</iq>';
-
+  IQ.NullAttr['id'] := IntToStr(id);
+  SendXML(IQ);
   if Assigned(callback) then
   begin
     EnterCriticalSection(FLockEvents);
@@ -822,6 +924,16 @@ begin
     end;
   end;
   Send(req);
+end;
+
+procedure TXMPPClient.SendXML(const xml: IXMLNode);
+begin
+  xml.SaveToXML(
+    procedure(const data: string)
+      begin
+        //write(data);
+        Send(data);
+      end);
 end;
 
 procedure TXMPPClient.Send(const data: string);
@@ -872,6 +984,194 @@ end;
 function TXMPPClient.GetOnReadyStateChange: TXMPPReadyStateChange;
 begin
   Result := FOnStateChange;
+end;
+
+{ TXMPPMessage }
+
+class function TXMPPMessage.CreateIQ(iq: TIQType; const src, dest, id: string): IXMPPIQ;
+begin
+  Result := Create('iq');
+  Result.IQ := iq;
+  Result.Dest := dest;
+  Result.Src := src;
+  Result.Id := id;
+end;
+
+class function TXMPPMessage.CreatePresence(presence: TXMPPPresenceType;
+  show: TXMPPPresenceShow; const Status: string; Priority: ShortInt;
+  const src, dest: string): IXMPPPresence;
+begin
+  Result := Create('presence');
+  // attributes
+  Result.Presence := presence;
+  Result.Src := dest;
+  Result.Dest := dest;
+
+  // nodes
+  Result.Show := Show;
+  Result.Status := Status;
+  Result.Priority := Priority;
+end;
+
+function TXMPPMessage.GetDest: string;
+begin
+  Result := NullAttr['to'];
+end;
+
+function TXMPPMessage.GetId: string;
+begin
+  Result := NullAttr['id'];
+end;
+
+function TXMPPMessage.GetIQ: TIQType;
+var
+  iq: string;
+begin
+  if HasAttributes and Attributes.TryGetValue('type', iq) then
+    case Length(iq) of
+      3: case iq[1] of
+           'g': if SameStr('get', iq) then Exit(iqGet);
+           's': if SameStr('set', iq) then Exit(iqSet);
+         end;
+      5: if SameStr('error', iq) then Exit(iqError);
+      6: if SameStr('result', iq) then Exit(iqResult);
+    end;
+  raise Exception.CreateFmt('Invalid iq.type=%', [iq]);
+end;
+
+function TXMPPMessage.GetMessage: TMessageType;
+var
+  msg: string;
+begin
+  if HasAttributes and Attributes.TryGetValue('type', msg) then
+    case Length(msg) of
+      4: if SameStr(msg, 'chat') then Exit(mtChat);
+      5: if SameStr(msg, 'error') then Exit(mtError);
+      6: if SameStr(msg, 'normal') then Exit(mtNormal);
+      8: if SameStr(msg, 'headline') then Exit(mtHeadline);
+      9: if SameStr(msg, 'groupchat') then Exit(mtGroupChat);
+    end;
+  Result := mtNone;
+end;
+
+function TXMPPMessage.GetPresence: TXMPPPresenceType;
+var
+  presence: string;
+begin
+  if HasAttributes and Attributes.TryGetValue('type', presence) then
+    case Length(presence) of
+      5:
+        case presence[1] of
+          'p': if SameStr(presence, 'probe') then Exit(ptProbe);
+          'e': if SameStr(presence, 'error') then Exit(ptError);
+        end;
+      9:  if SameStr(presence, 'subscribe') then Exit(ptSubscribe);
+      10: if SameStr(presence, 'subscribed') then Exit(ptSubscribed);
+      11:
+        case presence[3] of
+          'a': if SameStr(presence, 'unavailable') then Exit(ptUnavailable);
+          's': if SameStr(presence, 'unsubscribe') then Exit(ptUnsubscribe);
+        end;
+      12: if SameStr(presence, 'unsubscribed') then Exit(ptUnsubscribed);
+    end;
+  Result := ptNone;
+end;
+
+function TXMPPMessage.GetPriority: ShortInt;
+var
+  ret: Integer;
+begin
+   if TryStrToInt(NullChild['priority'], ret) then
+     Result := ret else
+     Result := 0;
+end;
+
+function TXMPPMessage.GetShow: TXMPPPresenceShow;
+var
+  sh: string;
+begin
+  sh := NullChild['show'];
+  case Length(sh) of
+    2: if SameStr(sh, 'xa') then Exit(psXa);
+    3: if SameStr(sh, 'dnd') then Exit(psDnd);
+    4: case sh[1] of
+         'a': if SameStr(sh, 'away') then Exit(psAway);
+         'c': if SameStr(sh, 'chat') then Exit(psChat);
+       end;
+  end;
+  Result := psNone;
+end;
+
+function TXMPPMessage.GetSrc: string;
+begin
+  Result := NullAttr['from'];
+end;
+
+function TXMPPMessage.GetStatus: string;
+begin
+  Result := NullChild['status']
+end;
+
+function TXMPPMessage.Reply: IXMPPIQ;
+begin
+  Result := TXMPPMessage.CreateIQ(iqResult, Dest, Src, Id)
+end;
+
+procedure TXMPPMessage.SetDest(const value: string);
+begin
+  NullAttr['to'] := value;
+end;
+
+procedure TXMPPMessage.SetId(const value: string);
+begin
+  NullAttr['id'] := value;
+end;
+
+procedure TXMPPMessage.SetIQ(value: TIQType);
+const
+  iqs: array[TIQType] of string = ('get', 'set', 'result', 'error');
+begin
+  NullAttr['type'] := iqs[value];
+end;
+
+procedure TXMPPMessage.SetMessage(const value: TMessageType);
+const
+  msgs: array[TMessageType] of string = ('',
+    'normal', 'chat', 'groupchat', 'headline', 'error');
+begin
+  NullAttr['type'] := msgs[value];
+end;
+
+procedure TXMPPMessage.SetPresence(const value: TXMPPPresenceType);
+const
+  presences: array[TXMPPPresenceType] of string = ('', 'unavailable',
+    'subscribe', 'subscribed', 'unsubscribe', 'unsubscribed', 'probe', 'error');
+begin
+  NullAttr['type'] := presences[value];
+end;
+
+procedure TXMPPMessage.SetPriority(const value: ShortInt);
+begin
+  if value <> 0 then
+    NullChild['priority'] := IntToStr(value) else
+    NullChild['priority'] := '';
+end;
+
+procedure TXMPPMessage.SetShow(const value: TXMPPPresenceShow);
+const
+  psh: array[TXMPPPresenceShow] of string = ('', 'away', 'chat', 'dnd', 'xa');
+begin
+  NullChild['show'] := psh[value];
+end;
+
+procedure TXMPPMessage.SetSrc(const value: string);
+begin
+  NullAttr['from'] := value;
+end;
+
+procedure TXMPPMessage.SetStatus(const value: string);
+begin
+  NullChild['status'] := value;
 end;
 
 end.
