@@ -216,6 +216,30 @@ type
   function X509NameFind(const name: PX509_NAME; const key: AnsiString): AnsiString;
 
 
+const
+  SHA_LBLOCK = 16;
+  SHA_CBLOCK = SHA_LBLOCK * 4; (* SHA treats input data as a
+                                * contiguous array of 32 bit
+                                * wide big-endian values. *)
+  SHA_LAST_BLOCK = SHA_CBLOCK - 8;
+  SHA_DIGEST_LENGTH = 20;
+
+type
+  SHA_LONG = Cardinal;
+  PSHA_CTX = ^SHA_CTX;
+  SHA_CTX = record
+    h0,h1,h2,h3,h4: SHA_LONG;
+    Nl,Nh: SHA_LONG;
+    data: array[0..SHA_LBLOCK-1] of SHA_LONG;
+    num: Cardinal;
+	end;
+
+function SHA1_Init(c: PSHA_CTX): Integer; cdecl; external LIBEAY;
+function SHA1_Update(c: PSHA_CTX; const data: Pointer; len: Cardinal): Integer; cdecl; external LIBEAY;
+function SHA1_Final(md: PAnsiChar; c: PSHA_CTX): Integer; cdecl; external LIBEAY;
+function SHA1(const d: PAnsiChar; n: Cardinal; md: PAnsiChar): PAnsiChar; cdecl; external LIBEAY;
+procedure SHA1_Transform(c: PSHA_CTX; const data: PAnsiChar); cdecl; external LIBEAY;
+
 implementation
 
 procedure AesEncryptStream(InStream, OutStream: TStream; const pass: PAnsiChar; bits: Integer);

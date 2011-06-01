@@ -4,17 +4,19 @@ interface
 uses SysUtils, Classes, Generics.Collections;
 
 type
+  IXMLNode = interface;
   TXMLSaveto = reference to procedure(const data: string);
   TXMLNodeType = (ntNull, ntNode, ntText, ntCDATA);
+  TAttributes = TList<IXMLNode>;
 
   IXMLNode = interface
   ['{8A22EC91-113B-48DE-A58B-E920DED5F21D}']
     function GetName: RawByteString;
     function GetAttributes: TDictionary<RawByteString, string>;
-    function GetChildNodes: TList<IXMLNode>;
+    function GetChildNodes: TAttributes;
     function GetText: string;
     procedure SetText(const value: string);
-    function FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer;
     function FirstChild(const name: RawByteString): IXMLNode;
     function GetXML: string;
     procedure SaveToXML(const writer: TXMLSaveto);
@@ -30,7 +32,7 @@ type
 
     property Name: RawByteString read GetName;
     property Attributes: TDictionary<RawByteString, string> read GetAttributes;
-    property ChildNodes: TList<IXMLNode> read GetChildNodes;
+    property ChildNodes: TAttributes read GetChildNodes;
     property Text: string read GetText write SetText;
     property Xml: string read GetXml;
     property HasAttributes: Boolean read GetHasAttributes;
@@ -46,10 +48,10 @@ type
     { IXMLNode }
     function GetName: RawByteString; virtual;
     function GetAttributes: TDictionary<RawByteString, string>; virtual;
-    function GetChildNodes: TList<IXMLNode>; virtual;
+    function GetChildNodes: TAttributes; virtual;
     function GetText: string; virtual;
     procedure SetText(const value: string); virtual;
-    function FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer; virtual;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer; virtual;
     function FirstChild(const name: RawByteString): IXMLNode; virtual;
     function GetXML: string;
     procedure SaveToXML(const writer: TXMLSaveto); virtual;
@@ -66,7 +68,7 @@ type
     property Name: RawByteString read GetName;
     property DataType: TXMLNodeType read GetDataType;
     property Attributes: TDictionary<RawByteString, string> read GetAttributes;
-    property ChildNodes: TList<IXMLNode> read GetChildNodes;
+    property ChildNodes: TAttributes read GetChildNodes;
     property Text: string read GetText write SetText;
     property Xml: string read GetXml;
     property HasAttributes: Boolean read GetHasAttributes;
@@ -107,8 +109,8 @@ type
   private
     FName: RawByteString;
     FAttributes: TDictionary<RawByteString, string>;
-    FChildNodes: TList<IXMLNode>;
-    FChildIndex: TObjectDictionary<RawByteString, TList<IXMLNode>>;
+    FChildNodes: TAttributes;
+    FChildIndex: TObjectDictionary<RawByteString, TAttributes>;
     procedure doNotifyChild(Sender: TObject; const Item: IXMLNode;
       Action: TCollectionNotification);
     procedure doNotifyAttr(Sender: TObject; const Item: RawByteString;
@@ -116,9 +118,9 @@ type
   protected
     function GetName: RawByteString; override;
     function GetAttributes: TDictionary<RawByteString, string>; override;
-    function GetChildNodes: TList<IXMLNode>; override;
+    function GetChildNodes: TAttributes; override;
     procedure SetText(const value: string); override;
-    function FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer; override;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer; override;
     function FirstChild(const name: RawByteString): IXMLNode; override;
     procedure SaveToXML(const writer: TXMLSaveto); override;
     procedure SaveToText(const writer: TXMLSaveto); override;
@@ -1002,7 +1004,7 @@ begin
 end;
 
 function TXMLNodeNull.FindChildNodes(const name: RawByteString;
-  out ChildNodes: TList<IXMLNode>): Integer;
+  out ChildNodes: TAttributes): Integer;
 begin
   ChildNodes := nil;
   Result := 0;
@@ -1013,7 +1015,7 @@ begin
   Result := nil;
 end;
 
-function TXMLNodeNull.GetChildNodes: TList<IXMLNode>;
+function TXMLNodeNull.GetChildNodes: TAttributes;
 begin
   Result := nil;
 end;
@@ -1264,14 +1266,14 @@ end;
 procedure TXMLNode.doNotifyChild(Sender: TObject; const Item: IXMLNode;
   Action: TCollectionNotification);
 var
-  lst: TList<IXMLNode>;
+  lst: TAttributes;
 begin
   case Action of
     cnAdded:
       begin
         if not FChildIndex.TryGetValue(Item.Name, lst) then
         begin
-          lst := TList<IXMLNode>.Create;
+          lst := TAttributes.Create;
           FChildIndex.Add(Item.Name, lst);
         end;
         lst.Add(Item)
@@ -1289,12 +1291,12 @@ begin
   end;
 end;
 
-function TXMLNode.GetChildNodes: TList<IXMLNode>;
+function TXMLNode.GetChildNodes: TAttributes;
 begin
   if FChildNodes = nil then
   begin
-    FChildNodes := TList<IXMLNode>.Create;
-    FChildIndex := TObjectDictionary<RawByteString, TList<IXMLNode>>.Create([doOwnsValues]);
+    FChildNodes := TAttributes.Create;
+    FChildIndex := TObjectDictionary<RawByteString, TAttributes>.Create([doOwnsValues]);
     FChildNodes.OnNotify := doNotifyChild;
   end;
   Result := FChildNodes;
@@ -1402,7 +1404,7 @@ begin
     end;
 end;
 
-function TXMLNode.FindChildNodes(const name: RawByteString; out ChildNodes: TList<IXMLNode>): Integer;
+function TXMLNode.FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer;
 begin
   if (FChildIndex <> nil) and FChildIndex.TryGetValue(name, ChildNodes) then
     Result := ChildNodes.Count else
@@ -1411,7 +1413,7 @@ end;
 
 function TXMLNode.FirstChild(const name: RawByteString): IXMLNode;
 var
-  lst: TList<IXMLNode>;
+  lst: TAttributes;
 begin
   if FindChildNodes(name, lst) > 0 then
     Result := lst[0] else

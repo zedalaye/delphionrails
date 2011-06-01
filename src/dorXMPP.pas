@@ -355,12 +355,16 @@ type
 
 procedure TXMPPClient.Close;
 begin
-  if FReadyState > rsOffline then
+  if FReadyState in [rsConnecting .. rsOpen] then
   begin
     SetReadyState(rsClosing);
+
     Send('</stream:stream>');
+    Sleep(1); // let the socket remotely close
+
     closesocket(FSocket);
     Sleep(1); // let the listen thread close
+
     FSocket := INVALID_SOCKET;
 
     if Fssl <> nil then
@@ -808,7 +812,7 @@ redo:
   end;
 
 
-  if FReadyState > rsOffline then // remotely closed
+  if FReadyState in [rsConnecting .. rsOpen] then // remotely closed
     TThread.Synchronize(nil, procedure begin
       Close;
     end);

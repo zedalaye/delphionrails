@@ -11,7 +11,7 @@ type
   end;
 
 implementation
-uses dorOpenSSL;
+uses dorOpenSSL, WinSock;
 
 { THTTPConnection }
 
@@ -32,7 +32,7 @@ begin
   end;
 end;
 
-function GetSLLHandler(socket: LongInt): IReadWrite;
+function GetSLLHandler(socket: TSocket): IReadWrite;
 begin
   Result := TSSLRWSocket.Create(socket, True,
     SSL_VERIFY_PEER {or SSL_VERIFY_FAIL_IF_NO_PEER_CERT},

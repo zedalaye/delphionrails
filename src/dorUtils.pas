@@ -28,7 +28,7 @@ uses Classes, SysUtils, superobject
 , paszlib
 {$ELSE}
 , WinSock
-, dorZLib
+, ZLib
 {$ENDIF}
 ;
 
@@ -42,8 +42,10 @@ const
 
 type
 {$IFNDEF FPC}
-  PtrInt = Longint;
-  TThreadID = LongWord;
+{$IFNDEF CPUX64}
+  IntPtr = LongInt;
+{$ENDIF}
+  TThreadID = DWORD;
 {$ENDIF}
 
 {$IFNDEF UNICODE}
@@ -110,6 +112,8 @@ function Base64ToStr(const B64: string): string;
 
 procedure StreamToBase64(const StreamIn, StreamOut: TStream);
 procedure Base64ToStream(const data: string; stream: TStream);
+
+function BytesToBase64(bytes: PByte; len: Integer): string;
 
 function RbsToHex(const rb: RawByteString): string;
 function HexToRbs(const hex: string): RawByteString;
@@ -330,6 +334,23 @@ begin
     stream.Position := stream.Position - PadCount;
 end;
 
+function BytesToBase64(bytes: PByte; len: Integer): string;
+var
+  s1, s2: TPooledMemoryStream;
+begin
+  s1 := TPooledMemoryStream.Create;
+  s2 := TPooledMemoryStream.Create;
+  try
+    s1.Write(bytes^, len);
+    StreamToBase64(s1, s2);
+    s2.Seek(0, soFromBeginning);
+    SetLength(Result, s2.Size div SizeOf(Char));
+    s2.Read(PChar(Result)^, s2.Size * SizeOf(Char));
+  finally
+    s1.Free;
+    s2.Free;
+  end;
+end;
 
 function RbsToHex(const rb: RawByteString): string;
 const
@@ -423,9 +444,14 @@ begin
   inc(Result, r);
 end;
 
+function DeflateInit(var stream: TZStreamRec; level: Integer): Integer;
+begin
+  result := DeflateInit_(stream, level, ZLIB_VERSION, SizeOf(TZStreamRec));
+end;
+
 function CompressStream(inStream, outStream: TStream; level: Integer): boolean;
 var
-  zstream: TZStream;
+  zstream: TZStreamRec;
   zresult: Integer;
   inBuffer: array[0..bufferSize - 1] of byte;
   outBuffer: array[0..bufferSize - 1] of byte;
@@ -468,9 +494,14 @@ begin
   deflateEnd(zstream);
 end;
 
+function InflateInit(var stream: TZStreamRec): Integer;
+begin
+  result := InflateInit_(stream, ZLIB_VERSION, SizeOf(TZStreamRec));
+end;
+
 function DecompressStream(inStream, outStream: TStream; addflag: Boolean = False; maxin: Integer = 0): boolean;
 var
-  zstream: TZStream;
+  zstream: TZStreamRec;
   zresult: Integer;
   inBuffer: array[0..bufferSize - 1] of byte;
   outBuffer: array[0..bufferSize - 1] of byte;
@@ -703,7 +734,7 @@ begin
         p := Pointer(PtrInt(FList[FPosition div FPageSize]) + (FPosition mod FPageSize));
         Move(p^, c^, n);
         dec(count, n);
-        inc(PtrInt(c), n);
+        inc(IntPtr(c), n);
         inc(FPosition, n);
         if count >= FPageSize then
           n := FPageSize else
@@ -848,7 +879,7 @@ begin
         p := Pointer(PtrInt(FList[FPosition div FPageSize]) + (FPosition mod FPageSize));
         Move(c^, p^, n);
         dec(count, n);
-        inc(PtrInt(c), n);
+        inc(IntPtr(c), n);
         inc(FPosition, n);
         if count >= FPageSize then
           n := FPageSize else

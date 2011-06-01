@@ -29,6 +29,8 @@ function HTTPParseURL(const uri: PChar; out protocol: string;
   out domain: AnsiString; out port: Word; out path: RawByteString): Boolean;
 type
   TState = (sStart, stSlash, sDomain, sPort);
+label
+  redo;
 var
   p, d, dot1, dot2: PChar;
   s: TState;
@@ -74,6 +76,7 @@ begin
 
   while True do
     begin
+redo:
       case s of
         sStart:
           case p^ of
@@ -89,7 +92,11 @@ begin
           end;
         stSlash:
           case o of
-            0: if p^ = '/' then Inc(o) else Exit(False);
+            0: if p^ = '/' then Inc(o) else
+              begin
+                s := sDomain;
+                goto redo;
+              end;
             1: if p^ = '/' then
                begin
                  s := sDomain;

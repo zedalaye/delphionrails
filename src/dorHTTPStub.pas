@@ -60,6 +60,7 @@ type
     FCompressLevel: Integer;
     FSendFile: string;
     FIsStatic: Boolean;
+    FWebSocketVersion: Integer;
 {$IFDEF DEBUG}
     FLuaStack: PLuaStackInfo;
 {$ENDIF}
@@ -760,7 +761,7 @@ begin
               FSession := TSuperObject.Create;
               try
                 doBeforeProcessRequest;
-                if (Request.S['env.connection'] = 'Upgrade') then
+                if pos('Upgrade', Request.S['env.connection']) > 0 then
                   Exit(Upgrade);
                 try
                   try
@@ -1146,15 +1147,42 @@ begin
 end;
 
 function THTTPStub.WebSocket: Cardinal;
+const
+  // Non Control Frames
+  OPContinuation = $0;
+  OPText =         $1;
+  OPBinary =       $2;
+
+  // Control Frames
+  OPClose =        $8;
+  OPPing =         $9;
+  OPPong =         $A;
+
+type
+  TState = (stStartOldMode, stOldMode, stStartNewMode, stNext,
+    stPayload16, stPayload64, stMask, stData);
 var
   b: Byte;
   stream: TPooledMemoryStream;
-  state: Boolean;
+  state: TState;
   data: UTF8String;
   t: TRttiType;
   inst: TActionWebsocket;
+
+  fin: Boolean;
+  opcode: Byte;
+  payloadLength: Int64;
+  pos: Integer;
+  mask: array[0..3] of Byte;
+  closecode: Word;
 begin
   Result := 0;
+  pos := 0;
+  payloadLength := 0;
+  opcode := 0;
+  fin := False;
+  closecode := 0;
+
   if FParams.AsObject['controller'] <> nil then
     with FParams.AsObject do
     begin
@@ -1163,26 +1191,29 @@ begin
       if (t <> nil) and (t is  TRttiInstanceType)  then
       begin
         if TRttiInstanceType(t).MetaclassType.InheritsFrom(TActionWebsocket) then
-          inst := TActionWebsocketClass(TRttiInstanceType(t).MetaclassType).Create else
+          inst := TActionWebsocketClass(TRttiInstanceType(t).MetaclassType).Create(FWebSocketVersion) else
           Exit;
       end else
         Exit;
     end else
       Exit;
   inst.Start;
-  state := False;
+
+  if FWebSocketVersion  = 0 then
+    state := stStartOldMode else
+    state := stStartNewMode;
+
   stream := TPooledMemoryStream.Create;
   try
     while not Stopped do
       if Source.Read(b, 1, 0) = 1 then
       begin
         case state of
-          False:
-            begin
-              if b <> 0 then Exit;
-              state := True;
-            end;
-          True:
+          stStartOldMode:
+            if b = 0 then
+              state := stOldMode else
+              Exit;
+          stOldMode:
             begin
               if b <> $FF then
                 stream.Write(b, 1) else
@@ -1190,10 +1221,127 @@ begin
                   SetLength(data, stream.Size);
                   stream.Seek(0, soFromBeginning);
                   stream.Read(PAnsiChar(data)^, stream.Size);
-                  TCustomObserver(ChildItems[0]).TriggerInternalEvent(TSuperObject.Create(string(data)));
+                  inst.TriggerInternalEvent(TSuperObject.Create(string(data)));
                   stream.Size := 0;
-                  state := False;
+                  state := stStartOldMode;
                 end;
+            end;
+          stStartNewMode:
+            begin
+              fin := (b and $80) <> 0;
+              if (b and $70) <> 0 then Exit; // reserved
+              opcode := b and $0F;
+              closecode := 0;
+              state := stNext;
+            end;
+          stNext:
+            begin
+              // maskBit is necessary on server side
+              if b and $80 = 0 then Exit;
+              payloadLength := b and $7F;
+
+              if (payloadLength < 126) then
+              begin
+                state := stMask;
+                pos := 0;
+              end else
+              if (payloadLength = 126) then
+              begin
+                pos := 0;
+                state := stPayload16;
+              end  else
+              begin
+                pos := 0;
+                state := stPayload64;
+              end;
+            end;
+          stPayload16:
+            begin
+              case pos of
+                0: payloadLength := b;
+                1:
+                  begin
+                    payloadLength := payloadLength shl 8 or b;
+                    state := stMask;
+                    pos := 0;
+                    Continue;
+                  end;
+              end;
+              Inc(pos);
+            end;
+          stPayload64:
+            begin
+              case pos of
+                0   : payloadLength := b;
+                1..6: payloadLength := payloadLength shl 8 or b;
+                7:
+                  begin
+                    payloadLength := payloadLength shl 8 or b;
+                    state := stMask;
+                    pos := 0;
+                    Continue
+                  end;
+              end;
+              Inc(pos);
+            end;
+          stMask:
+            case pos of
+              0..2:
+                begin
+                  mask[pos] := b;
+                  Inc(pos);
+                end;
+              3:
+                begin
+                  mask[3] := b;
+                  if payloadLength > 0 then
+                  begin
+                    state := stData;
+                    pos := 0;
+                  end else
+                    state := stStartNewMode;
+                end;
+            end;
+          stData:
+            begin
+              b := b xor mask[pos mod 4];
+              case opcode of
+                OPClose: closecode := closecode shl 8 or b;
+              else
+                stream.Write(b, 1);
+              end;
+
+              Dec(payloadLength);
+              Inc(pos);
+
+              if (payloadLength = 0) then
+              begin
+                if fin and (opcode <> OPContinuation) then
+                begin
+                  case opcode of
+                    OPClose:
+                      begin
+                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', closecode]));
+                        Exit;
+                      end;
+                    OPText, OPPing, OPPong:
+                      begin
+                        SetLength(data, stream.Size);
+                        stream.Seek(0, soFromBeginning);
+                        stream.Read(PAnsiChar(data)^, stream.Size);
+                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', data]));
+                      end;
+                    OPBinary:
+                      begin
+                        stream.Seek(0, soFromBeginning);
+                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', stream]));
+                        stream := TPooledMemoryStream.Create;
+                      end;
+                  end;
+                  stream.Size := 0;
+                end;
+                state := stStartNewMode;
+              end;
             end;
         end;
       end
@@ -1250,7 +1398,7 @@ end;
 
 function THTTPStub.Upgrade: Cardinal;
 
-  function doWebSocket: Cardinal;
+  function doWebSocket04: Cardinal;
     function getKeyNumber(const key: string; out spaces: Cardinal): Cardinal;
     var
       i: Integer;
@@ -1315,10 +1463,43 @@ function THTTPStub.Upgrade: Cardinal;
     Source.Write(response, SizeOf(response), 0);
     Result := WebSocket;
   end;
+
+  function doWebSocket07: Cardinal;
+  var
+    key, origin: ISuperObject;
+    ret: RawByteString;
+    buffer: array[0..SHA_DIGEST_LENGTH - 1] of AnsiChar;
+  begin
+    Result := 0;
+    origin := Request['env.sec-websocket-origin'];
+    if not ObjectIsType(origin, stString) then Exit;
+
+    key := Request['env.sec-websocket-key'];
+    if not ObjectIsType(key, stString) then Exit;
+
+    ret := AnsiString(key.AsString) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+    SHA1(PAnsiChar(ret), Length(ret), @buffer);
+    ret := RawByteString(BytesToBase64(@buffer, SizeOf(buffer)));
+    WriteLine('HTTP/1.1 101 WebSocket Protocol Handshake');
+	  WriteLine('Upgrade: websocket');
+	  WriteLine('Connection: Upgrade');
+	  WriteLine('Sec-WebSocket-Origin: ' + RawByteString(origin.AsString));
+    WriteLine('Sec-WebSocket-Accept: ' + ret);
+    WriteLine('');
+    Result := WebSocket;
+  end;
 begin
   Result := 0;
-  if Request.S['env.upgrade'] = 'WebSocket' then
-    Result := doWebSocket;
+  if SameText(Request.S['env.upgrade'], 'WebSocket') then
+  begin
+    FWebSocketVersion := Request.I['env.sec-websocket-version'];
+    case FWebSocketVersion of
+      0: Result := doWebSocket04;
+    else
+      // 4 > 7
+      Result := doWebSocket07;
+    end;
+  end;
 end;
 
 {$IFDEF DEBUG}

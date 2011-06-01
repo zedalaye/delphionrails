@@ -132,7 +132,7 @@ type
 
   TRWSocket = class(TInterfacedObject, IReadWrite)
   private
-    FSocket: LongInt;
+    FSocket: TSocket;
     FOwned: Boolean;
     FReadTimeout: Cardinal;
     FWriteTimeout: Cardinal;
@@ -145,13 +145,13 @@ type
     function SSLIssuer(const key: AnsiString): AnsiString; virtual;
     procedure Close;
   public
-    constructor Create(Socket: LongInt; Owned: Boolean); virtual;
+    constructor Create(Socket: TSocket; Owned: Boolean); virtual;
     destructor Destroy; override;
   end;
 
   TSSLRWSocket = class(TInterfacedObject, IReadWrite)
   private
-    FSocket: LongInt;
+    FSocket: TSocket;
     FOwned: Boolean;
     FReadTimeout: Cardinal;
     FWriteTimeout: Cardinal;
@@ -171,12 +171,12 @@ type
     function SSLIssuer(const key: AnsiString): AnsiString; virtual;
     procedure Close;
   public
-    constructor Create(Socket: LongInt; Owned: Boolean; Verify: Integer;
+    constructor Create(Socket: TSocket; Owned: Boolean; Verify: Integer;
       const password, CertificateFile, PrivateKeyFile, CertCAFile: AnsiString); virtual;
     destructor Destroy; override;
   end;
 
-  TOnSocketStub = function(socket: LongInt): IReadWrite;
+  TOnSocketStub = function(socket: TSocket): IReadWrite;
 
   TAbstractServer = class(TDORThread)
   private
@@ -228,7 +228,7 @@ uses
 var
   AThreadCount: Integer = 0;
 
-function ThreadRun(Thread: Pointer): PtrInt; stdcall;
+function ThreadRun(Thread: Pointer): IntPtr; stdcall;
 begin
   CurrentThread := TDORThread(Thread);
   InterlockedIncrement(CurrentThread.FThreadRefCount);
@@ -741,7 +741,7 @@ begin
   FSocket := INVALID_SOCKET;
 end;
 
-constructor TRWSocket.Create(Socket: Integer; Owned: Boolean);
+constructor TRWSocket.Create(Socket: TSocket; Owned: Boolean);
 begin
   inherited Create;
   FSocket := Socket;
@@ -1000,7 +1000,7 @@ begin
   end;
 end;
 
-constructor TSSLRWSocket.Create(Socket: Integer; Owned: Boolean;
+constructor TSSLRWSocket.Create(Socket: TSocket; Owned: Boolean;
   Verify: Integer; const password, CertificateFile,
   PrivateKeyFile, CertCAFile: AnsiString);
 label
