@@ -271,7 +271,7 @@ end;
 function HTTPEncode(const AStr: string): RawByteString;
 const
   NoConversion = ['A'..'Z','a'..'z','*','@','.','_','-',
-                  '0'..'9','$','!','''','(',')', '/'];
+                  '0'..'9','$','!','''','(',')', '/', '?'];
 var
   Sp: PChar;
   Rp: PAnsiChar;
