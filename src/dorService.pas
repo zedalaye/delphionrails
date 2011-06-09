@@ -142,7 +142,7 @@ begin
 
     SERVICE_CONTROL_INTERROGATE:
     begin
-      OutputDebugString('pouet'); // Fall through to send current status.
+      // Fall through to send current status.
     end;
 
   else
