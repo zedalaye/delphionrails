@@ -12,15 +12,15 @@
     The Initial Developer of the Original Code is
       Henri Gourvest <hgourvest@gmail.com>.
 *)
+{$WARN SYMBOL_DEPRECATED OFF}
 
 unit dorSocketStub;
 
 interface
 uses
   Windows, Winsock, dorOpenSSL,
-  {$IFDEF UNIX}baseunix,{$ENDIF}
   Generics.Collections,
-  dorUtils, superobject;
+  dorUtils, Classes, superobject;
 
 type
   // forward declarations
@@ -37,8 +37,7 @@ type
 
   TDORThread = class(TInterfacedObject)
   private
-    FThreadId: TThreadID;
-    FThreadHandle: TThreadId;
+    FThread: TThread;
     FPaused: boolean;
     FCriticalSection: TRtlCriticalSection;
     FOwner: TDORThread;
@@ -46,7 +45,6 @@ type
     FChildCount: Integer;
     FChildCapacity: Integer;
     FThreadRefCount: Integer;
-    FStopped: Longint;
     function ChildGet(Index: Integer): TDORThread;
     procedure ChildSetCapacity(NewCapacity: Integer);
     function ChildAdd(Item: TDORThread): Integer;
@@ -62,7 +60,7 @@ type
     class function ThreadCount: integer;
     property Owner: TDORThread read FOwner;
     procedure ChildClear; virtual;
-    procedure Pause;
+    procedure Suspend;
     procedure Resume;
     procedure Start;
     procedure Lock;
@@ -105,8 +103,8 @@ type
     procedure Intercept;
     procedure doOnEvent(const Event: ISuperObject); virtual;
     procedure doOnInternalEvent(const Event: ISuperObject); virtual;
-    procedure ProcessEvents; virtual;
     function ExtractEvents: ISuperObject; virtual;
+    procedure ProcessEvents; virtual;
   public
     procedure RegisterEvent(const name: string; proc: TEventProc = nil); virtual;
     procedure UnregisterEvent(const name: string); virtual;
@@ -219,7 +217,7 @@ type
   end;
 
 threadvar
-  CurrentThread: TDORThread;
+  CurrentDorThread: TDORThread;
 
 implementation
 uses
@@ -228,18 +226,36 @@ uses
 var
   AThreadCount: Integer = 0;
 
-function ThreadRun(Thread: Pointer): IntPtr; stdcall;
+type
+  TThreadRun = class(TThread)
+  private
+    FOwner: TDORThread;
+  public
+    constructor Create(owner: TDORThread);
+    procedure Execute; override;
+  end;
+
+{ TThreadRun }
+
+constructor TThreadRun.Create(owner: TDORThread);
 begin
-  CurrentThread := TDORThread(Thread);
-  InterlockedIncrement(CurrentThread.FThreadRefCount);
+  FreeOnTerminate := True;
+  FOwner := owner;
+  inherited Create(False);
+end;
+
+procedure TThreadRun.Execute;
+begin
+  CurrentDorThread := FOwner;
+  InterlockedIncrement(CurrentDorThread.FThreadRefCount);
   try
-    result := CurrentThread.Run;
+    CurrentDorThread.Run;
   finally
-    if InterlockedDecrement(CurrentThread.FThreadRefCount) = 0 then
-      CurrentThread.Free else
-      if CurrentThread.FOwner <> nil then
-        CurrentThread.FOwner.ChildRemove(CurrentThread);
-    CurrentThread := nil;
+    if InterlockedDecrement(CurrentDorThread.FThreadRefCount) = 0 then
+      CurrentDorThread.Free else
+      if CurrentDorThread.FOwner <> nil then
+        CurrentDorThread.FOwner.ChildRemove(CurrentDorThread);
+    CurrentDorThread := nil;
   end;
 end;
 
@@ -251,36 +267,33 @@ begin
   InterlockedIncrement(AThreadCount);
   InitializeCriticalSection(FCriticalSection);
   FPaused := False;
-  InterlockedExchange(FStopped, 0);
   FOwner := AOwner;
-  FThreadHandle := INVALID_HANDLE_VALUE;
-  FThreadId := INVALID_HANDLE_VALUE;
+  FThread := nil;
+  FThreadRefCount := 0;
   if (FOwner <> nil) then
     FOwner.ChildAdd(Self);
 end;
 
 destructor TDORThread.Destroy;
 begin
-  InterlockedDecrement(AThreadCount);
   Stop;
   ChildClear;
   DeleteCriticalSection(FCriticalSection);
-  if FThreadHandle <> INVALID_HANDLE_VALUE then
-    CloseHandle(FThreadHandle);
+  InterlockedDecrement(AThreadCount);
   inherited;
 end;
 
-procedure TDORThread.Pause;
+procedure TDORThread.Suspend;
 var i: integer;
 begin
   if not FPaused then
   begin
     Lock;
     try
-      if FThreadHandle <> INVALID_HANDLE_VALUE then
-        SuspendThread(FThreadHandle);
+      if FThread <> nil then
+        FThread.Suspend;
       for i := 0 to ChildCount - 1 do
-        ChildItems[i].Pause;
+        ChildItems[i].Suspend;
       FPaused := True;
     finally
       UnLock;
@@ -295,8 +308,8 @@ begin
   begin
     lock;
     try
-      if FThreadHandle <> INVALID_HANDLE_VALUE then
-        ResumeThread(FThreadHandle);
+      if FThread <> nil then
+        FThread.Resume;
       for i := 0 to ChildCount - 1 do
         ChildItems[i].Resume;
       FPaused := False;
@@ -443,7 +456,7 @@ begin
   Lock;
   try
     if ClassType <> TDORThread then
-      FThreadHandle := CreateThread(nil, 0, @ThreadRun, Self, 0, FThreadId);
+      FThread := TThreadRun.Create(Self);
     for i := 0 to ChildCount - 1 do
       ChildItems[i].Start;
   finally
@@ -453,12 +466,15 @@ end;
 
 procedure TDORThread.Stop;
 begin
-  InterlockedExchange(FStopped, 1);
+  if FThread <> nil then
+    FThread.Terminate;
 end;
 
 function TDORThread.GetStopped: boolean;
 begin
-  Result := FStopped <> 0;
+  if FThread <> nil then
+    Result := TThreadRun(FThread).Terminated else
+    Result := True;
 end;
 
 class function TDORThread.ThreadCount: integer;
@@ -876,25 +892,11 @@ begin
 end;
 
 procedure TSocketServer.Stop;
-{$IFDEF UNIX}
-var
-  addr: TSockAddr;
-  ASocket: longint;
-{$ENDIF}
 begin
   inherited;
   if FSocketHandle <> INVALID_SOCKET then
   begin
     closesocket(FSocketHandle);
-  {$IFDEF UNIX}
-    // connect to itself to stop waiting
-    ASocket := fpsocket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    addr.sin_family := AF_INET;
-    addr.sin_port := htons(FPort);
-    addr.sin_addr.S_addr := $0100007F; // 127.0.0.1
-    fpconnect(ASocket, @addr, sizeof(addr));
-    closesocket(ASocket);
-  {$ENDIF}
     InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
   end;
 end;

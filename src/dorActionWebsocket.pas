@@ -62,10 +62,10 @@ constructor TActionWebsocket.Create(Version: Integer);
 begin
   FWebSocketVersion := Version;
   InitializeCriticalSection(FCriticalSection);
-  FStub := (CurrentThread as THTTPStub);
-  FParams := (CurrentThread as THTTPStub).Params;
-  FSession := (CurrentThread as THTTPStub).Session;
-  inherited Create(CurrentThread);
+  FStub := (CurrentDorThread as THTTPStub);
+  FParams := (CurrentDorThread as THTTPStub).Params;
+  FSession := (CurrentDorThread as THTTPStub).Session;
+  inherited Create(CurrentDorThread);
 end;
 
 destructor TActionWebsocket.Destroy;

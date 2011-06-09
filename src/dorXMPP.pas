@@ -20,7 +20,7 @@ unit dorXMPP;
 *)
 
 interface
-uses SysUtils, Windows, WinSock, dorXML, dorOpenSSL, Generics.Collections;
+uses SysUtils, Windows, Classes, WinSock, dorXML, dorOpenSSL, Generics.Collections;
 
 type
   IXMPPClient = interface;
@@ -37,6 +37,8 @@ type
   TXMPPEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPPresence);
   TXMPPIQResponse = reference to procedure(const sender: IXMPPClient; const node: IXMPPIQ);
   TXMPPMessageEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPMessage);
+
+  TXMPPOnSynchronize = reference to procedure(const sender: IXMPPClient; const node: IXMLNode; const proc: TProc<IXMLNode>);
 
   TXMPPReadyState = (rsOffline, rsConnecting, rsOpen, rsClosing);
   TXMPPReadyStateChange = reference to procedure(const xmpp: IXMPPClient);
@@ -66,16 +68,19 @@ type
     function GetOnIQ: TXMPPIQEvent;
     function GetOnPresence: TXMPPEvent;
     function GetOnMessage: TXMPPMessageEvent;
+    function GetOnSynchronize: TXMPPOnSynchronize;
 
     procedure SetOnError(const value: TXMPPErrorEvent);
     procedure SetOnIQ(const value: TXMPPIQEvent);
     procedure SetOnPresence(const value: TXMPPEvent);
     procedure SetOnMessage(const value: TXMPPMessageEvent);
+    procedure SetOnSynchronize(const value: TXMPPOnSynchronize);
 
     property OnError: TXMPPErrorEvent read GetOnError write SetOnError;
     property OnIQ: TXMPPIQEvent read GetOnIQ write SetOnIQ;
     property OnPresence: TXMPPEvent read GetOnPresence write SetOnPresence;
     property OnMessage: TXMPPMessageEvent read GetOnMessage write SetOnMessage;
+    property OnSynchronize: TXMPPOnSynchronize read GetOnSynchronize write SetOnSynchronize;
 
     property ReadyState: TXMPPReadyState read getReadyState;
     property OnReadyStateChange: TXMPPReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
@@ -176,6 +181,7 @@ type
     FOnIQ: TXMPPIQEvent;
     FOnPresence: TXMPPEvent;
     FOnMessage: TXMPPMessageEvent;
+    FOnSynchronize: TXMPPOnSynchronize;
     FReadyState: TXMPPReadyState;
     FSocket: TSocket;
     FGenId: Integer;
@@ -190,6 +196,7 @@ type
     FPrivateKeyFile: AnsiString;
     FCertCAFile: AnsiString;
     FEvents: TDictionary<Integer, TXMPPIQResponse>;
+    procedure doSynchronize(const node: IXMLNode; const proc: TProc<IXMLNode>);
     function StartSSL: Boolean;
     procedure Listen(const user, domain, pass, resource: string; options: TXMPPOptions);
     function SockSend(var Buf; len, flags: Integer): Integer;
@@ -214,6 +221,8 @@ type
     procedure SetOnPresence(const value: TXMPPEvent);
     procedure SetOnMessage(const value: TXMPPMessageEvent);
     procedure SendXML(const xml: IXMLNode);
+    function GetOnSynchronize: TXMPPOnSynchronize;
+    procedure SetOnSynchronize(const value: TXMPPOnSynchronize);
   public
     constructor Create(const password: AnsiString = '';
       const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
@@ -225,7 +234,7 @@ type
 
 implementation
 uses
-  Classes, AnsiStrings, dorUtils, dorHTTP, dorMD5;
+  AnsiStrings, dorUtils, dorHTTP, dorMD5;
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: TXMPPClient): Integer; cdecl;
@@ -341,8 +350,8 @@ type
 
   constructor TThreadIt.Create(const proc: TProc);
   begin
-    FreeOnTerminate := True;
     FProc := proc;
+    FreeOnTerminate := True;
     inherited Create(False);
   end;
 
@@ -451,6 +460,7 @@ end;
 
 destructor TXMPPClient.Destroy;
 begin
+  FOnSynchronize := nil;
   Close;
   DeleteCriticalSection(FLockWrite);
   DeleteCriticalSection(FLockEvents);
@@ -528,8 +538,8 @@ begin
           LeaveCriticalSection(FLockEvents);
         end;
         if Assigned(rep) then
-          TThread.Synchronize(nil, procedure begin
-            rep(Self, n as IXMPPIQ) end);
+          doSynchronize(n, procedure (node: IXMLNode) begin
+            rep(Self, node as IXMPPIQ) end);
       end;
     end;
 
@@ -537,9 +547,9 @@ begin
     procedure(event: TIQType)
     begin
       if Assigned(FOnIQ) then
-        TThread.Synchronize(nil,
-          procedure begin
-            FOnIQ(Self, n as IXMPPIQ)
+        doSynchronize(n,
+          procedure (node: IXMLNode) begin
+            FOnIQ(Self, node as IXMPPIQ)
           end);
     end;
 
@@ -547,12 +557,11 @@ begin
     procedure(typ: TMessageType)
     begin
       if Assigned(FOnMessage) then
-        TThread.Synchronize(nil,
-          procedure begin
-            FOnMessage(Self, n as IXMPPMessage)
+        doSynchronize(n,
+          procedure (node: IXMLNode) begin
+            FOnMessage(Self, node as IXMPPMessage)
           end);
     end;
-
   stack := TStack<IXMLNode>.Create;
   events := TDictionary<string, TFunc<Boolean>>.Create;
   try
@@ -674,8 +683,8 @@ redo:
               function: Boolean
               begin
                 if Assigned(FOnPresence) then
-                TThread.Synchronize(nil, procedure begin
-                  FOnPresence(Self, n as IXMPPPresence) end);
+                doSynchronize(n, procedure (node: IXMLNode) begin
+                  FOnPresence(Self, node as IXMPPPresence) end);
                 Result := True;
               end);
             events.Add('iq',
@@ -809,11 +818,17 @@ redo:
   finally
     stack.Free;
     events.Free;
+
+    // compiler bug: anonymous method not released :/
+    reconnect := nil;
+    doiqresult := nil;
+    doiqevent  := nil;
+    domessage   := nil;
+    ev := nil;
   end;
 
-
   if FReadyState in [rsConnecting .. rsOpen] then // remotely closed
-    TThread.Synchronize(nil, procedure begin
+    doSynchronize(nil, procedure (node: IXMLNode) begin
       Close;
     end);
 end;
@@ -843,11 +858,17 @@ begin
   FOnStateChange := cb;
 end;
 
+procedure TXMPPClient.SetOnSynchronize(const value: TXMPPOnSynchronize);
+begin
+  FOnSynchronize := value;
+end;
+
 procedure TXMPPClient.SetReadyState(rs: TXMPPReadyState);
 begin
   FReadyState := rs;
   if Assigned(FOnStateChange) then
-    TThread.Synchronize(nil, procedure begin FOnStateChange(Self) end);
+    doSynchronize(nil, procedure (node: IXMLNode)
+      begin FOnStateChange(Self) end);
 end;
 
 function TXMPPClient.SockSend(var Buf; len, flags: Integer): Integer;
@@ -912,7 +933,6 @@ end;
 
 procedure TXMPPClient.SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
 var
-  req: string;
   id: Integer;
 begin
   id := InterlockedIncrement(FGenId);
@@ -927,17 +947,21 @@ begin
       LeaveCriticalSection(FLockEvents);
     end;
   end;
-  Send(req);
 end;
 
 procedure TXMPPClient.SendXML(const xml: IXMLNode);
 begin
-  xml.SaveToXML(
-    procedure(const data: string)
-      begin
-        //write(data);
-        Send(data);
-      end);
+  EnterCriticalSection(FLockWrite);
+  try
+    xml.SaveToXML(
+      procedure(const data: string)
+        begin
+          //write(data);
+          Send(data);
+        end);
+  finally
+    LeaveCriticalSection(FLockWrite);
+  end;
 end;
 
 procedure TXMPPClient.Send(const data: string);
@@ -956,13 +980,25 @@ end;
 function TXMPPClient.SockRecv(var Buf; len, flags: Integer): Integer;
 begin
   if FSsl <> nil then
-    Result := SSL_read(FSsl, @Buf, len) else
+    try
+      Result := SSL_read(FSsl, @Buf, len)
+    except
+      // sometime openssl can raise an AV exception error on closing socket.
+      Result := 0;
+    end else
     Result := recv(FSocket, Buf, len, flags);
 end;
 
 class destructor TXMPPClient.Destroy;
 begin
   WSACleanup;
+end;
+
+procedure TXMPPClient.doSynchronize(const node: IXMLNode; const proc: TProc<IXMLNode>);
+begin
+  if Assigned(FOnSynchronize) then
+    FOnSynchronize(Self, node, proc) else
+    TThread.Synchronize(nil, procedure begin proc(node) end);
 end;
 
 function TXMPPClient.GetOnError: TXMPPErrorEvent;
@@ -988,6 +1024,11 @@ end;
 function TXMPPClient.GetOnReadyStateChange: TXMPPReadyStateChange;
 begin
   Result := FOnStateChange;
+end;
+
+function TXMPPClient.GetOnSynchronize: TXMPPOnSynchronize;
+begin
+  Result := FOnSynchronize;
 end;
 
 { TXMPPMessage }

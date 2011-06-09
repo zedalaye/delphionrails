@@ -49,22 +49,22 @@ uses dorSocketStub;
 
 class function TActionController.Context: TSuperRttiContext;
 begin
-  Result := (CurrentThread as THTTPStub).Context;
+  Result := (CurrentDorThread as THTTPStub).Context;
 end;
 
 class function TActionController.ErrorCode: Integer;
 begin
-  Result := (CurrentThread as THTTPStub).ErrorCode;
+  Result := (CurrentDorThread as THTTPStub).ErrorCode;
 end;
 
 class function TActionController.HavePeerCertificate: Boolean;
 begin
-  Result := (CurrentThread as TClientStub).Source.HavePeerCertificate;
+  Result := (CurrentDorThread as TClientStub).Source.HavePeerCertificate;
 end;
 
 class function TActionController.HaveSLL: Boolean;
 begin
-  Result := (CurrentThread as TClientStub).Source.IsSSL;
+  Result := (CurrentDorThread as TClientStub).Source.IsSSL;
 end;
 
 procedure TActionController.Invoke;
@@ -73,7 +73,7 @@ var
   ctx: TSuperRttiContext;
   ite: TSuperAvlEntry;
 begin
-  ctx := (CurrentThread as THTTPStub).Context;
+  ctx := (CurrentDorThread as THTTPStub).Context;
   for obj in Params do
     if obj <> nil then
       obj.DataPtr := Pointer(1);
@@ -93,37 +93,37 @@ end;
 
 class function TActionController.Params: ISuperObject;
 begin
-  Result := (CurrentThread as THTTPStub).Params;
+  Result := (CurrentDorThread as THTTPStub).Params;
 end;
 
 class function TActionController.Request: THTTPMessage;
 begin
-  Result := (CurrentThread as THTTPStub).Request;
+  Result := (CurrentDorThread as THTTPStub).Request;
 end;
 
 class function TActionController.Response: THTTPMessage;
 begin
-  Result := (CurrentThread as THTTPStub).Response;
+  Result := (CurrentDorThread as THTTPStub).Response;
 end;
 
 class function TActionController.Return: ISuperObject;
 begin
-  Result := (CurrentThread as THTTPStub).Return;
+  Result := (CurrentDorThread as THTTPStub).Return;
 end;
 
 class function TActionController.Session: ISuperObject;
 begin
-  Result := (CurrentThread as THTTPStub).Session;
+  Result := (CurrentDorThread as THTTPStub).Session;
 end;
 
 class procedure TActionController.Redirect(const location: string);
 begin
-  (CurrentThread as THTTPStub).Redirect(location);
+  (CurrentDorThread as THTTPStub).Redirect(location);
 end;
 
 class procedure TActionController.Redirect(const controler, action, id: string);
 begin
-  (CurrentThread as THTTPStub).Redirect(controler, action, id);
+  (CurrentDorThread as THTTPStub).Redirect(controler, action, id);
 end;
 
 class procedure TActionController.Register;
@@ -133,17 +133,17 @@ end;
 
 class procedure TActionController.SetErrorCode(code: Integer);
 begin
-  (CurrentThread as THTTPStub).ErrorCode := code;
+  (CurrentDorThread as THTTPStub).ErrorCode := code;
 end;
 
 class function TActionController.SSLIssuer(const key: AnsiString): AnsiString;
 begin
-  Result := (CurrentThread as TClientStub).Source.SSLIssuer(key);
+  Result := (CurrentDorThread as TClientStub).Source.SSLIssuer(key);
 end;
 
 class function TActionController.SSLSubject(const key: AnsiString): AnsiString;
 begin
-  Result := (CurrentThread as TClientStub).Source.SSLSubject(key);
+  Result := (CurrentDorThread as TClientStub).Source.SSLSubject(key);
 end;
 
 end.

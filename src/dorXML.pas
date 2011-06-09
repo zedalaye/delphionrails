@@ -1198,6 +1198,7 @@ begin
   FName := name;
   FAttributes := nil;
   FChildNodes := nil;
+  FChildIndex := nil;
 end;
 
 destructor TXMLNode.Destroy;

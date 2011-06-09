@@ -12,27 +12,18 @@
     The Initial Developer of the Original Code is
       Henri Gourvest <hgourvest@gmail.com>.
 *)
-{$IFDEF FPC}
-{$mode objfpc}{$H+}
-{$ENDIF}
-
-{$IFNDEF CPU64}
-{$ALIGN ON}
-{$MINENUMSIZE 4}
-{$ENDIF}
 
 unit dorService;
 
 interface
 uses
-{$IFDEF FPC}sockets{$ELSE}WinSock{$ENDIF},
 {$if Defined(madExcept) and Defined(CONSOLEAPP)}
   madExcept,
 {$ifend}
+  WinSock,
   SysUtils,
-{$IFDEF MSWINDOWS}
   Windows,
-{$ENDIF}
+  WinSvc,
   dorSocketStub;
 
 type
@@ -47,7 +38,7 @@ type
     FStartType: Cardinal;
 {$ENDIF}
     function Start: boolean;
-    procedure Pause;
+    procedure Suspend;
     procedure Resume;
   protected
 {$IFNDEF CONSOLEAPP}
@@ -87,6 +78,7 @@ const
 {$ENDIF}
 
 implementation
+uses Classes;
 
 var
   FApplication: TDORService = nil;
@@ -102,113 +94,9 @@ begin
 end;
 
 {$IFNDEF CONSOLEAPP}
-type
-  PServiceStatus = ^TServiceStatus;
-  TServiceStatus = record
-    dwServiceType: DWORD;
-    dwCurrentState: DWORD;
-    dwControlsAccepted: DWORD;
-    dwWin32ExitCode: DWORD;
-    dwServiceSpecificExitCode: DWORD;
-    dwCheckPoint: DWORD;
-    dwWaitHint: DWORD;
-  end;
-
-  TServiceTableEntry = record
-    lpServiceName: PAnsiChar;
-    lpServiceProc: TFarProc;
-  end;
-
-  SERVICE_STATUS_HANDLE = DWORD;
-
 var
   ServiceStatus: TServiceStatus;
   ServiceStatusHandle: THandle;
-
-const
-  SERVICE_CONTROL_STOP           = $00000001;
-  SERVICE_CONTROL_PAUSE          = $00000002;
-  SERVICE_CONTROL_CONTINUE       = $00000003;
-  SERVICE_CONTROL_INTERROGATE    = $00000004;
-  SERVICE_CONTROL_SHUTDOWN       = $00000005;
-
-  SERVICE_STOPPED                = $00000001;
-  SERVICE_START_PENDING          = $00000002;
-  SERVICE_STOP_PENDING           = $00000003;
-  SERVICE_RUNNING                = $00000004;
-  SERVICE_CONTINUE_PENDING       = $00000005;
-  SERVICE_PAUSE_PENDING          = $00000006;
-  SERVICE_PAUSED                 = $00000007;
-
-  SERVICE_ACCEPT_STOP            = $00000001;
-  SERVICE_ACCEPT_PAUSE_CONTINUE  = $00000002;
-  SERVICE_ACCEPT_SHUTDOWN        = $00000004;
-
-  SC_MANAGER_CONNECT             = $0001;
-  SC_MANAGER_CREATE_SERVICE      = $0002;
-  SC_MANAGER_ENUMERATE_SERVICE   = $0004;
-  SC_MANAGER_LOCK                = $0008;
-  SC_MANAGER_QUERY_LOCK_STATUS   = $0010;
-  SC_MANAGER_MODIFY_BOOT_CONFIG  = $0020;
-
-  SERVICE_QUERY_CONFIG           = $0001;
-  SERVICE_CHANGE_CONFIG          = $0002;
-  SERVICE_QUERY_STATUS           = $0004;
-  SERVICE_ENUMERATE_DEPENDENTS   = $0008;
-  SERVICE_START                  = $0010;
-  SERVICE_STOP                   = $0020;
-  SERVICE_PAUSE_CONTINUE         = $0040;
-  SERVICE_INTERROGATE            = $0080;
-  SERVICE_USER_DEFINED_CONTROL   = $0100;
-
-  SERVICE_ERROR_IGNORE          = $00000000;
-  SERVICE_ERROR_NORMAL          = $00000001;
-  SERVICE_ERROR_SEVERE          = $00000002;
-  SERVICE_ERROR_CRITICAL        = $00000003;
-
-  _DELETE                  = $00010000;
-
-  advapi32 = 'advapi32.dll';
-
-function SetServiceStatus(hServiceStatus: SERVICE_STATUS_HANDLE;
-  var lpServiceStatus: TServiceStatus): BOOL; stdcall;
-  external advapi32 name 'SetServiceStatus';
-
-function RegisterServiceCtrlHandler(lpServiceName: PChar;
-  lpHandlerProc: TFarProc): SERVICE_STATUS_HANDLE; stdcall;
-  external advapi32 name {$IFDEF UNICODE}'RegisterServiceCtrlHandlerW'{$ELSE}'RegisterServiceCtrlHandlerA'{$ENDIF};
-
-function StartServiceCtrlDispatcher(
-  var lpServiceStartTable: TServiceTableEntry): BOOL; stdcall;
-  external advapi32 name {$IFDEF UNICODE}'StartServiceCtrlDispatcherW'{$ELSE}'StartServiceCtrlDispatcherA'{$ENDIF};
-
-function OpenSCManager(lpMachineName, lpDatabaseName: PChar;
-  dwDesiredAccess: DWORD): THandle; stdcall;
-  external advapi32 name {$IFDEF UNICODE}'OpenSCManagerW'{$ELSE}'OpenSCManagerA'{$ENDIF};
-
-function CreateService(hSCManager: THandle; lpServiceName, lpDisplayName: PChar;
-  dwDesiredAccess, dwServiceType, dwStartType, dwErrorControl: DWORD;
-  lpBinaryPathName, lpLoadOrderGroup: PChar; lpdwTagId: LPDWORD; lpDependencies,
-  lpServiceStartName, lpPassword: PChar): THandle; stdcall;
-  external advapi32 name {$IFDEF UNICODE}'CreateServiceW'{$ELSE}'CreateServiceA'{$ENDIF};
-
-function CloseServiceHandle(hSCObject: THandle): BOOL; stdcall;
-  external advapi32 name 'CloseServiceHandle';
-
-function OpenService(hSCManager: THandle; lpServiceName: PChar;
-  dwDesiredAccess: DWORD): THandle; stdcall;
-  external advapi32 name {$IFDEF UNICODE}'OpenServiceW'{$ELSE}'OpenServiceA'{$ENDIF};
-
-function ControlService(hService: THandle; dwControl: DWORD;
-  var lpServiceStatus: TServiceStatus): BOOL; stdcall;
-  external advapi32 name 'ControlService';
-
-function QueryServiceStatus(hService: THandle; var
-  lpServiceStatus: TServiceStatus): BOOL; stdcall;
-  external advapi32 name 'QueryServiceStatus';
-
-function DeleteService(hService: THandle): BOOL; stdcall;
-  external advapi32 name 'DeleteService';
 {$ENDIF}
 
 procedure Terminate;
@@ -228,7 +116,7 @@ begin
       begin
         // Do whatever it takes to pause here.
         ServiceStatus.dwCurrentState := SERVICE_PAUSED;
-        Application.Pause;
+        Application.Suspend;
       end;
 
     SERVICE_CONTROL_CONTINUE:
@@ -254,7 +142,7 @@ begin
 
     SERVICE_CONTROL_INTERROGATE:
     begin
-      // Fall through to send current status.
+      OutputDebugString('pouet'); // Fall through to send current status.
     end;
 
   else
@@ -281,12 +169,12 @@ begin
   ServiceStatus.dwWaitHint           := 0;
 
   ServiceStatusHandle := RegisterServiceCtrlHandler(
-      @Application.FName[1], @ServiceCtrlHandler);
+    @Application.FName[1], @ServiceCtrlHandler);
 
   if (ServiceStatusHandle = 0) then
   begin
-     raise Exception.CreateFmt('RegisterServiceCtrlHandler failed %d', [GetLastError]);
-     Exit;
+    raise Exception.CreateFmt('RegisterServiceCtrlHandler failed %d', [GetLastError]);
+    Exit;
   end;
 
   ServiceStatus.dwCurrentState       := SERVICE_RUNNING;
@@ -306,6 +194,11 @@ begin
     ServiceStatus.dwWin32ExitCode := GetLastError;
     SetServiceStatus(ServiceStatusHandle, ServiceStatus);
   end;
+   while Application <> nil do
+   begin
+     CheckSynchronize;
+     Sleep(1);
+   end;
 end;
 {$ENDIF}
 
@@ -398,6 +291,8 @@ procedure TDORService.Run;
 var
   Cmd: string;
   i: Integer;
+  input: TInputRecord;
+  inputread: Cardinal;
 label tryagain;
 {$ENDIF}
 begin
@@ -416,42 +311,61 @@ begin
   writeln(' > REPORT : Generate a bug report (madexcept).');
 {$endif}
   writeln('---------------------------------------');
+
 tryagain:
-  //write('> ');
-  readln(cmd);
-{$ifdef madExcept}
-  if comparetext(Cmd, 'restart') = 0 then RestartApplication else
-  if comparetext(Cmd, 'report') = 0 then
+  PeekConsoleInput(GetStdHandle(STD_INPUT_HANDLE), input, 1, inputread);
+  if inputread = 0 then
   begin
-    try
-      raise Exception.Create('Thread Status');
-    except
-      on E: Exception do
-        HandleException(etNormal, E);
+    Sleep(1);
+    CheckSynchronize;
+    goto tryagain;
+  end;
+  ReadConsoleInput(GetStdHandle(STD_INPUT_HANDLE), input, 1, inputread);
+  if (inputread = 1) and (input.EventType = KEY_EVENT) and (input.Event.KeyEvent.bKeyDown) then
+    if input.Event.KeyEvent.AsciiChar = #$D then
+    begin
+    {$ifdef madExcept}
+      if comparetext(Cmd, 'restart') = 0 then RestartApplication else
+      if comparetext(Cmd, 'report') = 0 then
+      begin
+        try
+          raise Exception.Create('Thread Status');
+        except
+          on E: Exception do
+            HandleException(etNormal, E);
+        end;
+      end else
+    {$endif}
+      if comparetext(Cmd, 'exit') = 0 then
+      begin
+        Terminate;
+        Exit;
+      end else
+      if comparetext(Cmd, 'pause') = 0 then Suspend else
+      if comparetext(Cmd, 'resume') = 0 then Resume else
+      if comparetext(Cmd, 'clear') = 0 then
+      begin
+        FThreads.Lock;
+        try
+          FThreads.Resume;
+          //sleep(100);
+          for i := 0 to FThreads.ChildCount - 1 do
+            if FThreads[i] is TSocketServer then
+              FThreads[i].ChildClear;
+        finally
+          FThreads.UnLock;
+        end;
+      end else
+        writeln('Unknow command');
+
+      cmd := '';
+      Writeln('');
+    end else
+    begin
+      Cmd := Cmd + input.Event.KeyEvent.UnicodeChar;
+      Write(input.Event.KeyEvent.AsciiChar);
     end;
-  end else
-{$endif}
-  if comparetext(Cmd, 'exit') = 0 then
-  begin
-    Terminate;
-    Exit;
-  end else
-  if comparetext(Cmd, 'pause') = 0 then Pause else
-  if comparetext(Cmd, 'resume') = 0 then Resume else
-  if comparetext(Cmd, 'clear') = 0 then
-  begin
-    FThreads.Lock;
-    try
-      FThreads.Resume;
-      //sleep(100);
-      for i := 0 to FThreads.ChildCount - 1 do
-        if FThreads[i] is TSocketServer then
-          FThreads[i].ChildClear;
-    finally
-      FThreads.UnLock;
-    end;
-  end else
-    writeln('Unknow command');
+  CheckSynchronize;
   goto tryagain;
 {$ELSE}
   if ParamCount > 0 then
@@ -484,22 +398,16 @@ end;
 destructor TDORService.Destroy;
 begin
   FThreads.Free;
-{$IFNDEF FPC}
   WSACleanup;
-{$ENDIF}
   FApplication := nil;
   inherited;
 end;
 
 function TDORService.Start: boolean;
-{$IFNDEF FPC}
 var
   Data: TWSAData;
-{$ENDIF}
 begin
-{$IFNDEF FPC}
   WSAStartup($0202, Data);
-{$ENDIF}
   Result := True;
   try
     FThreads.Start;
@@ -508,9 +416,9 @@ begin
   end;
 end;
 
-procedure TDORService.Pause;
+procedure TDORService.Suspend;
 begin
-  FThreads.Pause;
+  FThreads.Suspend;
 end;
 
 procedure TDORService.Resume;

@@ -29,22 +29,22 @@ uses dorSocketStub;
 
 class function TActionView.Return: ISuperoBject;
 begin
-  Result := (CurrentThread as THTTPStub).Return;
+  Result := (CurrentDorThread as THTTPStub).Return;
 end;
 
 class procedure TActionView.SetErrorCode(code: Integer);
 begin
-  (CurrentThread as THTTPStub).ErrorCode := code;
+  (CurrentDorThread as THTTPStub).ErrorCode := code;
 end;
 
 class procedure TActionView.Render(const obj: ISuperObject; format: boolean);
 begin
- (CurrentThread as THTTPStub).Render(obj, format);
+ (CurrentDorThread as THTTPStub).Render(obj, format);
 end;
 
 class function TActionView.ErrorCode: Integer;
 begin
-  Result := (CurrentThread as THTTPStub).ErrorCode;
+  Result := (CurrentDorThread as THTTPStub).ErrorCode;
 end;
 
 procedure TActionView.Invoke;
@@ -52,8 +52,8 @@ var
   ctx: TSuperRttiContext;
   ret: ISuperObject;
 begin
-  ctx := (CurrentThread as THTTPStub).Context;
-  with (CurrentThread as THTTPStub).Params.AsObject do
+  ctx := (CurrentDorThread as THTTPStub).Context;
+  with (CurrentDorThread as THTTPStub).Params.AsObject do
     case TrySOInvoke(ctx, Self, S['action'] + '_' + S['format'], Return, ret) of
       irSuccess: SetErrorCode(200);
       irMethothodError: SetErrorCode(404);
@@ -70,17 +70,17 @@ end;
 
 class procedure TActionView.Render(const str: string);
 begin
-  (CurrentThread as THTTPStub).Render(str);
+  (CurrentDorThread as THTTPStub).Render(str);
 end;
 
 class function TActionView.Request: THTTPMessage;
 begin
-  Result := (CurrentThread as THTTPStub).Request;
+  Result := (CurrentDorThread as THTTPStub).Request;
 end;
 
 class function TActionView.Response: THTTPMessage;
 begin
-  Result := (CurrentThread as THTTPStub).Response;
+  Result := (CurrentDorThread as THTTPStub).Response;
 end;
 
 
