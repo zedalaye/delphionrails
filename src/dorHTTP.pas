@@ -95,6 +95,8 @@ redo:
             0: if p^ = '/' then Inc(o) else
               begin
                 s := sDomain;
+                o := 1;
+                dot1 := p;
                 goto redo;
               end;
             1: if p^ = '/' then

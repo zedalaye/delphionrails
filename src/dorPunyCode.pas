@@ -32,9 +32,12 @@ function PunycodeDecode(inputlen: Cardinal; const input: PByte;
 
 function PunycodeEncode(inputlen: Cardinal; const input: PPunycode;
   var outputlen: Cardinal; const output: PByte = nil;
-  const caseflags: PByte = nil): TPunyCodeStatus;
+  const caseflags: PByte = nil): TPunyCodeStatus; overload;
+
+function PunycodeEncodeDomain(const str: string): AnsiString; overload;
 
 implementation
+uses SysUtils;
 
 (*** Bootstring parameters for Punycode ***)
 const
@@ -420,6 +423,59 @@ begin
 
   outputlen := outidx;
   Result := pcSuccess;
+end;
+
+function PunycodeEncodeDomain(const str: UnicodeString): AnsiString; overload;
+var
+  inlen, outlen: Cardinal;
+  ansi: AnsiString;
+  p, s: PWideChar;
+  a: PAnsiChar;
+
+  procedure doit(dot: Boolean);
+  begin
+    inlen := p - s;
+    if (PunycodeEncode(inlen, PPunyCode(s), outlen) = pcSuccess) and (inlen + 1 <> outlen) then
+    begin
+      if dot then
+        SetLength(ansi, outlen + 4 + 1) else
+        SetLength(ansi, outlen + 4);
+      a := PAnsiChar(ansi);
+      Move(PAnsiChar('xn--')^, a^, 4);
+      inc(a, 4);
+      PunycodeEncode(inlen, PPunyCode(s), outlen, PByte(a));
+      if dot then
+      begin
+        inc(a, outlen);
+        a^ := '.';
+      end;
+    end else
+      if dot then
+        SetString(ansi, s, inlen + 1) else
+        SetString(ansi, s, inlen);
+    Result := Result + ansi;
+  end;
+begin
+  Result := '';
+  p := PWideChar(str);
+  s := p;
+
+  while True do
+  case p^ of
+    '.':
+      begin
+        doit(True);
+        Inc(p);
+        s := p;
+      end;
+    #0 :
+      begin
+        doit(False);
+        Break;
+      end;
+  else
+    Inc(p);
+  end;
 end;
 
 end.

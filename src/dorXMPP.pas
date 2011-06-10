@@ -1,5 +1,5 @@
 unit dorXMPP;
-
+{$define XMPP_DEBUG_CONSOLE}
 (*******************************************************************************
   Sample usage:
 
@@ -29,8 +29,8 @@ type
   IXMPPIQ = interface;
   IXMPPMessage = interface;
 
-  TIQType = (iqGet, iqSet, iqResult, iqError);
-  TMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
+  TXMPPIQType = (iqGet, iqSet, iqResult, iqError);
+  TXMPPMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
 
   TXMPPErrorEvent = reference to procedure(const msg: string);
   TXMPPIQEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPIQ);
@@ -59,8 +59,9 @@ type
     procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
 
     procedure Close;
-    procedure Open(const url, user, domain, pass: string;
-      const resource: string = ''; options: TXMPPOptions = []);
+    function Open(const user, pass: string;
+      const resource: string = ''; const host: string = ''; port: Word = 5222;
+      options: TXMPPOptions = []): Boolean;
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
 
@@ -100,7 +101,7 @@ type
     procedure SetPriority(const value: ShortInt);
     procedure SetDest(const value: string);
     procedure SetSrc(const value: string);
-    property Presence: TXMPPPresenceType read GetPresence write SetPresence;
+    property kind: TXMPPPresenceType read GetPresence write SetPresence;
     property Show: TXMPPPresenceShow read GetShow write SetShow;
     property Status: string read GetStatus write SetStatus;
     property Priority: ShortInt read GetPriority write SetPriority;
@@ -113,31 +114,32 @@ type
     function Reply: IXMPPIQ;
     function GetDest: string;
     function GetSrc: string;
-    function GetIQ: TIQType;
+    function GetIQ: TXMPPIQType;
     function GetId: string;
     procedure SetDest(const value: string);
     procedure SetSrc(const value: string);
-    procedure SetIQ(value: TIQType);
+    procedure SetIQ(value: TXMPPIQType);
     procedure SetId(const value: string);
     property Dest: string read GetDest write SetDest;
     property Src: string read GetSrc write SetSrc;
-    property IQ: TIQType read GetIQ write SetIQ;
+    property Kind: TXMPPIQType read GetIQ write SetIQ;
     property Id: string read GetId write SetId;
   end;
 
   IXMPPMessage = interface(IXMLNode)
     ['{6E79F7DE-8E36-437D-A59A-16D836FF797E}']
-    function GetMessage: TMessageType;
+    function GetMessage: TXMPPMessageType;
     function GetDest: string;
     function GetSrc: string;
     function GetId: string;
-    procedure SetMessage(const value: TMessageType);
+    procedure SetMessage(const value: TXMPPMessageType);
     procedure SetDest(const value: string);
     procedure SetSrc(const value: string);
     procedure SetId(const value: string);
     property Dest: string read GetDest write SetDest;
     property Src: string read GetSrc write SetSrc;
-    property Message: TMessageType read GetMessage write SetMessage;
+    property Kind: TXMPPMessageType read GetMessage write SetMessage;
+    property Id: string read GetId write SetId;
   end;
 
   TXMPPMessage = class(TXMLNode, IXMPPPresence, IXMPPIQ, IXMPPMessage)
@@ -148,31 +150,24 @@ type
     function GetPriority: ShortInt;
     function GetDest: string;
     function GetSrc: string;
-    function GetIQ: TIQType;
+    function GetIQ: TXMPPIQType;
     function GetId: string;
-    function GetMessage: TMessageType;
+    function GetMessage: TXMPPMessageType;
     procedure SetPresence(const value: TXMPPPresenceType);
     procedure SetShow(const value: TXMPPPresenceShow);
     procedure SetStatus(const value: string);
     procedure SetPriority(const value: ShortInt);
     procedure SetDest(const value: string);
     procedure SetSrc(const value: string);
-    procedure SetIQ(value: TIQType);
+    procedure SetIQ(value: TXMPPIQType);
     procedure SetId(const value: string);
-    procedure SetMessage(const value: TMessageType);
+    procedure SetMessage(const value: TXMPPMessageType);
     function Reply: IXMPPIQ;
-
-    property Presence: TXMPPPresenceType read GetPresence write SetPresence;
-    property Show: TXMPPPresenceShow read GetShow write SetShow;
-    property Status: string read GetStatus write SetStatus;
-    property Priority: ShortInt read GetPriority write SetPriority;
-    property Dest: string read GetDest write SetDest;
-    property Src: string read GetSrc write SetSrc;
-    property Id: string read GetId write SetId;
   public
-    class function CreatePresence(presence: TXMPPPresenceType = ptNone; show: TXMPPPresenceShow = psNone;
-      const Status: string = ''; Priority: ShortInt = 0; const src: string = ''; const dest: string = ''): IXMPPPresence;
-    class function CreateIQ(iq: TIQType = iqGet; const src: string = ''; const dest: string = ''; const id: string = ''): IXMPPIQ;
+    class function CreatePresence(Kind: TXMPPPresenceType = ptNone; show: TXMPPPresenceShow = psNone;
+      const Status: string = ''; Priority: ShortInt = 0; const dest: string = ''; const src: string = ''): IXMPPPresence;
+    class function CreateIQ(Kind: TXMPPIQType = iqGet; const dest: string = ''; const src: string = ''; const id: string = ''): IXMPPIQ;
+    class function CreateMessage(kind: TXMPPMessageType; const dest: string = ''; const src: string = ''; const id: string = ''): IXMPPMessage;
   end;
 
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
@@ -198,16 +193,22 @@ type
     FEvents: TDictionary<Integer, TXMPPIQResponse>;
     procedure doSynchronize(const node: IXMLNode; const proc: TProc<IXMLNode>);
     function StartSSL: Boolean;
-    procedure Listen(const user, domain, pass, resource: string; options: TXMPPOptions);
+    procedure Listen(const domain, resource: string);
     function SockSend(var Buf; len, flags: Integer): Integer;
     function SockRecv(var Buf; len, flags: Integer): Integer;
     procedure SetReadyState(rs: TXMPPReadyState);
+    function HostName(const user, host: string): AnsiString;
+    function DomainName(const user, host: string): string;
+    function UserName(const user: string): string;
+    function Connect(const Host: AnsiString; Port: Word): Boolean;
+    function Login(const user, domain, pass: string; options: TXMPPOptions): Boolean;
   protected
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
     function getReadyState: TXMPPReadyState; virtual;
-    procedure Open(const url, user, domain, pass, resource: string;
-      options: TXMPPOptions);
+    function Open(const user, pass: string;
+     const resource: string = ''; const host: string = ''; port: Word = 5222;
+     options: TXMPPOptions = []): Boolean;
     procedure SendFmt(const data: string; params: array of const);
     procedure Send(const data: string);
     procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
@@ -234,7 +235,10 @@ type
 
 implementation
 uses
-  AnsiStrings, dorUtils, dorHTTP, dorMD5;
+  AnsiStrings, dorUtils, dorHTTP, dorMD5, dorPunyCode;
+
+const
+  XML_STREAM_STREAM = '<stream:stream to="%s" xmlns="jabber:client" xmlns:stream="http://etherx.jabber.org/streams" version="1.0">';
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: TXMPPClient): Integer; cdecl;
@@ -390,41 +394,39 @@ begin
   end;
 end;
 
-procedure TXMPPClient.Open(const url, user, domain, pass, resource: string; options: TXMPPOptions);
+function TXMPPClient.Open(const user, pass: string;
+  const resource: string = ''; const host: string = ''; port: Word = 5222;
+  options: TXMPPOptions = []): Boolean;
+begin
+
+  if FReadyState <> rsOffline then
+    Exit(False);
+
+  if not Connect(HostName(user, host), port) then
+    Exit(False);
+
+  if not Login(UserName(user), DomainName(user, host), pass, Options) then
+    Exit(False);
+
+  TThreadIt.Create(procedure begin listen(DomainName(user, host), resource) end);
+
+  Result := True;
+end;
+
+function TXMPPClient.Connect(const Host: AnsiString; Port: Word): Boolean;
 var
-  dom: AnsiString;
-  protocol: string;
-  uri: RawByteString;
-  port: Word;
-  host: PHostEnt;
+  AHost: PHostEnt;
   addr: TSockAddrIn;
 begin
-  if FReadyState <> rsOffline then
-    Exit;
-
   SetReadyState(rsConnecting);
-  // parse
-  if not HTTPParseURL(PChar(url), protocol, dom, port, uri) then
-  begin
-    if Assigned(FOnError) then
-      FOnError(Format('Can''t parse url: %s', [url]));
-    Exit;
-  end;
-
-  if protocol = 'xmpp' then
-  begin
-    if port = 0 then
-      port := 5222;
-  end else
-    Exit;
 
   // find host
-  host := gethostbyname(PAnsiChar(dom));
-  if host = nil then
+  Ahost := gethostbyname(PAnsiChar(host));
+  if AHost = nil then
   begin
     if Assigned(FOnError) then
-      FOnError(Format('Host not found: %s', [dom]));
-    Exit;
+      FOnError(Format('Host not found: %s', [host]));
+    Exit(False);
   end;
 
   // socket
@@ -433,22 +435,21 @@ begin
   begin
     if Assigned(FOnError) then
       FOnError('Unexpected error: can''t allocate socket handle.');
-    Exit;
+    Exit(False);
   end;
 
   // connect
   FillChar(addr, SizeOf(addr), 0);
   addr.sin_family := AF_INET;
   addr.sin_port := htons(port);
-  addr.sin_addr.S_addr := PInteger(host.h_addr^)^;
-  if connect(FSocket, addr, SizeOf(addr)) <> 0 then
+  addr.sin_addr.S_addr := PInteger(AHost.h_addr^)^;
+  if WinSock.connect(FSocket, addr, SizeOf(addr)) <> 0 then
   begin
     if Assigned(FOnError) then
-      FOnError(format('Cant''t connect to host: %s:%d', [domain, port]));
-    Exit;
+      FOnError(format('Cant''t connect to host: %s:%d', [host, port]));
+    Exit(False);
   end;
-
-  TThreadIt.Create(procedure begin listen(user, domain, pass, resource, Options) end);
+  Result := True;
 end;
 
 class constructor TXMPPClient.Create;
@@ -491,12 +492,22 @@ begin
   Result := FReadyState;
 end;
 
-procedure TXMPPClient.Listen(const user, domain, pass, resource: string; options: TXMPPOptions);
+function TXMPPClient.HostName(const user, host: string): AnsiString;
+var
+  d: PChar;
+begin
+  if host <> '' then Exit(PunycodeEncodeDomain(host));
+
+  d := StrScan(PChar(user), '@');
+  if d = nil then
+    Exit('');
+
+  inc(d);
+  Result := PunycodeEncodeDomain(d);
+end;
+
+procedure TXMPPClient.Listen(const domain, resource: string);
 const
-  XML_STREAM_STREAM = '<stream:stream to="%s" xmlns="jabber:client" xmlns:stream="http://etherx.jabber.org/streams" version="1.0">';
-  XML_STARTTLS = '<starttls xmlns="%s"/>';
-  XML_AUTH_PLAIN = '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="PLAIN" xmlns:ga="http://www.google.com/talk/protocol/auth" ga:client-uses-full-bind-result="true">%s</auth>';
-  XML_AUTH_MD5 = '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="DIGEST-MD5" xmlns:ga="http://www.google.com/talk/protocol/auth" ga:client-uses-full-bind-result="true"/>';
   XML_IQ_BIND = '<iq type="set"><bind xmlns="urn:ietf:params:xml:ns:xmpp-bind"><resource>%s</resource></bind></iq>';
   XML_IQ_SESSION = '<iq type="set"><session xmlns="urn:ietf:params:xml:ns:xmpp-session"/></iq>';
 var
@@ -504,23 +515,15 @@ var
   n: IXMLNode;
   mustreconnect: Boolean;
   ev: TFunc<Boolean>;
-  reconnect: TProc;
-  doiqresult: TProc<TIQType>;
-  doiqevent: TProc<TIQType>;
-  domessage: TProc<TMessageType>;
+  doiqresult: TProc<TXMPPIQType>;
+  doiqevent: TProc<TXMPPIQType>;
+  domessage: TProc<TXMPPMessageType>;
   events: TDictionary<string, TFunc<Boolean>>;
 label
   redo;
 begin
-  reconnect := procedure begin
-    events.Clear;
-    stack.Clear;
-    SendFmt(XML_STREAM_STREAM, [domain]);
-    mustreconnect := True;
-  end;
-
   doiqresult :=
-    procedure(resp: TIQType)
+    procedure(resp: TXMPPIQType)
     var
       idstr: string;
       id: Integer;
@@ -544,7 +547,7 @@ begin
     end;
 
   doiqevent :=
-    procedure(event: TIQType)
+    procedure(event: TXMPPIQType)
     begin
       if Assigned(FOnIQ) then
         doSynchronize(n,
@@ -554,7 +557,7 @@ begin
     end;
 
   domessage :=
-    procedure(typ: TMessageType)
+    procedure(typ: TXMPPMessageType)
     begin
       if Assigned(FOnMessage) then
         doSynchronize(n,
@@ -562,6 +565,194 @@ begin
             FOnMessage(Self, node as IXMPPMessage)
           end);
     end;
+  stack := TStack<IXMLNode>.Create;
+  events := TDictionary<string, TFunc<Boolean>>.Create;
+  try
+    SetReadyState(rsConnecting);
+    Send('<?xml version="1.0" ?>');
+    SendFmt(XML_STREAM_STREAM, [domain]);
+redo:
+    //<<< stream:features
+    events.Add('stream:features', function : Boolean
+      begin
+        Result := True;
+        if n.FirstChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
+        if n.FirstChild('session') <> nil then Send(XML_IQ_SESSION);
+        events.Add('presence',
+          function: Boolean
+          begin
+            if Assigned(FOnPresence) then
+            doSynchronize(n, procedure (node: IXMLNode) begin
+              FOnPresence(Self, node as IXMPPPresence) end);
+            Result := True;
+          end);
+        events.Add('iq',
+          function: Boolean
+          var
+            typ: string;
+            e: TFunc<Boolean>;
+          begin
+            if n.Attributes.TryGetValue('type', typ) and
+                events.TryGetValue('iq@' + typ, e) then
+              Result := e else
+              Result := True;
+          end);
+        events.Add('iq@get',
+          function: Boolean
+          begin
+            doiqevent(iqGet);
+            Result := True;
+          end);
+        events.Add('iq@set',
+          function: Boolean
+          begin
+            doiqevent(iqSet);
+            Result := True;
+          end);
+        events.Add('iq@result',
+          function: Boolean begin doiqresult(iqResult); result := True end);
+        events.Add('iq@error',
+          function: Boolean begin doiqresult(iqError); result := True end);
+        events.Add('message',
+          function: Boolean
+          var
+            typ: string;
+            e: TFunc<Boolean>;
+          begin
+            if n.Attributes.TryGetValue('type', typ) then
+            begin
+              if events.TryGetValue('message@' + typ, e) then
+                Result := e else
+                Result := True;
+            end else
+            begin
+              domessage(mtNone);
+              Result := True;
+            end;
+          end);
+        events.Add('message@normal', function: Boolean
+          begin
+            domessage(mtNormal);
+            Result := True;
+          end);
+        events.Add('message@chat', function: Boolean
+          begin
+            domessage(mtChat);
+            Result := True;
+          end);
+        events.Add('message@groupchat', function: Boolean
+          begin
+            domessage(mtGroupChat);
+            Result := True;
+          end);
+        events.Add('message@headline', function: Boolean
+          begin
+            domessage(mtHeadline);
+            Result := True;
+          end);
+        events.Add('message@error', function: Boolean
+          begin
+            domessage(mtError);
+            Result := True;
+          end);
+        SetReadyState(rsOpen);
+        events.Remove('stream:features');
+      end);
+
+    mustreconnect := False;
+    XMLParseSAX(CP_UTF8,
+      function (var c: AnsiChar): Boolean
+      begin
+        Result := SockRecv(c, 1, 0) = 1
+      end,
+      function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean
+      begin
+        Result := True;
+        case node of
+          xtOpen:
+            begin
+{$IFDEF XMPP_DEBUG_CONSOLE}
+              writeln(StringOfChar(' ', stack.Count * 3) + 'node: ' + string(name));
+{$ENDIF}
+              if (stack.Count = 1) then
+                stack.Push(TXMPPMessage.Create(name)) else
+                stack.Push(TXMLNode.Create(name));
+            end;
+          xtClose:
+            begin
+              n := stack.Pop;
+              if stack.count > 1 then
+                stack.Peek.ChildNodes.Add(n) else
+                if events.TryGetValue(string(n.Name), ev) then
+                  Result := ev else
+                  Result := True;
+            end;
+          xtAttribute:
+            begin
+{$IFDEF XMPP_DEBUG_CONSOLE}
+              writeln(StringOfChar(' ', stack.Count * 3) + 'attr: ' + string(name) + '=' + value);
+{$ENDIF}
+              stack.Peek.Attributes.AddOrSetValue(name, value);
+            end;
+          xtText:
+            begin
+{$IFDEF XMPP_DEBUG_CONSOLE}
+              writeln(StringOfChar(' ', stack.Count * 3) + 'text: ' + value);
+{$ENDIF}
+              stack.Peek.ChildNodes.Add(TXMLNodeText.Create(value));
+            end;
+          xtCData:
+            begin
+{$IFDEF XMPP_DEBUG_CONSOLE}
+              writeln(StringOfChar(' ', stack.Count * 3) + 'cdata: ' + value);
+{$ENDIF}
+              stack.Peek.ChildNodes.Add(TXMLNodeCDATA.Create(value));
+            end;
+        end;
+      end);
+    if mustreconnect then
+      goto redo;
+  finally
+    stack.Free;
+    events.Free;
+
+    // compiler bug: anonymous method not released :/
+    doiqresult := nil;
+    doiqevent  := nil;
+    domessage   := nil;
+    ev := nil;
+  end;
+
+  if FReadyState in [rsConnecting .. rsOpen] then // remotely closed
+    doSynchronize(nil, procedure (node: IXMLNode) begin
+      Close;
+    end);
+end;
+
+function TXMPPClient.Login(const user, domain, pass: string; options: TXMPPOptions): Boolean;
+const
+  XML_STARTTLS = '<starttls xmlns="%s"/>';
+  XML_AUTH_PLAIN = '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="PLAIN" xmlns:ga="http://www.google.com/talk/protocol/auth" ga:client-uses-full-bind-result="true">%s</auth>';
+  XML_AUTH_MD5 = '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="DIGEST-MD5" xmlns:ga="http://www.google.com/talk/protocol/auth" ga:client-uses-full-bind-result="true"/>';
+var
+  stack: TStack<IXMLNode>;
+  n: IXMLNode;
+  mustreconnect: Boolean;
+  ev: TFunc<Boolean>;
+  reconnect: TProc;
+  events: TDictionary<string, TFunc<Boolean>>;
+  authenticated: Boolean;
+label
+  redo;
+begin
+  authenticated := False;
+  reconnect := procedure begin
+    events.Clear;
+    stack.Clear;
+    SendFmt(XML_STREAM_STREAM, [domain]);
+    mustreconnect := True;
+  end;
+
   stack := TStack<IXMLNode>.Create;
   events := TDictionary<string, TFunc<Boolean>>.Create;
   try
@@ -667,7 +858,7 @@ redo:
               //>>> success
               events.Add('success', function: Boolean
                 begin
-                  reconnect;
+                  authenticated := True;
                   Result := False;
                 end);
               //>>> failure
@@ -676,88 +867,7 @@ redo:
               end);
             end;
           end else
-          begin
-            if n.FirstChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
-            if n.FirstChild('session') <> nil then Send(XML_IQ_SESSION);
-            events.Add('presence',
-              function: Boolean
-              begin
-                if Assigned(FOnPresence) then
-                doSynchronize(n, procedure (node: IXMLNode) begin
-                  FOnPresence(Self, node as IXMPPPresence) end);
-                Result := True;
-              end);
-            events.Add('iq',
-              function: Boolean
-              var
-                typ: string;
-                e: TFunc<Boolean>;
-              begin
-                if n.Attributes.TryGetValue('type', typ) and
-                    events.TryGetValue('iq@' + typ, e) then
-                  Result := e else
-                  Result := True;
-              end);
-            events.Add('iq@get',
-              function: Boolean
-              begin
-                doiqevent(iqGet);
-                Result := True;
-              end);
-            events.Add('iq@set',
-              function: Boolean
-              begin
-                doiqevent(iqSet);
-                Result := True;
-              end);
-            events.Add('iq@result',
-              function: Boolean begin doiqresult(iqResult); result := True end);
-            events.Add('iq@error',
-              function: Boolean begin doiqresult(iqError); result := True end);
-            events.Add('message',
-              function: Boolean
-              var
-                typ: string;
-                e: TFunc<Boolean>;
-              begin
-                if n.Attributes.TryGetValue('type', typ) then
-                begin
-                  if events.TryGetValue('message@' + typ, e) then
-                    Result := e else
-                    Result := True;
-                end else
-                begin
-                  domessage(mtNone);
-                  Result := True;
-                end;
-              end);
-            events.Add('message@normal', function: Boolean
-              begin
-                domessage(mtNormal);
-                Result := True;
-              end);
-            events.Add('message@chat', function: Boolean
-              begin
-                domessage(mtChat);
-                Result := True;
-              end);
-            events.Add('message@groupchat', function: Boolean
-              begin
-                domessage(mtGroupChat);
-                Result := True;
-              end);
-            events.Add('message@headline', function: Boolean
-              begin
-                domessage(mtHeadline);
-                Result := True;
-              end);
-            events.Add('message@error', function: Boolean
-              begin
-                domessage(mtError);
-                Result := True;
-              end);
-            SetReadyState(rsOpen);
-          end;
+            Send('</stream:stream>'); // no need to authenticate
         end;
         events.Remove('stream:features');
       end);
@@ -821,16 +931,9 @@ redo:
 
     // compiler bug: anonymous method not released :/
     reconnect := nil;
-    doiqresult := nil;
-    doiqevent  := nil;
-    domessage   := nil;
     ev := nil;
   end;
-
-  if FReadyState in [rsConnecting .. rsOpen] then // remotely closed
-    doSynchronize(nil, procedure (node: IXMLNode) begin
-      Close;
-    end);
+  Result := authenticated;
 end;
 
 procedure TXMPPClient.SetOnError(const value: TXMPPErrorEvent);
@@ -926,6 +1029,17 @@ begin
   Result := True;
 end;
 
+function TXMPPClient.UserName(const user: string): string;
+var
+  d, p: PChar;
+begin
+  p := PChar(user);
+  d := StrScan(p, '@');
+  if d = nil then
+    Exit(user) else
+    SetString(Result, p, d - p);
+end;
+
 procedure TXMPPClient.SendFmt(const data: string; params: array of const);
 begin
   Send(Format(data, params));
@@ -994,6 +1108,18 @@ begin
   WSACleanup;
 end;
 
+function TXMPPClient.DomainName(const user, host: string): string;
+var
+  d: PChar;
+begin
+  d := StrScan(PChar(user), '@');
+  if d = nil then
+    Exit(host);
+
+  inc(d);
+  Result := d;
+end;
+
 procedure TXMPPClient.doSynchronize(const node: IXMLNode; const proc: TProc<IXMLNode>);
 begin
   if Assigned(FOnSynchronize) then
@@ -1033,22 +1159,31 @@ end;
 
 { TXMPPMessage }
 
-class function TXMPPMessage.CreateIQ(iq: TIQType; const src, dest, id: string): IXMPPIQ;
+class function TXMPPMessage.CreateIQ(Kind: TXMPPIQType; const dest, src, id: string): IXMPPIQ;
 begin
   Result := Create('iq');
-  Result.IQ := iq;
+  Result.kind := Kind;
   Result.Dest := dest;
   Result.Src := src;
   Result.Id := id;
 end;
 
-class function TXMPPMessage.CreatePresence(presence: TXMPPPresenceType;
+class function TXMPPMessage.CreateMessage(kind: TXMPPMessageType; const dest,
+  src, id: string): IXMPPMessage;
+begin
+  Result := Create('message');
+  Result.Dest := dest;
+  Result.Src := src;
+  Result.Id := id;
+end;
+
+class function TXMPPMessage.CreatePresence(Kind: TXMPPPresenceType;
   show: TXMPPPresenceShow; const Status: string; Priority: ShortInt;
-  const src, dest: string): IXMPPPresence;
+  const dest, src: string): IXMPPPresence;
 begin
   Result := Create('presence');
   // attributes
-  Result.Presence := presence;
+  Result.Kind := Kind;
   Result.Src := dest;
   Result.Dest := dest;
 
@@ -1068,7 +1203,7 @@ begin
   Result := NullAttr['id'];
 end;
 
-function TXMPPMessage.GetIQ: TIQType;
+function TXMPPMessage.GetIQ: TXMPPIQType;
 var
   iq: string;
 begin
@@ -1084,7 +1219,7 @@ begin
   raise Exception.CreateFmt('Invalid iq.type=%', [iq]);
 end;
 
-function TXMPPMessage.GetMessage: TMessageType;
+function TXMPPMessage.GetMessage: TXMPPMessageType;
 var
   msg: string;
 begin
@@ -1159,7 +1294,7 @@ end;
 
 function TXMPPMessage.Reply: IXMPPIQ;
 begin
-  Result := TXMPPMessage.CreateIQ(iqResult, Dest, Src, Id)
+  Result := TXMPPMessage.CreateIQ(iqResult, GetDest, GetSrc, GetId)
 end;
 
 procedure TXMPPMessage.SetDest(const value: string);
@@ -1172,16 +1307,16 @@ begin
   NullAttr['id'] := value;
 end;
 
-procedure TXMPPMessage.SetIQ(value: TIQType);
+procedure TXMPPMessage.SetIQ(value: TXMPPIQType);
 const
-  iqs: array[TIQType] of string = ('get', 'set', 'result', 'error');
+  iqs: array[TXMPPIQType] of string = ('get', 'set', 'result', 'error');
 begin
   NullAttr['type'] := iqs[value];
 end;
 
-procedure TXMPPMessage.SetMessage(const value: TMessageType);
+procedure TXMPPMessage.SetMessage(const value: TXMPPMessageType);
 const
-  msgs: array[TMessageType] of string = ('',
+  msgs: array[TXMPPMessageType] of string = ('',
     'normal', 'chat', 'groupchat', 'headline', 'error');
 begin
   NullAttr['type'] := msgs[value];
