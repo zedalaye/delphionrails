@@ -416,7 +416,7 @@ var
   addr: TSockAddrIn;
   done: THandle;
   ret: Integer;
-  trhandle: THandle;
+  trhandle: TThreadIt;
 begin
   SetReadyState(rsConnecting);
 
@@ -448,16 +448,16 @@ begin
 
   ret := 1;
   done := CreateEvent(nil, True, False, nil);
-  try
-    trhandle := Thread(procedure begin
-      ret := WinSock.connect(FSocket, addr, SizeOf(addr));
-      SetEvent(done);
-    end);
-    WaitForSingleObject(done, 1000);
-  finally
-    CloseHandle(done);
-    TerminateThread(trhandle, 0);
+  trhandle := TThreadIt.Create(procedure begin
+    ret := WinSock.connect(FSocket, addr, SizeOf(addr));
+    SetEvent(done);
+  end);
+  if WaitForSingleObject(done, 1000) <> WAIT_OBJECT_0 then
+  begin
+    TerminateThread(trhandle.Handle, 0);
+    trhandle.Free;
   end;
+  CloseHandle(done);
 
   if ret <> 0 then
   begin
