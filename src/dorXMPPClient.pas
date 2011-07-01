@@ -1,4 +1,4 @@
-unit dorXMPP;
+unit dorXMPPClient;
 {$define XMPP_DEBUG_CONSOLE}
 
 interface
