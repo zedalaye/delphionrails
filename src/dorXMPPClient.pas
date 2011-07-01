@@ -12,6 +12,13 @@ type
   IXMPPIQ = interface;
   IXMPPMessage = interface;
 
+  TXMPPResult = (
+    xOK,
+    xNotReady,
+    xCantConnect,
+    xCantLogin
+  );
+
   TXMPPIQType = (iqGet, iqSet, iqResult, iqError);
   TXMPPMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
   TXMPPErrorType = (etAuth, etCancel, etContinue, etModify, etWait);
@@ -43,7 +50,7 @@ type
     procedure Close;
     function Open(const user, pass: string;
       const resource: string = ''; const host: string = ''; port: Word = 5222;
-      options: TXMPPOptions = []): Boolean;
+      options: TXMPPOptions = []): TXMPPResult;
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
 
@@ -195,7 +202,7 @@ type
     function getReadyState: TXMPPReadyState; virtual;
     function Open(const user, pass: string;
      const resource: string = ''; const host: string = ''; port: Word = 5222;
-     options: TXMPPOptions = []): Boolean;
+     options: TXMPPOptions = []): TXMPPResult;
     procedure SendFmt(const data: string; params: array of const);
     procedure Send(const data: string);
     procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
@@ -383,21 +390,20 @@ end;
 
 function TXMPPClient.Open(const user, pass: string;
   const resource: string = ''; const host: string = ''; port: Word = 5222;
-  options: TXMPPOptions = []): Boolean;
+  options: TXMPPOptions = []): TXMPPResult;
 begin
   if FReadyState <> rsOffline then
-    Exit(False);
-  Close;
+    Exit(xNotReady);
 
   if not Connect(HostName(user, host), port) then
-    Exit(False);
+    Exit(xCantConnect);
 
   if not Login(UserName(user), DomainName(user, host), pass, Options) then
-    Exit(False);
+    Exit(xCantLogin);
 
   TThreadIt.Create(procedure begin listen(DomainName(user, host), resource) end);
 
-  Result := True;
+  Result := xOK;
 end;
 
 function Thread(const proc: TProc): THandle;
