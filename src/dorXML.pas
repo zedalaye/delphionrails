@@ -1,26 +1,27 @@
 unit dorXML;
 
 interface
-uses SysUtils, Classes, Generics.Collections;
+uses SysUtils, Windows, Classes, Generics.Collections;
 
 type
   IXMLNode = interface;
   TXMLSaveto = reference to procedure(const data: string);
   TXMLNodeType = (ntNull, ntNode, ntText, ntCDATA);
-  TAttributes = TList<IXMLNode>;
+  TXMLNodeList = TList<IXMLNode>;
 
   IXMLNode = interface
   ['{8A22EC91-113B-48DE-A58B-E920DED5F21D}']
     function GetName: RawByteString;
     function GetAttributes: TDictionary<RawByteString, string>;
-    function GetChildNodes: TAttributes;
+    function GetChildNodes: TXMLNodeList;
     function GetText: string;
     procedure SetText(const value: string);
-    function FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer;
     function FirstChild(const name: RawByteString): IXMLNode;
     function GetXML: string;
     procedure SaveToXML(const writer: TXMLSaveto);
     procedure SaveToText(const writer: TXMLSaveto);
+    procedure SaveToFile(const filename: string);
     function GetHasAttributes: Boolean;
     function GetHasChildNodes: Boolean;
     function GetDataType: TXMLNodeType;
@@ -32,7 +33,7 @@ type
 
     property Name: RawByteString read GetName;
     property Attributes: TDictionary<RawByteString, string> read GetAttributes;
-    property ChildNodes: TAttributes read GetChildNodes;
+    property ChildNodes: TXMLNodeList read GetChildNodes;
     property Text: string read GetText write SetText;
     property Xml: string read GetXml;
     property HasAttributes: Boolean read GetHasAttributes;
@@ -48,14 +49,15 @@ type
     { IXMLNode }
     function GetName: RawByteString; virtual;
     function GetAttributes: TDictionary<RawByteString, string>; virtual;
-    function GetChildNodes: TAttributes; virtual;
+    function GetChildNodes: TXMLNodeList; virtual;
     function GetText: string; virtual;
     procedure SetText(const value: string); virtual;
-    function FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer; virtual;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer; virtual;
     function FirstChild(const name: RawByteString): IXMLNode; virtual;
     function GetXML: string;
     procedure SaveToXML(const writer: TXMLSaveto); virtual;
     procedure SaveToText(const writer: TXMLSaveto); virtual;
+    procedure SaveToFile(const filename: string);
     function GetHasAttributes: Boolean; virtual;
     function GetHasChildNodes: Boolean; virtual;
     function GetDataType: TXMLNodeType; virtual;
@@ -68,7 +70,7 @@ type
     property Name: RawByteString read GetName;
     property DataType: TXMLNodeType read GetDataType;
     property Attributes: TDictionary<RawByteString, string> read GetAttributes;
-    property ChildNodes: TAttributes read GetChildNodes;
+    property ChildNodes: TXMLNodeList read GetChildNodes;
     property Text: string read GetText write SetText;
     property Xml: string read GetXml;
     property HasAttributes: Boolean read GetHasAttributes;
@@ -109,8 +111,8 @@ type
   private
     FName: RawByteString;
     FAttributes: TDictionary<RawByteString, string>;
-    FChildNodes: TAttributes;
-    FChildIndex: TObjectDictionary<RawByteString, TAttributes>;
+    FChildNodes: TXMLNodeList;
+    FChildIndex: TObjectDictionary<RawByteString, TXMLNodeList>;
     procedure doNotifyChild(Sender: TObject; const Item: IXMLNode;
       Action: TCollectionNotification);
     procedure doNotifyAttr(Sender: TObject; const Item: RawByteString;
@@ -118,9 +120,9 @@ type
   protected
     function GetName: RawByteString; override;
     function GetAttributes: TDictionary<RawByteString, string>; override;
-    function GetChildNodes: TAttributes; override;
+    function GetChildNodes: TXMLNodeList; override;
     procedure SetText(const value: string); override;
-    function FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer; override;
+    function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer; override;
     function FirstChild(const name: RawByteString): IXMLNode; override;
     procedure SaveToXML(const writer: TXMLSaveto); override;
     procedure SaveToText(const writer: TXMLSaveto); override;
@@ -143,15 +145,74 @@ type
   TXMLNodeState = (xtOpen, xtClose, xtAttribute, xtText, xtCData);
   TXMLEvent = reference to function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean;
 
-  function XMLParseSAX(cp: Cardinal; const reader: TXMLReader; const event: TXMLEvent): Boolean;
-  function XMLParse(cp: Cardinal; const reader: TXMLReader): IXMLNode;
-  function XMLParseStream(cp: Cardinal; stream: TStream): IXMLNode;
-  function XMLParseFile(cp: Cardinal; const filename: TFileName): IXMLNode;
+  function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal = CP_ACP): Boolean;
+  function XMLParse(const reader: TXMLReader; cp: Cardinal = CP_ACP): IXMLNode;
+  function XMLParseStream(stream: TStream; cp: Cardinal = CP_ACP): IXMLNode;
+  function XMLParseFile(const filename: TFileName; cp: Cardinal = CP_ACP): IXMLNode;
   function XMLParseString(const str: AnsiString): IXMLNode; overload;
   function XMLParseString(const str: string): IXMLNode; overload;
 
 implementation
-uses Windows, Math;
+uses Math;
+
+function ParseCP(const cp: PAnsiChar): Integer;
+var
+  len: Integer;
+begin
+  Result := CP_ACP;
+  len := StrLen(cp);
+  case len of
+    4: if StrLIComp(cp, 'big5', 4) = 0 then Exit(950);
+    5: case cp[4] of
+         '7': if StrLIComp(cp, 'utf-7', 5) = 0 then Exit(CP_UTF7);
+         '8': if StrLIComp(cp, 'utf-8', 5) = 0 then Exit(CP_UTF8);
+       end;
+    6: case cp[5] of
+         'p', 'P': if StrLIComp(cp, 'euc-jp', 6) = 0 then Exit(51932);
+         'r', 'R':
+           case cp^ of
+             'e', 'E': if StrLIComp(cp, 'euc-kr', 6) = 0 then Exit(51949);
+             'k', 'K': if StrLIComp(cp, 'koi8-r', 6) = 0 then Exit(20866);
+           end;
+         '2': if StrLIComp(cp, 'gb2312', 6) = 0 then Exit(936);
+         'u', 'U': if StrLIComp(cp, 'koi8-u', 6) = 0 then Exit(21866);
+       end;
+    8: if StrLIComp(cp, 'us-ascii', 8) = 0 then Exit(20127);
+    9: if StrLIComp(cp, 'shift_jis', 9) = 0 then Exit(932);
+    10: case cp[9] of
+          '1': if StrLIComp(cp, 'iso-8859-1', 10) = 0 then Exit(28591);
+          '2': case cp[8] of
+                 '-': if StrLIComp(cp, 'iso-8859-2', 10) = 0 then Exit(28592);
+                 '1': if StrLIComp(cp, 'hz-gb-2312', 10) = 0 then Exit(52936);
+               end;
+          '3': if StrLIComp(cp, 'iso-8859-3', 10) = 0 then Exit(28593);
+          '4': if StrLIComp(cp, 'iso-8859-4', 10) = 0 then Exit(28594);
+          '5': if StrLIComp(cp, 'iso-8859-5', 10) = 0 then Exit(28595);
+          '6': if StrLIComp(cp, 'iso-8859-6', 10) = 0 then Exit(28596);
+          '7': if StrLIComp(cp, 'iso-8859-7', 10) = 0 then Exit(28597);
+          '9': if StrLIComp(cp, 'iso-8859-9', 10) = 0 then Exit(28599);
+        end;
+    11: case cp[5] of
+          '2': if StrLIComp(cp, 'csiso2022jp', 11) = 0 then Exit(50221);
+          '0': if StrLIComp(cp, 'iso-2022-jp', 11) = 0 then Exit(50220);
+          '8': if StrLIComp(cp, 'iso-8859-15', 11) = 0 then Exit(28605);
+          'w', 'W': if StrLIComp(cp, 'windows-874', 11) = 0 then Exit(874);
+        end;
+    12: case cp[11] of
+          '0': if StrLIComp(cp, 'windows-1250', 12) = 0 then Exit(1250);
+          '1': if StrLIComp(cp, 'windows-1251', 12) = 0 then Exit(1251);
+          '2': if StrLIComp(cp, 'Windows-1252', 12) = 0 then Exit(1252);
+          '3': if StrLIComp(cp, 'windows-1253', 12) = 0 then Exit(1253);
+          '4': if StrLIComp(cp, 'windows-1254', 12) = 0 then Exit(1254);
+          '5': if StrLIComp(cp, 'windows-1255', 12) = 0 then Exit(1255);
+          '6': if StrLIComp(cp, 'windows-1256', 12) = 0 then Exit(1256);
+          '7': if StrLIComp(cp, 'windows-1257', 12) = 0 then Exit(1257);
+          '8': if StrLIComp(cp, 'windows-1258', 12) = 0 then Exit(1258);
+          'i', 'I': if StrLIComp(cp, 'iso-8859-8-i', 12) = 0 then Exit(38598);
+        end;
+    14: if StrLIComp(cp, 'ks_c_5601-1987', 14) = 0 then Exit(949);
+  end;
+end;
 
 type
   TWriterString = class
@@ -233,7 +294,7 @@ type
 (* XMLParseSAX                                                              *)
 (******************************************************************************)
 
-function XMLParseSAX(cp: Cardinal; const reader: TXmlReader; const event: TXMLEvent): Boolean;
+function XMLParseSAX(const reader: TXmlReader; const event: TXMLEvent; cp: Cardinal): Boolean;
 const
   spaces = [#32,#9,#10,#13];
   alphas = ['a'..'z', 'A'..'Z', '_', ':', #161..#255];
@@ -549,7 +610,11 @@ redo:
             begin
               if (c = AChar) then
                 begin
-                  if Stack.clazz <> xcProcessInst then
+                  if Stack.clazz = xcProcessInst then
+                  begin
+                    if Str.Data = 'encoding' then
+                      cp := ParseCP(Value.Data);
+                  end else
                     if not event(xtAttribute, Str.Data, MBUDecode(Value.Data)) then Exit(False);
                   Stack^.savedstate := xsAttributes;
                   Stack^.state := xsEatSpaces;
@@ -877,14 +942,14 @@ redo:
   end;
 end;
 
-function XMLParse(cp: Cardinal; const reader: TXMLReader): IXMLNode;
+function XMLParse(const reader: TXMLReader; cp: Cardinal): IXMLNode;
 var
   stack: TStack<IXMLNode>;
   n: IXMLNode;
 begin
   stack := TStack<IXMLNode>.Create;
   try
-    if XMLParseSAX(cp,
+    if XMLParseSAX(
       function (var c: AnsiChar): Boolean
       begin
         Result := reader(c);
@@ -906,7 +971,7 @@ begin
           xtCData:
             stack.Peek.ChildNodes.Add(TXMLNodeCDATA.Create(value));
         end;
-      end) then
+      end, cp) then
       begin
         Assert(n <> nil);
         Result := n;
@@ -917,21 +982,21 @@ begin
   end;
 end;
 
-function XMLParseStream(cp: Cardinal; stream: TStream): IXMLNode;
+function XMLParseStream(stream: TStream; cp: Cardinal): IXMLNode;
 begin
-  Result := XMLParse(cp, function(var c: AnsiChar): Boolean
+  Result := XMLParse(function(var c: AnsiChar): Boolean
     begin
       Result := stream.Read(c, 1) = 1
-    end);
+    end, cp);
 end;
 
-function XMLParseFile(cp: Cardinal; const filename: TFileName): IXMLNode;
+function XMLParseFile(const filename: TFileName; cp: Cardinal): IXMLNode;
 var
   stream: TFileStream;
 begin
   stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyNone);
   try
-    Result := XMLParseStream(cp, stream);
+    Result := XMLParseStream(stream, cp);
   finally
     stream.Free;
   end;
@@ -942,7 +1007,7 @@ var
   p: PAnsiChar;
 begin
   p := PAnsiChar(str);
-  Result := XMLParse(StringCodePage(str), function(var c: AnsiChar): Boolean
+  Result := XMLParse(function(var c: AnsiChar): Boolean
     begin
       if p^ <> #0 then
       begin
@@ -951,7 +1016,7 @@ begin
         Result := True;
       end else
         Result := False;
-    end);
+    end, StringCodePage(str));
 end;
 
 function XMLParseString(const str: string): IXMLNode;
@@ -1004,7 +1069,7 @@ begin
 end;
 
 function TXMLNodeNull.FindChildNodes(const name: RawByteString;
-  out ChildNodes: TAttributes): Integer;
+  out ChildNodes: TXMLNodeList): Integer;
 begin
   ChildNodes := nil;
   Result := 0;
@@ -1015,7 +1080,7 @@ begin
   Result := nil;
 end;
 
-function TXMLNodeNull.GetChildNodes: TAttributes;
+function TXMLNodeNull.GetChildNodes: TXMLNodeList;
 begin
   Result := nil;
 end;
@@ -1075,6 +1140,24 @@ begin
     result := sb.ToString;
   finally
     sb.Free;
+  end;
+end;
+
+procedure TXMLNodeNull.SaveToFile(const filename: string);
+var
+  utf: UTF8String;
+  stream: TFileStream;
+begin
+  utf := '<?xml version="1.0" encoding="utf-8"?>';
+  stream := TFileStream.Create(filename, fmCreate);
+  try
+    stream.Write(PAnsiChar(utf)^, Length(utf));
+    SaveToXML(procedure(const data: string) begin
+      utf := UTF8String(data);
+      stream.Write(PAnsiChar(utf)^, Length(utf));
+    end);
+  finally
+    stream.Free;
   end;
 end;
 
@@ -1267,14 +1350,14 @@ end;
 procedure TXMLNode.doNotifyChild(Sender: TObject; const Item: IXMLNode;
   Action: TCollectionNotification);
 var
-  lst: TAttributes;
+  lst: TXMLNodeList;
 begin
   case Action of
     cnAdded:
       begin
         if not FChildIndex.TryGetValue(Item.Name, lst) then
         begin
-          lst := TAttributes.Create;
+          lst := TXMLNodeList.Create;
           FChildIndex.Add(Item.Name, lst);
         end;
         lst.Add(Item)
@@ -1292,12 +1375,12 @@ begin
   end;
 end;
 
-function TXMLNode.GetChildNodes: TAttributes;
+function TXMLNode.GetChildNodes: TXMLNodeList;
 begin
   if FChildNodes = nil then
   begin
-    FChildNodes := TAttributes.Create;
-    FChildIndex := TObjectDictionary<RawByteString, TAttributes>.Create([doOwnsValues]);
+    FChildNodes := TXMLNodeList.Create;
+    FChildIndex := TObjectDictionary<RawByteString, TXMLNodeList>.Create([doOwnsValues]);
     FChildNodes.OnNotify := doNotifyChild;
   end;
   Result := FChildNodes;
@@ -1405,7 +1488,7 @@ begin
     end;
 end;
 
-function TXMLNode.FindChildNodes(const name: RawByteString; out ChildNodes: TAttributes): Integer;
+function TXMLNode.FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer;
 begin
   if (FChildIndex <> nil) and FChildIndex.TryGetValue(name, ChildNodes) then
     Result := ChildNodes.Count else
@@ -1414,7 +1497,7 @@ end;
 
 function TXMLNode.FirstChild(const name: RawByteString): IXMLNode;
 var
-  lst: TAttributes;
+  lst: TXMLNodeList;
 begin
   if FindChildNodes(name, lst) > 0 then
     Result := lst[0] else

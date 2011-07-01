@@ -1,48 +1,32 @@
 unit dorXMPP;
 {$define XMPP_DEBUG_CONSOLE}
-(*******************************************************************************
-  Sample usage:
-
-  xmpp := TXMPPClient.Create;
-  xmpp.OnReadyStateChange := procedure(const sender: IXMPPClient)
-    begin
-      if Sender.ReadyState = rsOpen then
-        Sender.Send('<presence/>');
-    end;
-  xmpp.OnEvent := function (const sender: IXMPPClient; const node: IXMLNode): Boolean
-    begin
-      if (node.Name = 'iq') and (node.FindChild('ping') <> nil) then
-           sender.SendFmt('<iq from="%s" to="%s" id="%s" type="result"/>',
-                  [node.Attr['to'], node.Attr['from'], node.Attr['id']]);
-      Result := True;
-    end;
-  xmpp.Open('xmpp://talk.google.com', 'username', 'gmail.com', 'password');
-*)
 
 interface
-uses SysUtils, Windows, Classes, WinSock, dorXML, dorOpenSSL, Generics.Collections;
+uses
+  SysUtils, Windows, Classes, WinSock, dorXML, dorOpenSSL,
+  Generics.Collections;
 
 type
   IXMPPClient = interface;
-
   IXMPPPresence = interface;
   IXMPPIQ = interface;
   IXMPPMessage = interface;
 
   TXMPPIQType = (iqGet, iqSet, iqResult, iqError);
   TXMPPMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
+  TXMPPErrorType = (etAuth, etCancel, etContinue, etModify, etWait);
 
   TXMPPErrorEvent = reference to procedure(const msg: string);
-  TXMPPIQEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPIQ);
-  TXMPPEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPPresence);
-  TXMPPIQResponse = reference to procedure(const sender: IXMPPClient; const node: IXMPPIQ);
-  TXMPPMessageEvent = reference to procedure(const sender: IXMPPClient; const node: IXMPPMessage);
+  TXMPPIQEvent = reference to procedure(const node: IXMPPIQ);
+  TXMPPEvent = reference to procedure(const node: IXMPPPresence);
+  TXMPPIQResponse = reference to procedure(const node: IXMPPIQ);
+  TXMPPMessageEvent = reference to procedure(const node: IXMPPMessage);
 
-  TXMPPOnSynchronize = reference to procedure(const sender: IXMPPClient; const node: IXMLNode; const proc: TProc<IXMLNode>);
+  TXMPPOnSynchronize = reference to procedure(const node: IXMLNode; const proc: TProc<IXMLNode>);
 
-  TXMPPReadyState = (rsOffline, rsConnecting, rsOpen, rsClosing);
+  TXMPPReadyState = (rsOffline, rsConnecting, rsConnected, rsAuthenticating, rsAuthenticated, rsOpen, rsClosing);
   TXMPPReadyStateChange = reference to procedure(const xmpp: IXMPPClient);
-  TXMPPOption = (xoDontForceEncryption, xoPlaintextAuth);
+  TXMPPOption = (xoDontForceEncryption, xoPlaintextAuth, xoRegister);
   TXMPPOptions = set of TXMPPOption;
 
 
@@ -52,12 +36,10 @@ type
 
   IXMPPClient = interface
     ['{FD2264FF-460E-4DCD-BA8B-D1D7BCB45E6A}']
+    function GetJID: string;
     function GetReadyState: TXMPPReadyState;
     procedure SendXML(const xml: IXMLNode);
-    procedure Send(const data: string);
-    procedure SendFmt(const data: string; params: array of const);
     procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
-
     procedure Close;
     function Open(const user, pass: string;
       const resource: string = ''; const host: string = ''; port: Word = 5222;
@@ -85,6 +67,7 @@ type
 
     property ReadyState: TXMPPReadyState read getReadyState;
     property OnReadyStateChange: TXMPPReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
+    property JID: string read GetJID;
   end;
 
   IXMPPPresence = interface(IXMLNode)
@@ -112,6 +95,7 @@ type
   IXMPPIQ = interface(IXMLNode)
     ['{2CF1E3EB-F59B-40E7-AAD8-E2CE31E3406B}']
     function Reply: IXMPPIQ;
+    function Error(kind: TXMPPErrorType): IXMPPIQ;
     function GetDest: string;
     function GetSrc: string;
     function GetIQ: TXMPPIQType;
@@ -163,6 +147,7 @@ type
     procedure SetId(const value: string);
     procedure SetMessage(const value: TXMPPMessageType);
     function Reply: IXMPPIQ;
+    function Error(kind: TXMPPErrorType): IXMPPIQ;
   public
     class function CreatePresence(Kind: TXMPPPresenceType = ptNone; show: TXMPPPresenceShow = psNone;
       const Status: string = ''; Priority: ShortInt = 0; const dest: string = ''; const src: string = ''): IXMPPPresence;
@@ -172,6 +157,7 @@ type
 
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
   private
+    FJID: string;
     FOnError: TXMPPErrorEvent;
     FOnIQ: TXMPPIQEvent;
     FOnPresence: TXMPPEvent;
@@ -203,6 +189,7 @@ type
     function Connect(const Host: AnsiString; Port: Word): Boolean;
     function Login(const user, domain, pass: string; options: TXMPPOptions): Boolean;
   protected
+    function GetJID: string;
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
     function getReadyState: TXMPPReadyState; virtual;
@@ -398,9 +385,9 @@ function TXMPPClient.Open(const user, pass: string;
   const resource: string = ''; const host: string = ''; port: Word = 5222;
   options: TXMPPOptions = []): Boolean;
 begin
-
   if FReadyState <> rsOffline then
     Exit(False);
+  Close;
 
   if not Connect(HostName(user, host), port) then
     Exit(False);
@@ -413,10 +400,23 @@ begin
   Result := True;
 end;
 
+function Thread(const proc: TProc): THandle;
+  function run(const proc: TProc): Integer; stdcall;
+  begin
+    proc;
+    Result := 0;
+  end;
+begin
+  CreateThread(nil, 0, @run, PPointer(@proc)^, 0, Result);
+end;
+
 function TXMPPClient.Connect(const Host: AnsiString; Port: Word): Boolean;
 var
   AHost: PHostEnt;
   addr: TSockAddrIn;
+  done: THandle;
+  ret: Integer;
+  trhandle: THandle;
 begin
   SetReadyState(rsConnecting);
 
@@ -426,6 +426,7 @@ begin
   begin
     if Assigned(FOnError) then
       FOnError(Format('Host not found: %s', [host]));
+    SetReadyState(rsOffline);
     Exit(False);
   end;
 
@@ -435,6 +436,7 @@ begin
   begin
     if Assigned(FOnError) then
       FOnError('Unexpected error: can''t allocate socket handle.');
+    SetReadyState(rsOffline);
     Exit(False);
   end;
 
@@ -443,12 +445,30 @@ begin
   addr.sin_family := AF_INET;
   addr.sin_port := htons(port);
   addr.sin_addr.S_addr := PInteger(AHost.h_addr^)^;
-  if WinSock.connect(FSocket, addr, SizeOf(addr)) <> 0 then
+
+  ret := 1;
+  done := CreateEvent(nil, True, False, nil);
+  try
+    trhandle := Thread(procedure begin
+      ret := WinSock.connect(FSocket, addr, SizeOf(addr));
+      SetEvent(done);
+    end);
+    WaitForSingleObject(done, 1000);
+  finally
+    CloseHandle(done);
+    TerminateThread(trhandle, 0);
+  end;
+
+  if ret <> 0 then
   begin
     if Assigned(FOnError) then
       FOnError(format('Cant''t connect to host: %s:%d', [host, port]));
+    FSocket := INVALID_SOCKET;
+    SetReadyState(rsOffline);
     Exit(False);
   end;
+
+  SetReadyState(rsConnected);
   Result := True;
 end;
 
@@ -461,7 +481,7 @@ end;
 
 destructor TXMPPClient.Destroy;
 begin
-  FOnSynchronize := nil;
+  //FOnSynchronize := nil;
   Close;
   DeleteCriticalSection(FLockWrite);
   DeleteCriticalSection(FLockEvents);
@@ -508,7 +528,6 @@ end;
 
 procedure TXMPPClient.Listen(const domain, resource: string);
 const
-  XML_IQ_BIND = '<iq type="set"><bind xmlns="urn:ietf:params:xml:ns:xmpp-bind"><resource>%s</resource></bind></iq>';
   XML_IQ_SESSION = '<iq type="set"><session xmlns="urn:ietf:params:xml:ns:xmpp-session"/></iq>';
 var
   stack: TStack<IXMLNode>;
@@ -532,7 +551,7 @@ begin
       if n.Attributes.TryGetValue('id', idstr) and
         TryStrToInt(idstr, id) then
       begin
-        rep := nil;
+        //rep := nil;
         EnterCriticalSection(FLockEvents);
         try
           if FEvents.TryGetValue(id, rep) then
@@ -541,8 +560,10 @@ begin
           LeaveCriticalSection(FLockEvents);
         end;
         if Assigned(rep) then
+        begin
           doSynchronize(n, procedure (node: IXMLNode) begin
-            rep(Self, node as IXMPPIQ) end);
+            rep(node as IXMPPIQ) end);
+        end;
       end;
     end;
 
@@ -552,7 +573,7 @@ begin
       if Assigned(FOnIQ) then
         doSynchronize(n,
           procedure (node: IXMLNode) begin
-            FOnIQ(Self, node as IXMPPIQ)
+            FOnIQ(node as IXMPPIQ)
           end);
     end;
 
@@ -562,7 +583,7 @@ begin
       if Assigned(FOnMessage) then
         doSynchronize(n,
           procedure (node: IXMLNode) begin
-            FOnMessage(Self, node as IXMPPMessage)
+            FOnMessage(node as IXMPPMessage)
           end);
     end;
   stack := TStack<IXMLNode>.Create;
@@ -574,16 +595,31 @@ begin
 redo:
     //<<< stream:features
     events.Add('stream:features', function : Boolean
+      var
+        iq: IXMPPIQ;
       begin
         Result := True;
-        if n.FirstChild('bind') <> nil then SendFmt(XML_IQ_BIND, [resource]);
-        if n.FirstChild('session') <> nil then Send(XML_IQ_SESSION);
+        if n.FirstChild('bind') <> nil then
+        begin
+           iq := TXMPPMessage.CreateIQ(iqSet);
+           with iq.Append('bind') do begin
+             Attributes.Add('xmlns', 'urn:ietf:params:xml:ns:xmpp-bind');
+             Append('resource').Text := resource;
+           end;
+           SendIQ(iq, procedure(const node: IXMPPIQ) begin
+             if node.Kind = iqResult then
+               FJID := node.FirstChild('bind').FirstChild('jid').Text
+           end);
+        end;
+        Sleep(1000);  // jabberd2
+        if n.FirstChild('session') <> nil then
+          Send(XML_IQ_SESSION);
         events.Add('presence',
           function: Boolean
           begin
             if Assigned(FOnPresence) then
             doSynchronize(n, procedure (node: IXMLNode) begin
-              FOnPresence(Self, node as IXMPPPresence) end);
+              FOnPresence(node as IXMPPPresence) end);
             Result := True;
           end);
         events.Add('iq',
@@ -660,7 +696,7 @@ redo:
       end);
 
     mustreconnect := False;
-    XMLParseSAX(CP_UTF8,
+    XMLParseSAX(
       function (var c: AnsiChar): Boolean
       begin
         Result := SockRecv(c, 1, 0) = 1
@@ -709,7 +745,7 @@ redo:
               stack.Peek.ChildNodes.Add(TXMLNodeCDATA.Create(value));
             end;
         end;
-      end);
+      end, CP_UTF8);
     if mustreconnect then
       goto redo;
   finally
@@ -736,15 +772,16 @@ const
   XML_AUTH_MD5 = '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="DIGEST-MD5" xmlns:ga="http://www.google.com/talk/protocol/auth" ga:client-uses-full-bind-result="true"/>';
 var
   stack: TStack<IXMLNode>;
-  n: IXMLNode;
+  n, StreamFeatures: IXMLNode;
   mustreconnect: Boolean;
-  ev: TFunc<Boolean>;
+  ev, dologin: TFunc<Boolean>;
   reconnect: TProc;
   events: TDictionary<string, TFunc<Boolean>>;
   authenticated: Boolean;
 label
   redo;
 begin
+  SetReadyState(rsAuthenticating);
   authenticated := False;
   reconnect := procedure begin
     events.Clear;
@@ -753,19 +790,135 @@ begin
     mustreconnect := True;
   end;
 
+  dologin := function: Boolean
+  var
+    anode, mechanism: IXMLNode;
+  begin
+    anode := StreamFeatures.FirstChild('mechanisms');
+    if anode <> nil then
+    begin
+      Result := False;
+      for mechanism in anode.ChildNodes do
+        if ((FSsl <> nil) or (xoPlaintextAuth in options)) and (mechanism.Text = 'PLAIN') then
+        begin
+          SendFmt(XML_AUTH_PLAIN, [StrTobase64(#0+user+#0+pass)]);
+          Result := True;
+          Break;
+        end else
+        if mechanism.Text = 'DIGEST-MD5' then
+        begin
+          Send(XML_AUTH_MD5);
+          events.Add('challenge', function: Boolean
+            var
+              dic: TDictionary<AnsiString, AnsiString>;
+              g: TGUID;
+              a1, a2: AnsiString;
+              cnonce, rspauth, realm: AnsiString;
+              response: AnsiString;
+            begin
+              Result := True;
+              dic := TDictionary<AnsiString, AnsiString>.Create;
+              try
+                ParseDigest(AnsiString(Base64ToStr(n.Text)),
+                  procedure(key, value: AnsiString)
+                    begin dic.AddOrSetValue(key, value) end);
+
+                if dic.TryGetValue('rspauth', rspauth) then
+                begin
+                  if rspauth = AnsiString(stack.Peek.Attributes['<expected>'])  then
+                  begin
+                    Send('<response xmlns="urn:ietf:params:xml:ns:xmpp-sasl"/>');
+                    stack.Peek.Attributes.Remove('<expected>');
+                    events.Remove('challenge');
+                  end else
+                    Exit(False);
+                end else
+                begin
+                  CreateGUID(g);
+                  cnonce := AnsiString(GUIDToString(g));
+
+                  if not dic.TryGetValue('realm', realm) then
+                    realm := AnsiString(domain);
+
+                  a1 := md5(AnsiString(user) + ':' + realm + ':' + AnsiString(pass))
+                    + ':' + dic['nonce'] + ':' + cnonce;
+                  a2 := 'AUTHENTICATE:xmpp/' + realm;
+                  response := strtohex(md5(strtohex(md5(a1)) + ':' + dic['nonce'] +
+                    ':00000001:' + cnonce + ':auth:' + strtohex(md5(a2))));
+
+                  a2 := ':xmpp/' + realm;
+                  stack.Peek.Attributes.AddOrSetValue('<expected>',
+                    string(strtohex(md5(strtohex(md5(a1))+':' + dic['nonce'] +
+                    ':00000001:' + cnonce + ':auth:' + strtohex(md5(a2))))));
+
+                  Send(format('<response xmlns="urn:ietf:params:xml:ns:xmpp-sasl">%s</response>',[
+                    StrTobase64(format('username="%s",realm="%s",nonce="%s",cnonce="%s",'+
+                      'nc=00000001,qop=auth,digest-uri="xmpp/%s",response=%s,charset=utf-8', [
+                      AnsiString(user), realm, dic['nonce'], cnonce, realm, response]))]));
+                end;
+              finally
+                dic.Free;
+              end;
+            end);
+          Result := True;
+          Break;
+        end;
+
+      if Result then
+      begin
+        //>>> success
+        events.Add('success', function: Boolean
+          begin
+            authenticated := True;
+            Result := False;
+          end);
+        //>>> failure
+        events.Add('failure', function: Boolean
+        var
+          iq: IXMPPIQ;
+        begin
+          if (xoRegister in options) then //and (StreamFeatures.FirstChild('register') <> nil) then
+          begin
+            iq := TXMPPMessage.CreateIQ(iqSet, domain);
+            with iq.Append('query') do
+            begin
+              Attributes.Add('xmlns', 'jabber:iq:register');
+              Append('username').Text := user;
+              Append('password').Text := pass;
+            end;
+            SendXML(iq);
+            events.Clear;
+            events.Add('iq', function: Boolean begin
+                if n.Attributes['type'] = 'result' then
+                begin
+                  events.Clear;
+                  Result := dologin
+                end else
+                  Result := False;
+              end);
+            Result := True;
+          end else
+            Result := False
+        end);
+      end;
+    end else
+      Send('</stream:stream>'); // no need to authenticate
+    Result := True;
+  end;
+
   stack := TStack<IXMLNode>.Create;
   events := TDictionary<string, TFunc<Boolean>>.Create;
   try
-    SetReadyState(rsConnecting);
     Send('<?xml version="1.0" ?>');
     SendFmt(XML_STREAM_STREAM, [domain]);
 redo:
     //<<< stream:features
     events.Add('stream:features', function : Boolean
       var
-        anode, mechanism: IXMLNode;
+        ANode: IXMLNode;
       begin
         Result := True;
+        StreamFeatures := n;
         anode := n.FirstChild('starttls');
         if (anode <> nil) and (not (xoDontForceEncryption in options) or (anode.FirstChild('required') <> nil)) then
         begin
@@ -782,98 +935,12 @@ redo:
           //<<< failure
           events.Add('failure', function : Boolean begin Result := False end);
         end else
-        begin
-          anode := n.FirstChild('mechanisms');
-          if anode <> nil then
-          begin
-            Result := False;
-            for mechanism in anode.ChildNodes do
-              if ((FSsl <> nil) or (xoPlaintextAuth in options)) and (mechanism.Text = 'PLAIN') then
-              begin
-                SendFmt(XML_AUTH_PLAIN, [StrTobase64(#0+user+#0+pass)]);
-                Result := True;
-                Break;
-              end else
-              if mechanism.Text = 'DIGEST-MD5' then
-              begin
-                Send(XML_AUTH_MD5);
-                events.Add('challenge', function: Boolean
-                  var
-                    dic: TDictionary<AnsiString, AnsiString>;
-                    g: TGUID;
-                    a1, a2: AnsiString;
-                    cnonce, rspauth, realm: AnsiString;
-                    response: AnsiString;
-                  begin
-                    Result := True;
-                    dic := TDictionary<AnsiString, AnsiString>.Create;
-                    try
-                      ParseDigest(AnsiString(Base64ToStr(n.Text)),
-                        procedure(key, value: AnsiString)
-                          begin dic.AddOrSetValue(key, value) end);
-
-                      if dic.TryGetValue('rspauth', rspauth) then
-                      begin
-                        if rspauth = AnsiString(stack.Peek.Attributes['<expected>'])  then
-                        begin
-                          Send('<response xmlns="urn:ietf:params:xml:ns:xmpp-sasl"/>');
-                          stack.Peek.Attributes.Remove('<expected>');
-                          events.Remove('challenge');
-                        end else
-                          Exit(False);
-                      end else
-                      begin
-                        CreateGUID(g);
-                        cnonce := AnsiString(GUIDToString(g));
-
-                        if not dic.TryGetValue('realm', realm) then
-                          realm := AnsiString(domain);
-
-                        a1 := md5(AnsiString(user) + ':' + realm + ':' + AnsiString(pass))
-                          + ':' + dic['nonce'] + ':' + cnonce;
-                        a2 := 'AUTHENTICATE:xmpp/' + realm;
-                        response := strtohex(md5(strtohex(md5(a1)) + ':' + dic['nonce'] +
-                          ':00000001:' + cnonce + ':auth:' + strtohex(md5(a2))));
-
-                        a2 := ':xmpp/' + realm;
-                        stack.Peek.Attributes.Add('<expected>',
-                          string(strtohex(md5(strtohex(md5(a1))+':' + dic['nonce'] +
-                          ':00000001:' + cnonce + ':auth:' + strtohex(md5(a2))))));
-
-                        Send(format('<response xmlns="urn:ietf:params:xml:ns:xmpp-sasl">%s</response>',[
-                          StrTobase64(format('username="%s",realm="%s",nonce="%s",cnonce="%s",'+
-                            'nc=00000001,qop=auth,digest-uri="xmpp/%s",response=%s,charset=utf-8', [
-                            AnsiString(user), realm, dic['nonce'], cnonce, realm, response]))]));
-                      end;
-                    finally
-                      dic.Free;
-                    end;
-                  end);
-                Result := True;
-                Break;
-              end;
-
-            if Result then
-            begin
-              //>>> success
-              events.Add('success', function: Boolean
-                begin
-                  authenticated := True;
-                  Result := False;
-                end);
-              //>>> failure
-              events.Add('failure', function: Boolean begin
-                Result := False
-              end);
-            end;
-          end else
-            Send('</stream:stream>'); // no need to authenticate
-        end;
+          Result := dologin;
         events.Remove('stream:features');
       end);
 
     mustreconnect := False;
-    XMLParseSAX(CP_UTF8,
+    XMLParseSAX(
       function (var c: AnsiChar): Boolean
       begin
         Result := SockRecv(c, 1, 0) = 1
@@ -922,7 +989,7 @@ redo:
               stack.Peek.ChildNodes.Add(TXMLNodeCDATA.Create(value));
             end;
         end;
-      end);
+      end, CP_UTF8);
     if mustreconnect then
       goto redo;
   finally
@@ -932,8 +999,11 @@ redo:
     // compiler bug: anonymous method not released :/
     reconnect := nil;
     ev := nil;
+    dologin := nil;
   end;
   Result := authenticated;
+  if Result then
+    SetReadyState(rsAuthenticated);
 end;
 
 procedure TXMPPClient.SetOnError(const value: TXMPPErrorEvent);
@@ -1048,15 +1118,17 @@ end;
 procedure TXMPPClient.SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
 var
   id: Integer;
+  cb: TXMPPIQResponse;
 begin
   id := InterlockedIncrement(FGenId);
   IQ.NullAttr['id'] := IntToStr(id);
   SendXML(IQ);
   if Assigned(callback) then
   begin
+    cb := callback;
     EnterCriticalSection(FLockEvents);
     try
-      FEvents.Add(id, callback);
+      FEvents.Add(id, cb);
     finally
       LeaveCriticalSection(FLockEvents);
     end;
@@ -1123,8 +1195,13 @@ end;
 procedure TXMPPClient.doSynchronize(const node: IXMLNode; const proc: TProc<IXMLNode>);
 begin
   if Assigned(FOnSynchronize) then
-    FOnSynchronize(Self, node, proc) else
+    FOnSynchronize(node, proc) else
     TThread.Synchronize(nil, procedure begin proc(node) end);
+end;
+
+function TXMPPClient.GetJID: string;
+begin
+  Result := FJID;
 end;
 
 function TXMPPClient.GetOnError: TXMPPErrorEvent;
@@ -1184,13 +1261,22 @@ begin
   Result := Create('presence');
   // attributes
   Result.Kind := Kind;
-  Result.Src := dest;
+  Result.Src := src;
   Result.Dest := dest;
 
   // nodes
   Result.Show := Show;
   Result.Status := Status;
   Result.Priority := Priority;
+end;
+
+function TXMPPMessage.Error(kind: TXMPPErrorType): IXMPPIQ;
+const
+  kindstr: array[TXMPPErrorType] of string =
+    ('auth', 'cancel', 'continue', 'modify', 'wait');
+begin
+  Result := TXMPPMessage.CreateIQ(iqError, GetSrc, GetDest, GetId);
+  Result.Append('error').Attributes.Add('type', kindstr[kind]);
 end;
 
 function TXMPPMessage.GetDest: string;
@@ -1293,8 +1379,21 @@ begin
 end;
 
 function TXMPPMessage.Reply: IXMPPIQ;
+var
+  n, n2: IXMLNode;
+  xmlns: string;
 begin
-  Result := TXMPPMessage.CreateIQ(iqResult, GetDest, GetSrc, GetId)
+  Result := TXMPPMessage.CreateIQ(iqResult, GetSrc, GetDest, GetId);
+  if HasChildNodes then
+  begin
+    n := ChildNodes.First;
+    if (n <> nil) and n.Attributes.TryGetValue('xmlns', xmlns) then
+    begin
+      n2 := TXMLNode.Create(n.Name);
+      n2.Attributes.Add('xmlns', xmlns);
+      Result.ChildNodes.Add(n2);
+    end;
+  end;
 end;
 
 procedure TXMPPMessage.SetDest(const value: string);
