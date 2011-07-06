@@ -1,5 +1,5 @@
 unit dorXMPPClient;
-{$define XMPP_DEBUG_CONSOLE}
+{.$define XMPP_DEBUG_CONSOLE}
 
 interface
 uses
