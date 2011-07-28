@@ -22,7 +22,6 @@ uses
 begin
 {$IFDEF DEBUG}
   ReportMemoryLeaksOnShutdown := true;
-  DetectConsole := False;
 {$ENDIF}
   Application.Name := 'DORWEBSRV';
   Application.DisplayName := 'Delphi On Rails Server';
