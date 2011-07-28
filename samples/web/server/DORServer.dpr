@@ -17,11 +17,13 @@ uses
   cairo_view in 'cairo_view.pas',
   application_view in 'application_view.pas',
   application_websocket in 'application_websocket.pas',
-  chat_websocket in 'chat_websocket.pas';
+  chat_websocket in 'chat_websocket.pas',
+  xmpptest in 'xmpptest.pas';
 
 begin
 {$IFDEF DEBUG}
   ReportMemoryLeaksOnShutdown := true;
+  DetectConsole := False;
 {$ENDIF}
   Application.Name := 'DORWEBSRV';
   Application.DisplayName := 'Delphi On Rails Server';

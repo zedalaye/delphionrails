@@ -16,7 +16,7 @@ var
   pool: IDBConnectionPool;
 
 implementation
-uses SysUtils, dorSocketStub, dorHTTPStub, dorUtils;
+uses SysUtils, dorSocketStub, dorHTTPStub, dorUtils, Classes;
 
 procedure init;
 var
@@ -32,7 +32,7 @@ function TBlog.validate: boolean;
 begin
   if Length(title) > 50 then
   begin
-    with CurrentThread as THTTPStub do
+    with CurrentDorThread as THTTPStub do
       Return.S['errors[]'] := 'title must be less than 50 characters';
     Result := False;
   end else

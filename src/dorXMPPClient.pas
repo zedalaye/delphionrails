@@ -1,5 +1,5 @@
 unit dorXMPPClient;
-{.$define XMPP_DEBUG_CONSOLE}
+{$define XMPP_DEBUG_CONSOLE}
 
 interface
 uses
@@ -1148,7 +1148,6 @@ begin
     xml.SaveToXML(
       procedure(const data: string)
         begin
-          //write(data);
           Send(data);
         end);
   finally
@@ -1164,6 +1163,7 @@ begin
   try
     rb := UTF8String(data);
     SockSend(PAnsiChar(rb)^, Length(rb), 0);
+    write(rb);
   finally
     LeaveCriticalSection(FLockWrite);
   end;

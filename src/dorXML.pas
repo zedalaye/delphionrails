@@ -22,6 +22,7 @@ type
     procedure SaveToXML(const writer: TXMLSaveto);
     procedure SaveToText(const writer: TXMLSaveto);
     procedure SaveToFile(const filename: string);
+    procedure SaveToStream(stream: TStream);
     function GetHasAttributes: Boolean;
     function GetHasChildNodes: Boolean;
     function GetDataType: TXMLNodeType;
@@ -58,6 +59,7 @@ type
     procedure SaveToXML(const writer: TXMLSaveto); virtual;
     procedure SaveToText(const writer: TXMLSaveto); virtual;
     procedure SaveToFile(const filename: string);
+    procedure SaveToStream(stream: TStream);
     function GetHasAttributes: Boolean; virtual;
     function GetHasChildNodes: Boolean; virtual;
     function GetDataType: TXMLNodeType; virtual;
@@ -1145,20 +1147,26 @@ end;
 
 procedure TXMLNodeNull.SaveToFile(const filename: string);
 var
-  utf: UTF8String;
   stream: TFileStream;
 begin
-  utf := '<?xml version="1.0" encoding="utf-8"?>';
   stream := TFileStream.Create(filename, fmCreate);
   try
-    stream.Write(PAnsiChar(utf)^, Length(utf));
-    SaveToXML(procedure(const data: string) begin
-      utf := UTF8String(data);
-      stream.Write(PAnsiChar(utf)^, Length(utf));
-    end);
+    SaveToStream(stream);
   finally
     stream.Free;
   end;
+end;
+
+procedure TXMLNodeNull.SaveToStream(stream: TStream);
+var
+  utf: UTF8String;
+begin
+  utf := '<?xml version="1.0" encoding="utf-8"?>';
+  stream.Write(PAnsiChar(utf)^, Length(utf));
+  SaveToXML(procedure(const data: string) begin
+    utf := UTF8String(data);
+    stream.Write(PAnsiChar(utf)^, Length(utf));
+  end);
 end;
 
 procedure TXMLNodeNull.SaveToText(const writer: TXMLSaveto);
