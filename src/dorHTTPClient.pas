@@ -300,6 +300,7 @@ begin
       end);
     end;
 
+    FResponseData.Seek(0, soFromBeginning);
     strings.LoadFromStream(FResponseData, encoding);
     Result := strings.Text;
   finally
