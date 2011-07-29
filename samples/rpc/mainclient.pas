@@ -60,30 +60,25 @@ procedure TForm13.Button2Click(Sender: TObject);
 var
   req: IHTTPRequest;
   data: TMessage;
-  rt: TSuperRttiContext;
 begin
   req := THTTPRequest.Create;
   req.Open('GET', 'http://localhost/test/echo2.json');
   req.RequestHeader['Content-Type'] := 'application/json';
-  rt := TSuperRttiContext.Create;
-  try
-    // init
-    CreateGUID(data.g);
-    data.d := Now;
-    data.i := 123;
-    data.b := True;
-    SetLength(data.a, 2);
-    data.a[0] := 1;
-    data.a[1] := 2;
-    data.s := 'ping';
 
-    if req.SendText(rt.AsJson<TMessage>(data).AsString) then
-    begin
-      data := rt.AsType<TMessage>(SO(req.ResponseText));
-      Memo1.Lines.Add(req.ResponseText);
-    end;
-  finally
-    rt.Free;
+  // init
+  CreateGUID(data.g);
+  data.d := Now;
+  data.i := 123;
+  data.b := True;
+  SetLength(data.a, 2);
+  data.a[0] := 1;
+  data.a[1] := 2;
+  data.s := 'ping';
+
+  if req.SendText(FCtx.AsJson<TMessage>(data).AsString) then
+  begin
+    data := FCtx.AsType<TMessage>(SO(req.ResponseText));
+    Memo1.Lines.Add(req.ResponseText);
   end;
 end;
 
