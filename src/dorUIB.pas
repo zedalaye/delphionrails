@@ -493,7 +493,7 @@ var
       end else
       begin
         DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
-        Result := TSuperObject.Create( DSQLInfoRowsAffected(FStHandle, FStatementType));
+        Result := TSuperObject.Create(DSQLInfoRowsAffected(FStHandle, FStatementType));
       end;
   end;
 var

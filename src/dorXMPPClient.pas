@@ -1,5 +1,5 @@
 unit dorXMPPClient;
-{$define XMPP_DEBUG_CONSOLE}
+{.$define XMPP_DEBUG_CONSOLE}
 
 interface
 uses
@@ -159,7 +159,7 @@ type
     class function CreatePresence(Kind: TXMPPPresenceType = ptNone; show: TXMPPPresenceShow = psNone;
       const Status: string = ''; Priority: ShortInt = 0; const dest: string = ''; const src: string = ''): IXMPPPresence;
     class function CreateIQ(Kind: TXMPPIQType = iqGet; const dest: string = ''; const src: string = ''; const id: string = ''): IXMPPIQ;
-    class function CreateMessage(kind: TXMPPMessageType; const dest: string = ''; const src: string = ''; const id: string = ''): IXMPPMessage;
+    class function CreateMessage(kind: TXMPPMessageType = mtNone; const dest: string = ''; const src: string = ''; const id: string = ''): IXMPPMessage;
   end;
 
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
@@ -421,7 +421,7 @@ var
   AHost: PHostEnt;
   addr: TSockAddrIn;
   done: THandle;
-  ret: Integer;
+  optval, ret: Integer;
   trhandle: TThreadIt;
 begin
   SetReadyState(rsConnecting);
@@ -445,6 +445,9 @@ begin
     SetReadyState(rsOffline);
     Exit(False);
   end;
+
+  optval := 1;
+  setsockopt(FSocket, SOL_SOCKET, SO_KEEPALIVE, @optval, SizeOf(optval));
 
   // connect
   FillChar(addr, SizeOf(addr), 0);
@@ -1163,7 +1166,9 @@ begin
   try
     rb := UTF8String(data);
     SockSend(PAnsiChar(rb)^, Length(rb), 0);
+{$IFDEF XMPP_DEBUG_CONSOLE}
     write(rb);
+{$ENDIF}
   finally
     LeaveCriticalSection(FLockWrite);
   end;
