@@ -18,7 +18,7 @@ function HTTPEncode(const AStr: string): RawByteString;
 function HTTPDecode(const AStr: string): RawByteString;
 function HttpResponseStrings(code: integer): RawByteString;
 function HTTPParseURL(const uri: PChar; out protocol: string;
-  out domain: AnsiString; out port: Word; out path: RawByteString): Boolean;
+  out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
 function HTTPParseHeader(const header: RawByteString; subkeys: Boolean; const onfield: TOnHTTPHeaderField): Boolean;
 function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
 
@@ -26,7 +26,7 @@ implementation
 uses SysUtils, dorPunyCode;
 
 function HTTPParseURL(const uri: PChar; out protocol: string;
-  out domain: AnsiString; out port: Word; out path: RawByteString): Boolean;
+  out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
 type
   TState = (sStart, stSlash, sDomain, sPort);
 label
@@ -134,7 +134,9 @@ redo:
                 begin
                   if p - d >= 1 then
                     getdomain;
-                  path := HTTPEncode(p);
+                  if encode then
+                    path := HTTPEncode(p) else
+                    path := rawbytestring(string(p));
                   Exit(True);
                 end;
               '.': pushdot;
@@ -151,7 +153,9 @@ redo:
             '0'..'9': port := port * 10 + Ord(p^) - Ord('0');
             '/':
               begin
-                path := HTTPEncode(p);
+                if encode then
+                  path := HTTPEncode(p) else
+                  path := rawbytestring(string(p));
                 Exit(True);
               end;
             #0: Exit(True);

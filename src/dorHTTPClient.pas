@@ -28,7 +28,7 @@ type
   IHTTPRequest = interface
     ['{105BFAD3-A4AE-459E-8EA6-377E9E065827}']
     function Open(const method: RawByteString; const url: string; async: Boolean = False;
-      const user: string = ''; const password: string = ''): Boolean;
+      const user: string = ''; const password: string = ''; urlencode: Boolean = True): Boolean;
     procedure Abort;
     procedure SetRequestHeader(const header, value: RawByteString);
     function GetRequestHeader(const header: RawByteString): RawByteString;
@@ -126,11 +126,11 @@ type
     function TCPReconnect: Boolean;
 
     function InternalSend(data: TSTream): Boolean;
-    function InternalOpen(const method: RawByteString; const url: string; async: Boolean; const user, password: string): Boolean;
+    function InternalOpen(const method: RawByteString; const url: string; async: Boolean; const user, password: string; urlencode: Boolean): Boolean;
     procedure InternalSetRequestHeader(const header, value: RawByteString);
     function IsRedirecting: Boolean;
   protected
-    function Open(const method: RawByteString; const url: string; async: Boolean; const user, password: string): Boolean;
+    function Open(const method: RawByteString; const url: string; async: Boolean; const user, password: string; urlencode: Boolean = True): Boolean;
     procedure Abort;
     procedure SetRequestHeader(const header, value: RawByteString);
     function GetRequestHeader(const header: RawByteString): RawByteString;
@@ -330,7 +330,7 @@ begin
 end;
 
 function THTTPRequest.InternalOpen(const method: RawByteString;
-  const url: string; async: Boolean; const user, password: string): Boolean;
+  const url: string; async: Boolean; const user, password: string; urlencode: Boolean): Boolean;
 var
   Protocol: string;
   Domain: AnsiString;
@@ -340,9 +340,13 @@ label
   error, keepsocket;
 begin
   if (url <> '') and (url[1] = '/') then
-    FPath := HTTPEncode(url) else
+  begin
+    if urlencode then
+      FPath := HTTPEncode(url) else
+      FPath := RawbyteString(url);
+  end else
     begin
-      if not HTTPParseURL(PChar(url), Protocol, Domain, Port, FPath) then
+      if not HTTPParseURL(PChar(url), Protocol, Domain, Port, FPath, urlencode) then
         Exit(False);
 
       if SameText(Protocol, 'http') then
@@ -410,7 +414,7 @@ begin
     if FRedirectCount > 10 then
       raise EHTTPRequest.Create('Too many redirections');
 
-    Result := InternalOpen(FMethod, string(str.value), FAsync, FUser, FPassword);
+    Result := InternalOpen(FMethod, string(str.value), FAsync, FUser, FPassword, False);
     if Result then
       Result := InternalSend(data);
   end;
@@ -428,11 +432,11 @@ begin
 end;
 
 function THTTPRequest.Open(const method: RawByteString; const url: string; async: Boolean;
-  const user, password: string): Boolean;
+  const user, password: string; urlencode: Boolean = True): Boolean;
 begin
   if not (FReadyState in [rsUninitialized, rsLoaded]) then
     raise EHTTPRequest.Create('Connection is not ready');
-  Result := InternalOpen(method, url, async, user, password);
+  Result := InternalOpen(method, url, async, user, password, urlencode);
 end;
 
 function THTTPRequest.Receive: Boolean;
