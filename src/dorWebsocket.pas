@@ -248,7 +248,7 @@ begin
 
   FReadyState := rsConnecting;
   // parse
-  if not HTTPParseURL(PChar(url), protocol, domain, port, uri) then
+  if not HTTPParseURL(PChar(url), protocol, domain, port, uri, True) then
   begin
     if Assigned(FOnError) then
       FOnError(Format('Can''t parse url: %s', [url]));
