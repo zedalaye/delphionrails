@@ -159,6 +159,7 @@ end;
 procedure ServiceMain(argc: LongWord; argv: PChar); stdcall;
 var
   status: LongWord;
+  oldthreadid: LongWord;
 begin
   ServiceStatus.dwServiceType        := Application.FServiceType;
   ServiceStatus.dwCurrentState       := SERVICE_START_PENDING;
@@ -194,11 +195,17 @@ begin
     ServiceStatus.dwWin32ExitCode := GetLastError;
     SetServiceStatus(ServiceStatusHandle, ServiceStatus);
   end;
-   while Application <> nil do
-   begin
-     CheckSynchronize;
-     Sleep(1);
-   end;
+  oldthreadid := MainThreadID;
+  MainThreadID := GetCurrentThreadId;
+  try
+    while Application <> nil do
+    begin
+      CheckSynchronize;
+      Sleep(1);
+    end;
+  finally
+    MainThreadID := oldthreadid;
+  end;
 end;
 {$ENDIF}
 
