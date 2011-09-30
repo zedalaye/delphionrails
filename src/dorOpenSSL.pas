@@ -7,6 +7,12 @@ const
   LIBEAY = 'libeay32.dll';
   SSLEAY = 'ssleay32.dll';
 
+type
+  TNotImplemented = record end;
+  PNotImplemented = ^TNotImplemented;
+
+
+
 (*******************************************************************************
  * opensslconf
  ******************************************************************************)
@@ -240,6 +246,147 @@ function SHA1_Final(md: PAnsiChar; c: PSHA_CTX): Integer; cdecl; external LIBEAY
 function SHA1(const d: PAnsiChar; n: Cardinal; md: PAnsiChar): PAnsiChar; cdecl; external LIBEAY;
 procedure SHA1_Transform(c: PSHA_CTX; const data: PAnsiChar); cdecl; external LIBEAY;
 
+
+
+(******************************************************************************
+ * EVP
+(******************************************************************************)
+
+const
+  EVP_MAX_MD_SIZE = 64;	(* longest known is SHA512 *)
+  EVP_MAX_KEY_LENGTH = 32;
+  EVP_MAX_IV_LENGTH = 16;
+  EVP_MAX_BLOCK_LENGTH = 32;
+
+  PKCS5_SALT_LEN = 8;
+(* Default PKCS#5 iteration count *)
+  PKCS5_DEFAULT_ITER = 2048;
+
+  EVP_PK_RSA = $0001;
+  EVP_PK_DSA = $0002;
+  EVP_PK_D = $0004;
+  EVP_PK_E = $0008;
+  EVP_PKT_SIGN = $0010;
+  EVP_PKT_EN = $0020;
+  EVP_PKT_EXCH = $0040;
+  EVP_PKS_RS = $0100;
+  EVP_PKS_DS = $0200;
+  EVP_PKS_EC = $0400;
+  EVP_PKT_EXP = $1000; (* <= 512 bit key *)
+
+type
+  PEVP_CIPHER_CTX = ^EVP_CIPHER_CTX;
+  PEVP_CIPHER = ^EVP_CIPHER;
+  PEVP_MD = ^EVP_MD;
+  PEVP_MD_CTX = ^EVP_MD_CTX;
+  PEVP_PKEY_CTX = PNotImplemented;
+
+  EVP_CIPHER = record
+    nid: Integer;
+    block_size: Integer;
+    key_len: Integer;		(* Default value for variable length ciphers *)
+    iv_len: Integer;
+    flags: LongWord;	(* Various flags *)
+    init: function(ctx: PEVP_CIPHER_CTX; const key, iv: PAnsiChar; enc: Integer): Integer; cdecl; (* init key *)
+    do_cipher: function(ctx: PEVP_CIPHER_CTX; out_: PAnsiChar; const in_: PAnsiChar; inl: Cardinal): Integer; cdecl; (* encrypt/decrypt data *)
+    cleanup: function(ctx: PEVP_CIPHER_CTX): Integer; (* cleanup ctx *)
+    ctx_size: Integer;		(* how big ctx->cipher_data needs to be *)
+    set_asn1_parameters: function(ctx: PEVP_CIPHER_CTX; ASN1: PNotImplemented): Integer; cdecl; (* Populate a ASN1_TYPE with parameters *)
+    get_asn1_parameters: function(ctx: PEVP_CIPHER_CTX; ASN1: PNotImplemented): Integer; cdecl; (* Get parameters from a ASN1_TYPE *)
+    ctrl: function(ctx: PEVP_CIPHER_CTX; type_, arg: Integer; ptr: Pointer): Integer; cdecl; (* Miscellaneous operations *)
+    app_data: Pointer;		(* Application data *)
+  end;
+
+  EVP_CIPHER_CTX = record
+    cipher: PEVP_CIPHER;
+    engine: PNotImplemented;	(* functional reference if 'cipher' is ENGINE-provided *)
+    encrypt: Integer;		(* encrypt or decrypt *)
+    buf_len: Integer;		(* number we have left *)
+
+    oiv: array[0..EVP_MAX_IV_LENGTH-1] of AnsiChar;	(* original iv *)
+    iv: array[0..EVP_MAX_IV_LENGTH-1] of AnsiChar; (* working iv *)
+    buf: array[0..EVP_MAX_BLOCK_LENGTH-1] of AnsiChar; (* saved partial block *)
+    num: Integer; (* used by cfb/ofb mode *)
+
+    app_data: Pointer; (* application stuff *)
+    key_len: Integer;	 (* May change for variable length cipher *)
+    flags: LongWord;	(* Various flags *)
+    cipher_data: Pointer; (* per EVP data *)
+    final_used: Integer;
+    block_mask: Integer;
+    final: array[0..EVP_MAX_BLOCK_LENGTH-1] of AnsiChar; (* possible final block *)
+	end;
+
+  EVP_MD = record
+    type_: Integer;
+    pkey_type: Integer;
+    md_size: Integer;
+    flags: LongWord;
+    init: function(ctx: PEVP_MD_CTX): Integer; cdecl;
+    update: function(ctx: PEVP_MD_CTX; const data: Pointer; count: Cardinal): Integer; cdecl;
+    final_: function(ctx: PEVP_MD_CTX; md: PAnsiChar): Integer; cdecl;
+    copy: function(to_: PEVP_MD_CTX; const from: PEVP_MD_CTX): Integer; cdecl;
+    cleanup: function(ctx: PEVP_MD_CTX): Integer; cdecl;
+
+    (* FIXME: prototype these some day *)
+    sign: function(type_: Integer; const m: PAnsiChar; m_length: Cardinal;
+      sigret: PAnsiChar; siglen: PCardinal; key: Pointer): Integer; cdecl;
+    verify: function(type_: Integer; const m: PAnsiChar; m_length: Cardinal;
+      const sigbuf: PAnsiChar; siglen: Cardinal; key: Pointer): Integer; cdecl;
+    required_pkey_type: array[0..4] of Integer; (*EVP_PKEY_xxx *)
+    block_size: Integer;
+    ctx_size: Integer; (* how big does the ctx->md_data need to be *)
+    (* control function *)
+    md_ctrl: function(ctx: PEVP_MD_CTX; cmd, p1: Integer; p2: Pointer): Integer; cdecl;
+  end;
+
+  EVP_MD_CTX = record
+    digest: PEVP_MD;
+    engine: PNotImplemented; (* functional reference if 'digest' is ENGINE-provided *)
+    flags: LongWord;
+    md_data: Pointer;
+    (* Public key context for sign/verify *)
+    pctx: PEVP_PKEY_CTX;
+    (* Update function: usually copied from EVP_MD *)
+    update: function(ctx: PEVP_MD_CTX; const data: Pointer; count: Cardinal): Integer; cdecl;
+  end;
+
+
+procedure EVP_CIPHER_CTX_init(a: PEVP_CIPHER_CTX); cdecl; external LIBEAY;
+function EVP_CipherInit(ctx: PEVP_CIPHER_CTX; const cipher: PEVP_CIPHER;
+  const key, iv: PAnsiChar; enc: Integer): Integer; cdecl; external LIBEAY;
+function EVP_CipherInit_ex(ctx: PEVP_CIPHER_CTX; const cipher: PEVP_CIPHER;
+  impl: PNotImplemented; const key, iv: PAnsiChar; enc: Integer): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_cleanup(ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
+function EVP_get_cipherbyname(const name: PAnsiChar): PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_copy(out_: PEVP_CIPHER_CTX; const in_: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
+function EVP_BytesToKey(const type_: PEVP_CIPHER; const md: PEVP_MD;
+  const salt, data: PansiChar; datal, count: Integer; key, iv: PAnsiChar): Integer; cdecl; external LIBEAY;
+function EVP_md5(): PEVP_MD; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_cipher(const ctx: PEVP_CIPHER_CTX): PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_block_size(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
+function EVP_CipherUpdate(ctx: PEVP_CIPHER_CTX; out_: PAnsiChar;
+  outl: PInteger; const in_: PAnsiChar; inl: Integer): Integer; cdecl; external LIBEAY;
+function EVP_CipherFinal(ctx: PEVP_CIPHER_CTX; outm: PAnsiChar; outl: PInteger): Integer; cdecl; external LIBEAY;
+function EVP_CipherFinal_ex(ctx: PEVP_CIPHER_CTX; outm: PAnsiChar; outl: PInteger): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_nid(const cipher: PEVP_CIPHER): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar;
+function EVP_CIPHER_CTX_key_length(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_set_key_length(x: PEVP_CIPHER_CTX; keylen: Integer): Integer; cdecl; external LIBEAY;
+
+//EVP_CIPHER_CTX_set_padding
+//EVP_CIPHER_iv_length
+//EVP_CIPHER_block_size
+
+
+// Crypto
+
+procedure OPENSSL_cleanse(ptr: Pointer; len: Cardinal); cdecl; external LIBEAY;
+
+// Objects
+
+function OBJ_nid2sn(n: Integer): PAnsiChar; cdecl; external LIBEAY;
+
 implementation
 
 procedure AesEncryptStream(InStream, OutStream: TStream; const pass: PAnsiChar; bits: Integer);
@@ -385,6 +532,12 @@ begin
         Result := True;
     end);
   Result := return;
+end;
+
+
+function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar;
+begin
+	Result := OBJ_nid2sn(EVP_CIPHER_nid(e));
 end;
 
 initialization
