@@ -1,6 +1,11 @@
 unit dorOpenSSL;
 
+{$IFNDEF CPUX64}
+  {$ALIGN ON}
+{$ENDIF}
+
 interface
+
 uses Classes;
 
 const
@@ -10,8 +15,6 @@ const
 type
   TNotImplemented = record end;
   PNotImplemented = ^TNotImplemented;
-
-
 
 (*******************************************************************************
  * opensslconf
@@ -206,7 +209,6 @@ const
   function SSL_read(ssl: PSSL; buf: Pointer; num: Integer): Integer; cdecl; external SSLEAY;
   function SSL_write(ssl: PSSL; const buf: Pointer; num: Integer): Integer; cdecl; external SSLEAY;
   procedure SSL_CTX_set_verify(ctx: PSSL_CTX; mode: Integer; arg2: Pointer); cdecl; external SSLEAY;
-  procedure OPENSSL_add_all_algorithms_noconf; cdecl; external LIBEAY;
 
   function SSL_get_peer_certificate(ssl: PSSL): PX509; cdecl; external SSLEAY;
   procedure X509_free(x509: PX509); cdecl; external LIBEAY;
@@ -352,40 +354,377 @@ type
   end;
 
 
-procedure EVP_CIPHER_CTX_init(a: PEVP_CIPHER_CTX); cdecl; external LIBEAY;
-function EVP_CipherInit(ctx: PEVP_CIPHER_CTX; const cipher: PEVP_CIPHER;
-  const key, iv: PAnsiChar; enc: Integer): Integer; cdecl; external LIBEAY;
 function EVP_CipherInit_ex(ctx: PEVP_CIPHER_CTX; const cipher: PEVP_CIPHER;
-  impl: PNotImplemented; const key, iv: PAnsiChar; enc: Integer): Integer; cdecl; external LIBEAY;
-function EVP_CIPHER_CTX_cleanup(ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
-function EVP_get_cipherbyname(const name: PAnsiChar): PEVP_CIPHER; cdecl; external LIBEAY;
-function EVP_CIPHER_CTX_copy(out_: PEVP_CIPHER_CTX; const in_: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
-function EVP_BytesToKey(const type_: PEVP_CIPHER; const md: PEVP_MD;
-  const salt, data: PansiChar; datal, count: Integer; key, iv: PAnsiChar): Integer; cdecl; external LIBEAY;
-function EVP_md5(): PEVP_MD; cdecl; external LIBEAY;
+  impl: PNotImplemented; const key, iv: PByte; enc: Integer): Integer; cdecl; external LIBEAY;
+
+function EVP_CipherUpdate(ctx: PEVP_CIPHER_CTX; out_: Pointer;
+  outl: PInteger; const in_: Pointer; inl: Integer): Integer; cdecl; external LIBEAY;
+
+function EVP_CipherFinal_ex(ctx: PEVP_CIPHER_CTX; outm: Pointer; outl: PInteger): Integer; cdecl; external LIBEAY;
+
+procedure EVP_CIPHER_CTX_init(a: PEVP_CIPHER_CTX); cdecl; external LIBEAY;
+procedure EVP_CIPHER_CTX_free(a: PEVP_CIPHER_CTX); cdecl; external LIBEAY;
 function EVP_CIPHER_CTX_cipher(const ctx: PEVP_CIPHER_CTX): PEVP_CIPHER; cdecl; external LIBEAY;
 function EVP_CIPHER_CTX_block_size(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
-function EVP_CipherUpdate(ctx: PEVP_CIPHER_CTX; out_: PAnsiChar;
-  outl: PInteger; const in_: PAnsiChar; inl: Integer): Integer; cdecl; external LIBEAY;
-function EVP_CipherFinal(ctx: PEVP_CIPHER_CTX; outm: PAnsiChar; outl: PInteger): Integer; cdecl; external LIBEAY;
-function EVP_CipherFinal_ex(ctx: PEVP_CIPHER_CTX; outm: PAnsiChar; outl: PInteger): Integer; cdecl; external LIBEAY;
-function EVP_CIPHER_nid(const cipher: PEVP_CIPHER): Integer; cdecl; external LIBEAY;
-function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar;
+function EVP_CIPHER_CTX_copy(out_: PEVP_CIPHER_CTX; const in_: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_cleanup(ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
 function EVP_CIPHER_CTX_key_length(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_iv_length(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIBEAY;
 function EVP_CIPHER_CTX_set_key_length(x: PEVP_CIPHER_CTX; keylen: Integer): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_CTX_set_padding(c: PEVP_CIPHER_CTX; pad: Integer): Integer; cdecl; external LIBEAY;
 
-//EVP_CIPHER_CTX_set_padding
-//EVP_CIPHER_iv_length
-//EVP_CIPHER_block_size
+function EVP_CIPHER_nid(const cipher: PEVP_CIPHER): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_iv_length(const cipher: PEVP_CIPHER): Integer; cdecl; external LIBEAY;
+function EVP_CIPHER_block_size(const cipher: PEVP_CIPHER): Integer; cdecl; external LIBEAY;
 
+function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar; inline;
+
+function EVP_MD_CTX_md(const ctx: PEVP_MD_CTX): PEVP_MD; cdecl; external LIBEAY;
+function EVP_MD_CTX_create: PEVP_MD_CTX; cdecl; external LIBEAY;
+function EVP_MD_CTX_copy(out_: PEVP_MD_CTX; const in_: PEVP_MD_CTX): Integer; cdecl; external LIBEAY;
+
+function EVP_MD_CTX_size(e: PEVP_MD_CTX): Integer; inline;
+function EVP_MD_CTX_block_size(e: PEVP_MD_CTX): Integer; inline;
+function EVP_MD_CTX_type(e: PEVP_MD_CTX): Integer; inline;
+
+function EVP_MD_type(const md: PEVP_MD): Integer; cdecl; external LIBEAY;
+function EVP_MD_size(const md: PEVP_MD): Integer; cdecl; external LIBEAY;
+function EVP_MD_block_size(const md: PEVP_MD): Integer; cdecl; external LIBEAY;
+function EVP_MD_flags(const md: PEVP_MD): LongWord; cdecl; external LIBEAY;
+
+function EVP_MD_name(e: PEVP_MD): PAnsiChar; inline;
+function EVP_MD_nid(e: PEVP_MD): Integer; inline;
+
+function EVP_DigestInit_ex(ctx: PEVP_MD_CTX; const type_: PEVP_MD; impl: PNotImplemented): Integer; cdecl; external LIBEAY;
+function EVP_DigestUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer; cdecl; external LIBEAY;
+function EVP_DigestFinal_ex(ctx: PEVP_MD_CTX; md: PAnsiChar; s: PCardinal): Integer; cdecl; external LIBEAY;
+
+function EVP_get_cipherbyname(const name: PAnsiChar): PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_get_digestbyname(const name: PAnsiChar): PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_BytesToKey(const type_: PEVP_CIPHER; const md: PEVP_MD;
+  const salt, data: Pointer; datal, count: Integer; key, iv: PByte): Integer; cdecl; external LIBEAY;
+
+function EVP_md_null: PEVP_MD; cdecl; external LIBEAY;
+function EVP_md2: PEVP_MD; cdecl; external LIBEAY;
+function EVP_md4: PEVP_MD; cdecl; external LIBEAY;
+function EVP_md5: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_sha: PEVP_MD; cdecl; external LIBEAY;
+function EVP_sha1: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_dss: PEVP_MD; cdecl; external LIBEAY;
+function EVP_dss1: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_ecdsa: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_sha224: PEVP_MD; cdecl; external LIBEAY;
+function EVP_sha256: PEVP_MD; cdecl; external LIBEAY;
+function EVP_sha384: PEVP_MD; cdecl; external LIBEAY;
+function EVP_sha512: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_mdc2: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_ripemd160: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_whirlpool: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_enc_null: PEVP_CIPHER; cdecl; external LIBEAY;		{ does nothing :-) }
+
+function EVP_des_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede3: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede3_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede3_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede3_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede3_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede3_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_des_ede3_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_desx_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+
+{* This should now be supported through the dev_crypto ENGINE. But also, why are
+ * rc4 and md5 declarations made here inside a "NO_DES" precompiler branch? *}
+function EVP_dev_crypto_des_ede3_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_dev_crypto_rc4: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_dev_crypto_md5: PEVP_MD; cdecl; external LIBEAY;
+
+function EVP_rc4: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc4_40: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_idea_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_idea_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_idea_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_idea_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_rc2_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc2_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc2_40_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc2_64_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc2_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc2_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_bf_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_bf_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_bf_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_bf_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_cast5_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_cast5_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_cast5_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_cast5_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_rc5_32_12_16_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc5_32_12_16_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc5_32_12_16_cfb64: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_rc5_32_12_16_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_aes_128_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_128_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_128_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_128_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_128_cfb128: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_128_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_128_ctr: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_192_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_192_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_192_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_192_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_192_cfb128: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_192_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_192_ctr: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_256_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_256_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_256_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_256_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_256_cfb128: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_256_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_aes_256_ctr: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_camellia_128_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_128_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_128_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_128_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_128_cfb128: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_128_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_192_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_192_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_192_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_192_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_192_cfb128: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_192_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_256_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_256_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_256_cfb1: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_256_cfb8: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_256_cfb128: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_camellia_256_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_seed_ecb: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_seed_cbc: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_seed_cfb128: PEVP_CIPHER; cdecl; external LIBEAY;
+function EVP_seed_ofb: PEVP_CIPHER; cdecl; external LIBEAY;
+
+function EVP_add_cipher(const cipher: PEVP_CIPHER): Integer; cdecl; external LIBEAY;
+function EVP_add_digest(const digest: PEVP_MD): Integer; cdecl; external LIBEAY;
+
+procedure EVP_cleanup; cdecl; external LIBEAY;
 
 // Crypto
 
+procedure OPENSSL_add_all_algorithms_noconf; cdecl; external LIBEAY;
+procedure OPENSSL_add_all_algorithms_conf; cdecl; external LIBEAY;
+procedure OPENSSL_add_all_ciphers; cdecl; external LIBEAY;
+procedure OPENSSL_add_all_digests; cdecl; external LIBEAY;
 procedure OPENSSL_cleanse(ptr: Pointer; len: Cardinal); cdecl; external LIBEAY;
 
 // Objects
 
 function OBJ_nid2sn(n: Integer): PAnsiChar; cdecl; external LIBEAY;
+
+(******************************************************************************
+ * BIO
+(******************************************************************************)
+
+const
+{ These are used in the following macros and are passed to BIO_ctrl() }
+
+  BIO_CTRL_RESET = 1;  { opt - rewind/zero etc }
+  BIO_CTRL_EOF = 2;  { opt - are we at the eof }
+  BIO_CTRL_INFO	= 3;  { opt - extra tit-bits }
+  BIO_CTRL_SET = 4;  { man - set the 'IO' type }
+  BIO_CTRL_GET = 5;  { man - get the 'IO' type }
+  BIO_CTRL_PUSH	= 6;  { opt - internal, used to signify change }
+  BIO_CTRL_POP = 7;  { opt - internal, used to signify change }
+  BIO_CTRL_GET_CLOSE = 8;  { man - set the 'close' on free }
+  BIO_CTRL_SET_CLOSE = 9;  { man - set the 'close' on free }
+  BIO_CTRL_PENDING = 10;  { opt - is their more data buffered }
+  BIO_CTRL_FLUSH = 11;  { opt - 'flush' buffered output }
+  BIO_CTRL_DUP = 12;  { man - extra stuff for 'duped' BIO }
+  BIO_CTRL_WPENDING	= 13;  { opt - number of bytes still to write }
+
+  BIO_C_SET_CONNECT = 100;
+  BIO_C_DO_STATE_MACHINE = 101;
+  BIO_C_SET_NBIO = 102;
+  BIO_C_SET_PROXY_PARAM = 103;
+  BIO_C_SET_FD = 104;
+  BIO_C_GET_FD = 105;
+  BIO_C_SET_FILE_PTR = 106;
+  BIO_C_GET_FILE_PTR = 107;
+  BIO_C_SET_FILENAME = 108;
+  BIO_C_SET_SSL	= 109;
+  BIO_C_GET_SSL = 110;
+  BIO_C_SET_MD = 111;
+  BIO_C_GET_MD = 112;
+  BIO_C_GET_CIPHER_STATUS	= 113;
+  BIO_C_SET_BUF_MEM	= 114;
+  BIO_C_GET_BUF_MEM_PTR	= 115;
+  BIO_C_GET_BUFF_NUM_LINES = 116;
+  BIO_C_SET_BUFF_SIZE	= 117;
+  BIO_C_SET_ACCEPT = 118;
+  BIO_C_SSL_MODE = 119;
+  BIO_C_GET_MD_CTX = 120;
+  BIO_C_GET_PROXY_PARAM = 121;
+  BIO_C_SET_BUFF_READ_DATA = 122; { data to read first }
+  BIO_C_GET_CONNECT = 123;
+  BIO_C_GET_ACCEPT = 124;
+  BIO_C_SET_SSL_RENEGOTIATE_BYTES = 125;
+  BIO_C_GET_SSL_NUM_RENEGOTIATES = 126;
+  BIO_C_SET_SSL_RENEGOTIATE_TIMEOUT	= 127;
+  BIO_C_FILE_SEEK = 128;
+  BIO_C_GET_CIPHER_CTX = 129;
+  BIO_C_SET_BUF_MEM_EOF_RETURN = 130; { return end of input value }
+  BIO_C_SET_BIND_MODE	= 131;
+  BIO_C_GET_BIND_MODE	= 132;
+  BIO_C_FILE_TELL	= 133;
+  BIO_C_GET_SOCKS	= 134;
+  BIO_C_SET_SOCKS	= 135;
+
+  BIO_FLAGS_BASE64_NO_NL = $100;
+  BIO_FLAGS_MEM_RDONLY = $200;
+
+type
+  CRYPTO_EX_DATA = record
+  end;
+
+  PBIO_METHOD = ^BIO_METHOD;
+
+  PBIO = ^BIO;
+  BIO = record
+	  method: PBIO_METHOD;
+    callback: function(bio: PBIO; mode: Integer; argp: PAnsiChar; argi: Integer; argl: LongInt; ret: LongInt): LongInt;
+    cb_arg: PAnsiChar;
+    init: Integer;
+    shutdown: Integer;
+    flags: Integer;
+    retry_reason: Integer;
+    num: Integer;
+    ptr: Pointer;
+    next_bio: PBIO;
+    prev_bio: PBIO;
+    references: Integer;
+    num_read: LongWord;
+    num_write: LongWord;
+    ex_data: CRYPTO_EX_DATA;
+  end;
+
+  bio_info_cb = procedure(bio: PBIO; i_param: Integer; const data: PAnsiChar; i2_param: Integer; l_param: LongInt; l2_param: LongInt);
+
+  BIO_METHOD = record
+	  type_: Integer;
+	  name: PAnsiChar;
+    bwrite: function(bio: PBIO; const data: PAnsiChar; len: Integer): Integer; cdecl;
+    bread: function(bio: PBIO; data: PAnsiChar; len: Integer): Integer; cdecl;
+    bputs: function(bio: PBIO; const data: PAnsiChar): Integer; cdecl;
+    bgets: function(bio: PBIO; data: PAnsiChar; len: Integer): Integer; cdecl;
+    ctrl: function(bio: PBIO; mode: Integer; l_param: LongInt; ptr: Pointer): LongInt; cdecl;
+    create: function(bio: PBIO): Integer; cdecl;
+    destroy: function(bio: PBIO): Integer; cdecl;
+    callback_ctrl: function(bio: PBIO; i_param: Integer; bio_info_callback: bio_info_cb): LongInt; cdecl;
+  end;
+
+function BIO_new(type_: PBIO_METHOD): PBIO; cdecl; external LIBEAY;
+procedure BIO_set_flags(b: PBIO; flags: Integer); cdecl; external LIBEAY;
+function BIO_f_base64: PBIO_METHOD; cdecl; external LIBEAY;
+function BIO_s_mem: PBIO_METHOD; cdecl; external LIBEAY;
+function BIO_new_mem_buf(buf: Pointer; len: Integer): PBIO; cdecl; external LIBEAY;
+function BIO_push(b: PBIO; append: PBIO): PBIO; cdecl; external LIBEAY;
+function BIO_write(b: PBIO; const data: Pointer; len: Integer): Integer; cdecl; external LIBEAY;
+function BIO_read(b: PBIO; data: Pointer; len: Integer): Integer; cdecl; external LIBEAY;
+function BIO_ctrl(bp: PBIO; cmd: Integer; larg: Longint; parg: Pointer): LongInt; cdecl; external LIBEAY;
+procedure	BIO_free_all(a: PBIO); cdecl; external LIBEAY;
+
+function BIO_flush(b: PBIO): Integer; inline;
+function BIO_get_mem_ptr(b: PBIO; ptr: Pointer): LongInt; inline;
+
+(******************************************************************************
+ * Buffer
+(******************************************************************************)
+
+type
+  PBUF_MEM = ^BUF_MEM;
+  BUF_MEM = record
+    length: Cardinal;
+    data: PAnsiChar;
+    max: Cardinal;
+  end;
+
+(******************************************************************************
+ * RAND
+(******************************************************************************)
+
+type
+  PRAND_METHOD = ^RAND_METHOD;
+  RAND_METHOD = record
+    seed: procedure(const buf: Pointer; num: Integer); cdecl;
+    bytes: function(buf: PByte; num: Integer): Integer; cdecl;
+    cleanup: procedure; cdecl;
+    add: procedure(const buf: Pointer; num: Integer; entropy: Double); cdecl;
+    pseudorand: function(buf: PByte; num: Integer): Integer; cdecl;
+    status: procedure; cdecl;
+  end;
+
+procedure RAND_cleanup; cdecl; external LIBEAY;
+
+procedure RAND_seed(const buf: Pointer; num: Integer); cdecl; external LIBEAY;
+procedure RAND_add(const buf: Pointer; num: Integer; entropy: Double); cdecl; external LIBEAY;
+
+function RAND_status: Integer; cdecl; external LIBEAY;
+
+function RAND_bytes(buf: PByte; num: Integer): Integer; cdecl; external LIBEAY;
+function RAND_pseudo_bytes(buf: PByte; num: Integer): Integer; cdecl; external LIBEAY;
+
+procedure RAND_set_rand_method(const meth: PRAND_METHOD); cdecl; external LIBEAY;
+function RAND_get_rand_method: PRAND_METHOD; cdecl; external LIBEAY;
+function RAND_SSLeay: PRAND_METHOD; cdecl; external LIBEAY;
+
+(******************************************************************************
+ * ERR
+(******************************************************************************)
+
+procedure ERR_load_crypto_strings; cdecl; external LIBEAY;
+procedure ERR_free_strings; cdecl; external LIBEAY;
+
+function ERR_get_error: LongWord; cdecl; external LIBEAY;
+
+procedure ERR_clear_error; cdecl; external LIBEAY;
+
+function ERR_error_string(e: LongWord; buf: PAnsiChar): PAnsiChar; cdecl; external LIBEAY;
+procedure ERR_error_string_n(e: LongWord; buf: PAnsiChar; len: Cardinal); cdecl; external LIBEAY;
+function ERR_lib_error_string(e: LongWord): PAnsiChar; cdecl; external LIBEAY;
+function ERR_func_error_string(e: LongWord): PAnsiChar; cdecl; external LIBEAY;
+function ERR_reason_error_string(e: LongWord): PAnsiChar; cdecl; external LIBEAY;
 
 implementation
 
@@ -534,10 +873,44 @@ begin
   Result := return;
 end;
 
-
 function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar;
 begin
 	Result := OBJ_nid2sn(EVP_CIPHER_nid(e));
+end;
+
+function EVP_MD_nid(e: PEVP_MD): Integer;
+begin
+  Result := EVP_MD_type(e);
+end;
+
+function EVP_MD_name(e: PEVP_MD): PAnsiChar;
+begin
+  Result := OBJ_nid2sn(EVP_MD_nid(e));
+end;
+
+function EVP_MD_CTX_size(e: PEVP_MD_CTX): Integer;
+begin
+  Result := EVP_MD_size(EVP_MD_CTX_md(e));
+end;
+
+function EVP_MD_CTX_block_size(e: PEVP_MD_CTX): Integer;
+begin
+  Result := EVP_MD_block_size(EVP_MD_CTX_md(e));
+end;
+
+function EVP_MD_CTX_type(e: PEVP_MD_CTX): Integer;
+begin
+  Result := EVP_MD_type(EVP_MD_CTX_md(e));
+end;
+
+function BIO_flush(b: PBIO): Integer;
+begin
+  Result := Integer(BIO_ctrl(b, BIO_CTRL_FLUSH, 0, nil));
+end;
+
+function BIO_get_mem_ptr(b: PBIO; ptr: Pointer): LongInt;
+begin
+  Result := BIO_ctrl(b, BIO_C_GET_BUF_MEM_PTR, 0, ptr);
 end;
 
 initialization
