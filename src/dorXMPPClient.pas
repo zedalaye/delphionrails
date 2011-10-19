@@ -406,16 +406,6 @@ begin
   Result := xOK;
 end;
 
-function Thread(const proc: TProc): THandle;
-  function run(const proc: TProc): Integer; stdcall;
-  begin
-    proc;
-    Result := 0;
-  end;
-begin
-  CreateThread(nil, 0, @run, PPointer(@proc)^, 0, Result);
-end;
-
 function TXMPPClient.Connect(const Host: AnsiString; Port: Word): Boolean;
 var
   AHost: PHostEnt;
