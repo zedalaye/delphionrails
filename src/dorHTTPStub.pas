@@ -1105,6 +1105,11 @@ begin
     str := str + 'index.' + FParams.AsObject.S['format'];
   if FindFirst(path + str, faAnyFile, rec) = 0 then
   begin
+    { Although the rec.Time is platform bounded and deprecated (on Windows) in
+      favor of the new TimeStamp property, all we need here is an integer
+      timestamp that changes with the resource }
+  {$WARN SYMBOL_PLATFORM OFF}
+  {$WARN SYMBOL_DEPRECATED OFF}
     FIsStatic := True;
     if Request.B['env.if-none-match'] and
       (Request.S['env.if-none-match'] = IntToStr(rec.Time) + '-' + IntToStr(rec.Size)) then
@@ -1120,6 +1125,8 @@ begin
     Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
     FindClose(rec);
     FErrorCode := 200;
+  {$WARN SYMBOL_DEPRECATED ON}
+  {$WARN SYMBOL_PLATFORM ON}
   end else
     FErrorCode :=  404;
 end;
