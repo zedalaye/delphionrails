@@ -33,6 +33,7 @@ type
     FName: string;
     FDisplayName: string;
 {$IFNDEF CONSOLEAPP}
+    FDescription: string;
     FDependencies: string;
     FServiceType: Cardinal;
     FStartType: Cardinal;
@@ -54,6 +55,7 @@ type
     property Name: string read FName write FName;
     property DisplayName: string read FDisplayName write FDisplayName;
 {$IFNDEF CONSOLEAPP}
+    property Description: string read FDescription write FDescription;
     property Dependencies: string read FDependencies write FDependencies;
     property ServiceType: Cardinal read FServiceType write FServiceType;
     property StartType: Cardinal read FStartType write FStartType;
@@ -235,7 +237,7 @@ var
   Service: THandle;
   SCManager: THandle;
   Path: array[0..511] of Char;
-  Depend: PChar;
+  data: PChar;
 begin
    if (GetModuleFileName(0, Path, 512) = 0) then
    begin
@@ -247,11 +249,18 @@ begin
    if (SCManager <> 0) then
    begin
       if FDependencies <> '' then
-        Depend := @FDependencies[1] else
-        Depend := nil;
+        data := @FDependencies[1] else
+        data := nil;
       Service := CreateService(SCManager, @FName[1], @FDisplayName[1],
-        SERVICE_QUERY_STATUS, FServiceType, FStartType,
-        SERVICE_ERROR_NORMAL, Path, nil, nil, depend, nil, nil);
+        SERVICE_QUERY_STATUS or SERVICE_CHANGE_CONFIG, FServiceType, FStartType,
+        SERVICE_ERROR_NORMAL, Path, nil, nil, data, nil, nil);
+
+      if FDescription <> '' then
+      begin
+        data := PChar(FDescription);
+        ChangeServiceConfig2(Service, SERVICE_CONFIG_DESCRIPTION, @data);
+      end;
+
       if (Service <> 0) then
         CloseServiceHandle(Service) else
         raise Exception.CreateFmt('CreateService failed - %s', [SysErrorMessage(GetLastError)]);
