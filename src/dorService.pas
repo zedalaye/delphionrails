@@ -105,6 +105,9 @@ begin
   begin
     FApplication.Free;
     FApplication := nil;
+
+    while TDORThread.ThreadCount > 0 do
+      Sleep(10);
   end;
 end;
 
@@ -129,6 +132,8 @@ begin
     SERVICE_CONTROL_STOP:
       begin
         // Do whatever it takes to stop here.
+        Terminate;
+
         ServiceStatus.dwWin32ExitCode := 0;
         ServiceStatus.dwCurrentState  := SERVICE_STOPPED;
         ServiceStatus.dwCheckPoint    := 0;
@@ -136,7 +141,7 @@ begin
 
         if (not SetServiceStatus(ServiceStatusHandle, ServiceStatus)) then
           RaiseLastOSError;
-        Terminate;
+
         Exit;
       end;
 
@@ -198,10 +203,10 @@ begin
   oldthreadid := MainThreadID;
   MainThreadID := GetCurrentThreadId;
   try
-    while Application <> nil do
+    while FApplication <> nil do
     begin
       CheckSynchronize;
-      Sleep(1);
+      Sleep(10);
     end;
   finally
     MainThreadID := oldthreadid;
