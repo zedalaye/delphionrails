@@ -232,6 +232,16 @@ end;
 { TDORService }
 
 {$IFNDEF CONSOLEAPP}
+
+{$if defined(VER210)}
+{ Required to set the service description. Not defined in WinSvc before XE2 }
+const
+  SERVICE_CONFIG_DESCRIPTION = 1;
+
+function ChangeServiceConfig2(hService: THandle; dwInfoLevel: DWORD;
+    lpInfo: Pointer): BOOL; stdcall; external advapi32 name 'ChangeServiceConfig2W';
+{$ifend}
+
 procedure TDORService.InstallService;
 var
   Service: THandle;
