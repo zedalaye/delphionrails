@@ -413,7 +413,7 @@ begin
 
     if output <> nil then
     begin
-      move(output[i], output[i + 1], (outidx - i) * SizeOf(output^));
+      move(output[i], output[i + 1], (outidx - i) * SizeOf(TPunyCode));
       output[i] := n;
     end;
     Inc(i);
