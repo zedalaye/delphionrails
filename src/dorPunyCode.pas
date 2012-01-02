@@ -1,4 +1,4 @@
-(*
+﻿(*
  * punycode.c from RFC 3492prop
  * http://www.nicemice.net/idn/
  * Adam M. Costello
@@ -8,6 +8,59 @@
  * Delphi Conversion by:
  *   Henri Gourvest <hgourvest@gmail.com>
  *   http://www.progdigy.com
+ * contributor
+ *   J. Heffernan <info@heffs.org.uk>
+
+usage:
+
+function PEncode(const str: UnicodeString): AnsiString;
+var
+  len: Cardinal;
+begin
+  if str = '' then
+  begin
+    Result := '';
+    exit;
+  end;
+  if (PunycodeEncode(Length(str), PPunyCode(str), len) = pcSuccess) and (Length(str) + 1 <> len) then
+  begin
+    SetLength(Result, len);
+    PunycodeEncode(Length(str), PPunyCode(str), len, PByte(Result));
+  end else
+    Result := str;
+end;
+
+function PDecode(const str: AnsiString): UnicodeString;
+var
+  outputlen: Cardinal;
+begin
+  if str = '' then
+  begin
+    Result := '';
+    exit;
+  end;
+  outputlen := 0;
+  if (PunycodeDecode(Length(str), PByte(str), outputlen) = pcSuccess) and (Length(str) <> outputlen) then
+  begin
+    SetLength(Result, outputlen);
+    PunycodeDecode(Length(str), PByte(str), outputlen, PPunycode(Result));
+  end else
+    Result := str;
+end;
+
+procedure Test(const Input: UnicodeString);
+begin
+  if PDecode(PEncode(Input))<>Input then
+    raise EAssertionFailed.CreateFmt('Round-trip failed: %s', [Input]);
+end;
+
+begin
+  Test('президент');
+  Test('David Heffernan');
+  Test('');
+  Test('A');
+end.
+
  *)
 
 unit dorPunyCode;
@@ -157,7 +210,8 @@ function PunycodeEncode(inputlen: Cardinal; const input: PPunycode;
   var outputlen: Cardinal; const output: PByte = nil;
   const caseflags: PByte = nil): TPunyCodeStatus;
 var
-  outidx, maxout, n, delta, h, b, bias, j, m, q, k, t: Cardinal;
+  outidx, maxout, n, delta, h, b, bias, m, q, k, t: Cardinal;
+  j: Integer;
 begin
   (* Initialize the state: *)
 
@@ -303,7 +357,8 @@ function PunycodeDecode(inputlen: Cardinal; const input: PByte;
   var outputlen: Cardinal; output: PPunycode;
   caseflags: PByte): TPunyCodeStatus;
 var
-  outidx, i, maxout, bias, b, j, inidx, oldi, w, k, digit, t, n : Cardinal;
+  outidx, i, maxout, bias, b, inidx, oldi, w, k, digit, t, n : Cardinal;
+  j: Integer;
 begin
 
   (* Initialize the state: *)
