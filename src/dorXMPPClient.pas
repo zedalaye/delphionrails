@@ -12,34 +12,33 @@ type
   IXMPPIQ = interface;
   IXMPPMessage = interface;
 
-  TXMPPResult = (
-    xOK,
-    xNotReady,
-    xCantConnect,
-    xCantLogin
-  );
+  TXMPPResult = (xOK, xNotReady, xCantConnect, xCantLogin);
+
+  TXMPPErrorType = (etAuth, etCancel, etContinue, etModify, etWait);
+  TXMPPErrorEvent = reference to procedure(const msg: string);
+
+  TXMPPTraceDirection = (tdSend, tdReceive);
+  TXMPPTraceEvent = reference to procedure(direction: TXMPPTraceDirection; const data: string);
+
+  TXMPPPresenceType = (ptNone, ptUnavailable, ptSubscribe, ptSubscribed,
+    ptUnsubscribe, ptUnsubscribed, ptProbe, ptError);
+  TXMPPPresenceShow = (psNone, psAway, psChat, psDnd, psXa);
+  TXMPPEvent = reference to procedure(const node: IXMPPPresence);
 
   TXMPPIQType = (iqGet, iqSet, iqResult, iqError);
-  TXMPPMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
-  TXMPPErrorType = (etAuth, etCancel, etContinue, etModify, etWait);
-
-  TXMPPErrorEvent = reference to procedure(const msg: string);
   TXMPPIQEvent = reference to procedure(const node: IXMPPIQ);
-  TXMPPEvent = reference to procedure(const node: IXMPPPresence);
   TXMPPIQResponse = reference to procedure(const node: IXMPPIQ);
+
+  TXMPPMessageType = (mtNone, mtNormal, mtChat, mtGroupChat, mtHeadline, mtError);
   TXMPPMessageEvent = reference to procedure(const node: IXMPPMessage);
 
   TXMPPOnSynchronize = reference to procedure(const node: IXMLNode; const proc: TProc<IXMLNode>);
 
   TXMPPReadyState = (rsOffline, rsConnecting, rsConnected, rsAuthenticating, rsAuthenticated, rsOpen, rsClosing);
   TXMPPReadyStateChange = reference to procedure(const xmpp: IXMPPClient);
+
   TXMPPOption = (xoDontForceEncryption, xoPlaintextAuth, xoRegister);
   TXMPPOptions = set of TXMPPOption;
-
-
-  TXMPPPresenceType = (ptNone, ptUnavailable, ptSubscribe, ptSubscribed,
-    ptUnsubscribe, ptUnsubscribed, ptProbe, ptError);
-  TXMPPPresenceShow = (psNone, psAway, psChat, psDnd, psXa);
 
   IXMPPClient = interface
     ['{FD2264FF-460E-4DCD-BA8B-D1D7BCB45E6A}']
@@ -54,18 +53,21 @@ type
     function GetOnReadyStateChange: TXMPPReadyStateChange;
     procedure SetOnReadyStateChange(const cb: TXMPPReadyStateChange);
 
+    function GetOnTrace: TXMPPTraceEvent;
     function GetOnError: TXMPPErrorEvent;
     function GetOnIQ: TXMPPIQEvent;
     function GetOnPresence: TXMPPEvent;
     function GetOnMessage: TXMPPMessageEvent;
     function GetOnSynchronize: TXMPPOnSynchronize;
 
+    procedure SetOnTrace(const value: TXMPPTraceEvent);
     procedure SetOnError(const value: TXMPPErrorEvent);
     procedure SetOnIQ(const value: TXMPPIQEvent);
     procedure SetOnPresence(const value: TXMPPEvent);
     procedure SetOnMessage(const value: TXMPPMessageEvent);
     procedure SetOnSynchronize(const value: TXMPPOnSynchronize);
 
+    property OnTrace: TXMPPTraceEvent read GetOnTrace write SetOnTrace;
     property OnError: TXMPPErrorEvent read GetOnError write SetOnError;
     property OnIQ: TXMPPIQEvent read GetOnIQ write SetOnIQ;
     property OnPresence: TXMPPEvent read GetOnPresence write SetOnPresence;
@@ -165,6 +167,7 @@ type
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
   private
     FJID: string;
+    FOnTrace: TXMPPTraceEvent;
     FOnError: TXMPPErrorEvent;
     FOnIQ: TXMPPIQEvent;
     FOnPresence: TXMPPEvent;
@@ -207,10 +210,12 @@ type
     procedure Send(const data: string);
     procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
     procedure Close;
+    function GetOnTrace: TXMPPTraceEvent;
     function GetOnError: TXMPPErrorEvent;
     function GetOnIQ: TXMPPIQEvent;
     function GetOnPresence: TXMPPEvent;
     function GetOnMessage: TXMPPMessageEvent;
+    procedure SetOnTrace(const value: TXMPPTraceEvent);
     procedure SetOnError(const value: TXMPPErrorEvent);
     procedure SetOnIQ(const value: TXMPPIQEvent);
     procedure SetOnPresence(const value: TXMPPEvent);
@@ -716,6 +721,8 @@ redo:
           xtClose:
             begin
               n := stack.Pop;
+              if (stack.Count = 1) and Assigned(FOnTrace) then
+                FOnTrace(tdReceive, n.Xml);
               if stack.count > 1 then
                 stack.Peek.ChildNodes.Add(n) else
                 if events.TryGetValue(string(n.Name), ev) then
@@ -1035,6 +1042,11 @@ begin
   FOnSynchronize := value;
 end;
 
+procedure TXMPPClient.SetOnTrace(const value: TXMPPTraceEvent);
+begin
+  FOnTrace := value;
+end;
+
 procedure TXMPPClient.SetReadyState(rs: TXMPPReadyState);
 begin
   FReadyState := rs;
@@ -1138,6 +1150,9 @@ procedure TXMPPClient.SendXML(const xml: IXMLNode);
 begin
   EnterCriticalSection(FLockWrite);
   try
+    if Assigned(FOnTrace) then
+      FOnTrace(tdSend, xml.Xml);
+
     xml.SaveToXML(
       procedure(const data: string)
         begin
@@ -1233,6 +1248,11 @@ end;
 function TXMPPClient.GetOnSynchronize: TXMPPOnSynchronize;
 begin
   Result := FOnSynchronize;
+end;
+
+function TXMPPClient.GetOnTrace: TXMPPTraceEvent;
+begin
+  Result := FOnTrace;
 end;
 
 { TXMPPMessage }
