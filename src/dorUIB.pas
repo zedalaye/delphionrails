@@ -32,7 +32,8 @@ type
     FDbHandle: IscDbHandle;
     FCharacterSet: TCharacterSet;
   protected
-    function newContext(const Options: ISuperObject = nil): IDBContext; override;
+    function newContext(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBContext; overload; override;
+    function newContext(const Options: ISuperObject = nil): IDBContext; overload; override;
   public
     constructor Create(const Options: ISuperObject); reintroduce; overload;
     constructor Create(const Options: string); reintroduce; overload;
@@ -45,9 +46,9 @@ type
     FConnection: TDBUIBConnection;
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
-    function newCommand(const Options: ISuperObject = nil): IDBCommand; override;
+    function newCommand(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBCommand; override;
   public
-    constructor Create(const Connection: TDBUIBConnection; const Options: ISuperObject); reintroduce;
+    constructor Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject); reintroduce;
     destructor Destroy; override;
   end;
 
@@ -125,14 +126,35 @@ begin
   inherited;
 end;
 
+function TDBUIBConnection.newContext(
+  const OtherConnections: array of IDBConnection;
+  const Options: ISuperObject): IDBContext;
+var
+  Cnx: IDBConnection;
+  Arr: array of TDBUIBConnection;
+  I: Integer;
+begin
+  SetLength(Arr, 1 + Length(OtherConnections));
+  Arr[0] := Self;
+  I := 1;
+  for Cnx in OtherConnections do
+    if (Cnx <> nil) and (Cnx is TDBUIBConnection) then
+    begin
+      Arr[I] := TDBUIBConnection(Cnx);
+      Inc(I);
+    end;
+  SetLength(Arr, I);
+  Result := TDBUIBContext.Create(Arr, Options);
+end;
+
 function TDBUIBConnection.newContext(const Options: ISuperObject): IDBContext;
 begin
-  Result := TDBUIBContext.Create(Self, Options);
+  Result := TDBUIBContext.Create([Self], Options);
 end;
 
 { TDBUIBContext }
 
-constructor TDBUIBContext.Create(const Connection: TDBUIBConnection; const Options: ISuperObject);
+constructor TDBUIBContext.Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject);
 var
   params: RawByteString;
   lockread, lockwrite: string;
@@ -143,12 +165,15 @@ var
 {$IFDEF FB20_UP}
   locktimeout: Integer;
 {$ENDIF}
+  buffer: PISCTEB;
+  i: Integer;
 begin
+  Assert(Length(Connections) > 0);
   inherited Create(stObject);
   DataPtr := Self;
   Merge(Options, true);
-  FConnection := Connection;
-  AsObject['connection'] := Connection;
+  FConnection := Connections[0];
+  AsObject['connection'] := Connections[0];
   FTrHandle := nil;
   if ObjectIsType(Options, stObject) then
   begin
@@ -211,14 +236,36 @@ begin
 {$ENDIF}
     end;
     if opt = [] then
-      opt := [tpConcurrency,tpWait,tpWrite];
+      opt := [tpConcurrency, tpWait, tpWrite];
 
-    CreateTRParams(opt, lockread, lockwrite{$IFDEF FB20_UP}, locktimeout{$ENDIF});
+    params := CreateTRParams(opt, lockread, lockwrite{$IFDEF FB20_UP}, locktimeout{$ENDIF});
   end else
     params := '';
 
-  with FConnection, FLibrary do
-    TransactionStart(FTrHandle, FDbHandle, params);
+  if Length(Connections) = 1 then
+  begin
+    with FConnection, FLibrary do
+      TransactionStart(FTrHandle, FDbHandle, params);
+  end
+  else
+  begin
+    GetMem(buffer,  SizeOf(TISCTEB) * Length(Connections));
+    try
+    {$POINTERMATH ON}
+      for i := 0 to Length(Connections) - 1 do
+        with Buffer[i] do
+        begin
+          Handle  := @Connections[I].FDbHandle;
+          Len     := Length(params);
+          Address := PAnsiChar(params);
+        end;
+    {$POINTERMATH OFF}
+      with FConnection, FLibrary do
+        TransactionStartMultiple(FTrHandle, Length(Connections), Buffer);
+    finally
+      FreeMem(Buffer);
+    end
+  end;
 end;
 
 destructor TDBUIBContext.Destroy;
@@ -249,9 +296,12 @@ begin
   {$ENDIF}
 end;
 
-function TDBUIBContext.newCommand(const Options: ISuperObject): IDBCommand;
+function TDBUIBContext.newCommand(const Options: ISuperObject; const Connection: IDBConnection): IDBCommand;
 begin
-  Result := TDBUIBCommand.Create(FConnection, Self, Options);
+  if (Connection = nil) or (not (Connection is TDBUIBConnection)) then
+    Result := TDBUIBCommand.Create(FConnection, Self, Options)
+  else
+    Result := TDBUIBCommand.Create(TDBUIBConnection(Connection), Self, Options)
 end;
 
 { TDBUIBCommand }

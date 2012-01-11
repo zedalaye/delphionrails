@@ -21,6 +21,7 @@ type
   IDBConnection = interface
   ['{843E105A-B8E0-42A9-AFA0-CF5AA843DB8B}']
     function newContext(const Options: ISuperObject = nil): IDBContext; overload;
+    function newContext(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBContext; overload;
     function newCommand(const Options: ISuperObject = nil): IDBCommand; overload;
     function newContext(const Options: SOString): IDBContext; overload;
     function newCommand(const Options: SOString): IDBCommand; overload;
@@ -31,10 +32,10 @@ type
 
   IDBContext = interface
   ['{51992399-2D1A-47EF-9DB1-C5654325F41B}']
-    function newCommand(const Options: ISuperObject = nil): IDBCommand; overload;
-    function newCommand(const Options: SOString): IDBCommand; overload;
-    function newSelect(const sql: SOString; firstone: boolean = False; asArray: Boolean = False): IDBCommand;
-    function newFunction(const sql: SOString): IDBCommand;
+    function newCommand(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBCommand; overload;
+    function newCommand(const Options: SOString; const Connection: IDBConnection = nil): IDBCommand; overload;
+    function newSelect(const sql: SOString; firstone: boolean = False; asArray: Boolean = False; const Connection: IDBConnection = nil): IDBCommand;
+    function newFunction(const sql: SOString; const Connection: IDBConnection = nil): IDBCommand;
     procedure ExecuteImmediate(const Options: SOString); overload;
     function Execute(const Command: IDBCommand; const params: ISuperObject = nil): ISuperObject; overload;
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload;
@@ -70,6 +71,7 @@ type
   protected
     procedure ExecuteImmediate(const Options: SOString); virtual;
     function newContext(const Options: ISuperObject = nil): IDBContext; overload; virtual; abstract;
+    function newContext(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBContext; overload; virtual; abstract;
     function newContext(const Options: SOString): IDBContext; overload; virtual;
     function newCommand(const Options: ISuperObject = nil): IDBCommand; overload; virtual;
     function newCommand(const Options: SOString): IDBCommand; overload; virtual;
@@ -85,10 +87,10 @@ type
     procedure TriggerCommitEvent;
     procedure TriggerRollbackEvent;
     procedure ExecuteImmediate(const Options: SOString); virtual; abstract;
-    function newCommand(const Options: ISuperObject = nil): IDBCommand; overload; virtual; abstract;
-    function newCommand(const Options: SOString): IDBCommand; overload; virtual;
-    function newSelect(const sql: SOString; firstone: boolean = False; asArray: Boolean = False): IDBCommand; virtual;
-    function newFunction(const sql: SOString): IDBCommand; virtual;
+    function newCommand(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBCommand; overload; virtual; abstract;
+    function newCommand(const Options: SOString; const Connection: IDBConnection = nil): IDBCommand; overload; virtual;
+    function newSelect(const sql: SOString; firstone: boolean = False; asArray: Boolean = False; const Connection: IDBConnection = nil): IDBCommand; virtual;
+    function newFunction(const sql: SOString; const Connection: IDBConnection = nil): IDBCommand; virtual;
     function Execute(const Command: IDBCommand; const params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload; virtual;
@@ -223,19 +225,19 @@ begin
   Result := Command.Execute(so(params), Self);
 end;
 
-function TDBContext.newCommand(const Options: SOString): IDBCommand;
+function TDBContext.newCommand(const Options: SOString; const Connection: IDBConnection): IDBCommand;
 begin
-  Result := newCommand(SO(Options));
+  Result := newCommand(SO(Options), Connection);
 end;
 
-function TDBContext.newFunction(const sql: SOString): IDBCommand;
+function TDBContext.newFunction(const sql: SOString; const Connection: IDBConnection): IDBCommand;
 begin
-  Result := newCommand(SO(['sql', sql, 'function', true]));
+  Result := newCommand(SO(['sql', sql, 'function', true]), Connection);
 end;
 
-function TDBContext.newSelect(const sql: SOString; firstone: boolean; asArray: Boolean): IDBCommand;
+function TDBContext.newSelect(const sql: SOString; firstone: boolean; asArray: Boolean; const Connection: IDBConnection): IDBCommand;
 begin
-  Result := newCommand(SO(['sql', sql, 'firstone', firstone, 'array', asArray]));
+  Result := newCommand(SO(['sql', sql, 'firstone', firstone, 'array', asArray]), Connection);
 end;
 
 procedure TDBContext.TriggerCommitEvent;
