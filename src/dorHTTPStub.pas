@@ -1471,7 +1471,7 @@ function THTTPStub.Upgrade: Cardinal;
     Result := WebSocket;
   end;
 
-  function doWebSocket07: Cardinal;
+  function doWebSocketNew: Cardinal;
   var
     key, origin: ISuperObject;
     ret: RawByteString;
@@ -1479,7 +1479,12 @@ function THTTPStub.Upgrade: Cardinal;
   begin
     Result := 0;
     origin := Request['env.sec-websocket-origin'];
-    if not ObjectIsType(origin, stString) then Exit;
+    if not ObjectIsType(origin, stString) then
+    begin
+      origin := Request['env.origin'];
+      if not ObjectIsType(origin, stString) then
+        Exit;
+    end;
 
     key := Request['env.sec-websocket-key'];
     if not ObjectIsType(key, stString) then Exit;
@@ -1503,8 +1508,8 @@ begin
     case FWebSocketVersion of
       0: Result := doWebSocket04;
     else
-      // 4 > 7
-      Result := doWebSocket07;
+      // 4 > 13
+      Result := doWebSocketNew;
     end;
   end;
 end;

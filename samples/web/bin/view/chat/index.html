@@ -24,6 +24,8 @@
     return false;
   }
   
+  if ("MozWebSocket" in window) WebSocket = MozWebSocket;
+  
   $('#msg').select();
   if (location.protocol == "https:")
     {s = new WebSocket('wss://'+ location.host + '/chat')} else
