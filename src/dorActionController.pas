@@ -86,6 +86,8 @@ begin
     for ite in Params.AsObject do
       if (ite.Value <> nil) and (ite.Value.DataPtr = nil) then
         Return.AsObject[ite.Name] := ite.Value;
+    if (obj <> nil) then
+      Return.AsObject['result'] := obj;
     if ErrorCode = 0 then
       SetErrorCode(200);
   end;
