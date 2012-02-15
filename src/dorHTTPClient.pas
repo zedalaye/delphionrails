@@ -42,6 +42,7 @@ type
     function GetOnReadyStateChange: TOnReadyStateChange;
     function GetReadyState: TReadyState;
     function GetResponseStream: TStream;
+    procedure SetResponseStream(stream: TStream);
     function GetResponseText: string;
     function GetRequestHeaders: THeaderCollection;
     function GetResponseHeaders: THeaderCollection;
@@ -50,7 +51,7 @@ type
     property Status: Word read GetStatus;
     property StatusText: RawByteString read GetStatusText;
     property OnReadyStateChange: TOnReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
-    property ResponseStream: TStream read GetResponseStream;
+    property ResponseStream: TStream read GetResponseStream write SetResponseStream;
     property ResponseText: string read GetResponseText;
     property ReadyState: TReadyState read GetReadyState;
   end;
@@ -89,6 +90,7 @@ type
     FUser: string;
     FPassword: string;
     FResponseData: TStream;
+    FResponseDataOwned: Boolean;
     FRequestHeader: TDictionary<RawByteString, THTTPHeader>;
     FResponseHeader: TDictionary<RawByteString, THTTPHeader>;
     FResponseEvents: TDictionary<RawByteString, TOnHeaderEvent>;
@@ -144,6 +146,7 @@ type
     procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
     function GetOnReadyStateChange: TOnReadyStateChange;
     function GetResponseStream: TStream;
+    procedure SetResponseStream(stream: TStream);
     function GetResponseText: string;
     function GetRequestHeaders: THeaderCollection;
     function GetResponseHeaders: THeaderCollection;
@@ -174,9 +177,9 @@ end;
 
 procedure THTTPRequest.Abort;
 begin
-  TCPDisconnect;
   FReadyState := rsUninitialized;
-  FResponseData.Size := 0;
+  if FResponseData <> nil then
+    FResponseData.Size := 0;
   LoadDefaultHeader;
   FResponseHeader.Clear;
   FStatus := 0;
@@ -195,7 +198,8 @@ begin
   FCertificateFile := CertificateFile;
   FPrivateKeyFile := PrivateKeyFile;
   FCertCAFile := CertCAFile;
-  FResponseData := TPooledMemoryStream.Create;
+  FResponseData := nil;
+  FResponseDataOwned := False;
   FRequestHeader := TDictionary<RawByteString, THTTPHeader>.Create;
   FResponseHeader := TDictionary<RawByteString, THTTPHeader>.Create;
   FCookies := TDictionary<RawByteString, TCookie>.Create;
@@ -208,8 +212,9 @@ end;
 
 destructor THTTPRequest.Destroy;
 begin
-  Abort;
-  FResponseData.Free;
+  TCPDisconnect;
+  if (FResponseDataOwned) and (FResponseData <> nil) then
+    FResponseData.Free;
   FRequestHeader.Free;
   FResponseHeader.Free;
   FCharsets.Free;
@@ -448,7 +453,12 @@ var
   encoding: TContentEncoding;
 begin
   FReadError := False;
-  FResponseData.Size := 0;
+  if FResponseData = nil then
+  begin
+    FResponseData := TPooledMemoryStream.Create;
+    FResponseDataOwned := True;
+  end else
+    FResponseData.Size := 0;
   FResponseHeader.Clear;
 
   if not HTTPParse(
@@ -688,6 +698,14 @@ begin
   low := LowerCase(header);
   if not FResponseEvents.TryGetValue(low, event) or event(value) then
     FResponseHeader.AddOrSetValue(low, THTTPHeader.Make(header, value));
+end;
+
+procedure THTTPRequest.SetResponseStream(stream: TStream);
+begin
+  if FResponseDataOwned and (FResponseData <> nil) then
+    FResponseData.Free;
+  FResponseData := stream;
+  FResponseDataOwned := False;
 end;
 
 function THTTPRequest.SockRecv(var Buf; len: Integer): Integer;

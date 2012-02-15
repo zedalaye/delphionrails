@@ -324,12 +324,20 @@ begin
   with FConnection, FLibrary do
   begin
     DSQLAllocateStatement(FDbHandle, FStHandle);
-    FStatementType := DSQLPrepare(FDbHandle, Context.FTrHandle, FStHandle,
-{$IFDEF UNICODE}
-      MBUEncode(FSQLParams.Parse(PSOChar(self.S['sql'])), CharacterSetCP[FCharacterSet]), 3, FSQLResult);
-{$ELSE}
-      AnsiString(FSQLParams.Parse(PSOChar(self.S['sql']))), 3, FSQLResult);
-{$ENDIF}
+    try
+      FStatementType := DSQLPrepare(FDbHandle, Context.FTrHandle, FStHandle,
+  {$IFDEF UNICODE}
+        MBUEncode(FSQLParams.Parse(PSOChar(self.S['sql'])), CharacterSetCP[FCharacterSet]), 3, FSQLResult);
+  {$ELSE}
+        AnsiString(FSQLParams.Parse(PSOChar(self.S['sql']))), 3, FSQLResult);
+  {$ENDIF}
+    except
+      on E: Exception do
+      begin
+        Context.B['rollback'] := true;
+        raise E;
+      end;
+    end;
     if (FSQLParams.FieldCount > 0) then
       DSQLDescribeBind(FStHandle, 3, FSQLParams);
   end;

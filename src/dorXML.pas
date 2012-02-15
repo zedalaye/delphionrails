@@ -319,7 +319,7 @@ const
     TXMLState = (xsStart, xsEatSpaces, xsElement, xsElementName, xsAttributes,
       xsAttributeName, xsEqual, xsAttributeValue, xsCloseEmptyElement,
       xsTryCloseElement, xsCloseElementName, xsChildNodes, xsElementString,
-      xsElementComment, xsCloseElementComment, xsElementPI, xsElementDataPI,
+      xsElementComment, xsCloseElementComment, xsDoctype, xsElementPI, xsElementDataPI,
       xsCloseElementPI, xsElementCDATA, xsClodeElementCDATA, xsEscape,
       xsEscape_lt, xsEscape_gt, xsEscape_amp, xsEscape_apos, xsEscape_quot,
       xsEscape_char, xsEscape_char_num, xsEscape_char_hex, xsEnd);
@@ -686,7 +686,7 @@ redo:
                         Stack^.clazz := xcCdata;
                       end;
                   else
-                    Exit(False);
+                    Stack^.state := xsDoctype;
                   end;
                 end;
               1:
@@ -722,6 +722,15 @@ redo:
                end;
             end;
           end;
+        xsDoctype:
+          // todo, parse elements ...
+          if c = '>' then
+            begin
+              Stack^.state := xsEatSpaces;
+              if Stack^.prev <> nil then
+                Stack^.savedstate := xsChildNodes else
+                Stack^.savedstate := xsStart;
+            end;
         xsElementCDATA:
           begin
             case Position of
@@ -951,11 +960,7 @@ var
 begin
   stack := TStack<IXMLNode>.Create;
   try
-    if XMLParseSAX(
-      function (var c: AnsiChar): Boolean
-      begin
-        Result := reader(c);
-      end,
+    if XMLParseSAX(reader,
       function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean
       begin
         Result := True;
