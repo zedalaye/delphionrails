@@ -41,8 +41,8 @@ type
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload;
     function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload;
     function Execute(const Command: IDBCommand; const params: Variant): ISuperObject; overload;
-    procedure OnCommit(const proc: TProc<IDBContext>);
-    procedure OnRollback(const proc: TProc<IDBContext>);
+    procedure OnCommit(const proc: TProc);
+    procedure OnRollback(const proc: TProc);
   end;
 
   IDBCommand = interface
@@ -81,8 +81,8 @@ type
 
   TDBContext = class(TSuperObject, IDBContext)
   private
-    FCommitEvent: TList<TProc<IDBContext>>;
-    FRollbackEvent: TList<TProc<IDBContext>>;
+    FCommitEvent: TList<TProc>;
+    FRollbackEvent: TList<TProc>;
   protected
     procedure TriggerCommitEvent;
     procedure TriggerRollbackEvent;
@@ -95,8 +95,8 @@ type
     function Execute(const Command: IDBCommand; const params: array of const): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: SOString): ISuperObject; overload; virtual;
     function Execute(const Command: IDBCommand; const params: Variant): ISuperObject; overload; virtual;
-    procedure OnCommit(const proc: TProc<IDBContext>);
-    procedure OnRollback(const proc: TProc<IDBContext>);
+    procedure OnCommit(const proc: TProc);
+    procedure OnRollback(const proc: TProc);
   public
     constructor Create(jt: TSuperType = stObject); override;
     destructor Destroy; override;
@@ -195,12 +195,12 @@ end;
 
 { TDBContext }
 
-procedure TDBContext.OnCommit(const proc: TProc<IDBContext>);
+procedure TDBContext.OnCommit(const proc: TProc);
 begin
   FCommitEvent.Add(proc);
 end;
 
-procedure TDBContext.OnRollback(const proc: TProc<IDBContext>);
+procedure TDBContext.OnRollback(const proc: TProc);
 begin
   FRollbackEvent.Add(proc);
 end;
@@ -208,8 +208,8 @@ end;
 constructor TDBContext.Create(jt: TSuperType);
 begin
   inherited;
-  FCommitEvent := TList<TProc<IDBContext>>.Create;
-  FRollbackEvent := TList<TProc<IDBContext>>.Create;
+  FCommitEvent := TList<TProc>.Create;
+  FRollbackEvent := TList<TProc>.Create;
 end;
 
 destructor TDBContext.Destroy;
@@ -242,16 +242,16 @@ end;
 
 procedure TDBContext.TriggerCommitEvent;
 var
-  p: TProc<IDBContext>;
+  p: TProc;
 begin
-  for p in FCommitEvent do p(self);
+  for p in FCommitEvent do p();
 end;
 
 procedure TDBContext.TriggerRollbackEvent;
 var
-  p: TProc<IDBContext>;
+  p: TProc;
 begin
-  for p in FRollbackEvent do p(self);
+  for p in FRollbackEvent do p();
 end;
 
 function TDBContext.Execute(const Command: IDBCommand;
