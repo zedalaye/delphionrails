@@ -120,33 +120,34 @@ var
 begin
   EnterCriticalSection(FCriticalSection);
   try
-    with FStub, Source do
-    begin
-      Write(b, 1, 0);
-      if len < 126 then
-        Write(len, 1, 0) else
-        if len < High(Word) then
-        begin
-          b := 126;
-          Write(b, 1, 0);
-          Write(lenarray[1], 1, 0);
-          Write(lenarray[0], 1, 0);
-        end else
-        begin
-          b := 127;
-          Write(b, 1, 0);
-          Write(lenarray[7], 1, 0);
-          Write(lenarray[6], 1, 0);
-          Write(lenarray[5], 1, 0);
-          Write(lenarray[4], 1, 0);
-          Write(lenarray[3], 1, 0);
-          Write(lenarray[2], 1, 0);
-          Write(lenarray[1], 1, 0);
-          Write(lenarray[0], 1, 0);
-        end;
-      if data <> nil then
-        Write(data^, len, 0);
-    end;
+    if FStub.Source <> nil then
+      with FStub, Source do
+      begin
+        Write(b, 1, 0);
+        if len < 126 then
+          Write(len, 1, 0) else
+          if len < High(Word) then
+          begin
+            b := 126;
+            Write(b, 1, 0);
+            Write(lenarray[1], 1, 0);
+            Write(lenarray[0], 1, 0);
+          end else
+          begin
+            b := 127;
+            Write(b, 1, 0);
+            Write(lenarray[7], 1, 0);
+            Write(lenarray[6], 1, 0);
+            Write(lenarray[5], 1, 0);
+            Write(lenarray[4], 1, 0);
+            Write(lenarray[3], 1, 0);
+            Write(lenarray[2], 1, 0);
+            Write(lenarray[1], 1, 0);
+            Write(lenarray[0], 1, 0);
+          end;
+        if data <> nil then
+          Write(data^, len, 0);
+      end;
   finally
     LeaveCriticalSection(FCriticalSection);
   end;
