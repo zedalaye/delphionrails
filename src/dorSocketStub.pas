@@ -58,6 +58,8 @@ type
     procedure Stop; virtual;
   public
     class function ThreadCount: integer;
+    class procedure BeginThread;
+    class procedure EndThread;
     property Owner: TDORThread read FOwner;
     procedure ChildClear; virtual;
     procedure Suspend;
@@ -263,8 +265,8 @@ end;
 
 constructor TDORThread.Create(AOwner: TDORThread);
 begin
+  BeginThread;
   inherited Create;
-  InterlockedIncrement(AThreadCount);
   InitializeCriticalSection(FCriticalSection);
   FPaused := False;
   FOwner := AOwner;
@@ -279,8 +281,13 @@ begin
   Stop;
   ChildClear;
   DeleteCriticalSection(FCriticalSection);
-  InterlockedDecrement(AThreadCount);
   inherited;
+  EndThread;
+end;
+
+class procedure TDORThread.EndThread;
+begin
+  InterlockedDecrement(AThreadCount);
 end;
 
 procedure TDORThread.Suspend;
@@ -325,6 +332,11 @@ begin
 end;
 
 // Childs ...
+
+class procedure TDORThread.BeginThread;
+begin
+  InterlockedIncrement(AThreadCount);
+end;
 
 function TDORThread.ChildAdd(Item: TDORThread): Integer;
 var
