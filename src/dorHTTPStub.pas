@@ -88,6 +88,7 @@ type
     procedure Render(const str: string); overload;
     procedure Redirect(const location: string); overload;
     procedure Redirect(const controler, action: string; const id: string = ''); overload;
+    property FileToSend: string read FSendFile write FSendFile;
     property Return: ISuperObject read FReturn;
     property Request: THTTPMessage read FRequest;
     property Response: THTTPMessage read FResponse;
@@ -1050,8 +1051,7 @@ end;
 
 procedure THTTPStub.ProcessRequest;
 var
-  str: string;
-  path: string;
+  str, path, ext: string;
   rec: TSearchRec;
   clazz: TRttiType;
   inst: TObject;
@@ -1080,21 +1080,43 @@ begin
         end;
       end;
 
-      if (FErrorCode >= 300) or (FErrorCode = 204) then Exit;
+      if (FErrorCode >= 300) or (FErrorCode = 204) then
+        Exit;
 
       if (Request.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
         Exit;
+
+      // file ?
+      if (FSendFile <> '') then
+      begin
+        ext := LowerCase(ExtractFileExt(FSendFile));
+        System.Delete(ext, 1, 1);
+        FResponse.AsObject.S['Content-Type'] := FFormats.S[ext + '.content'];
+        if FResponse.AsObject.S['Content-Type'] = '' then
+          FResponse.AsObject.S['Content-Type'] := 'application/binary';
+        Compress := FFormats.B[ext + '.istext'];
+
+        if FileExists(FSendFile) then
+        begin
+          FErrorCode := 200;
+          FResponse.AsObject.S['Content-Disposition'] := 'attachment; filename=' + ExtractFileName(FSendFile);
+          FResponse.AsObject.S['Content-Transfer-Encoding'] := 'binary';
+        end
+        else
+          FErrorCode := 404;
+        Exit;
+      end;
 
       // view ?
       RenderInternal;
       if not (FErrorCode in [200..207]) then
         RenderScript;
       if FErrorCode in [200..207] then
-        begin
-          FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
-          Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
-          Exit;
-        end;
+      begin
+        FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
+        Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
+        Exit;
+      end;
     end;
 
   // static ?
