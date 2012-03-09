@@ -987,7 +987,7 @@ redo:
           case c of
             '=':
               begin
-                if not Append('print(', 6) then goto needspace;
+                if not Append('print((', 7) then goto needspace;
                 pr.state := lsLuaEqual;
               end;
             '%': pr.state := lsLuaBodyEnd;
@@ -1027,7 +1027,7 @@ redo:
           case c of
             '>':
               begin
-                if not append(');', 2) then goto needspace;
+                if not append('));', 3) then goto needspace;
                 pr.state := lsStart;
               end;
           else
