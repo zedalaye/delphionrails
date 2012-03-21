@@ -16,8 +16,8 @@ type
     ['{109A05E5-73FE-4407-8AC6-5697647756F2}']
     procedure Open(const host: string; port: Word = 6379);
     procedure Close;
-    procedure Call(const count: TFunc<Integer>; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
-    procedure CallSync(const count: TFunc<Integer>; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
+    procedure Call(count: Integer; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
+    procedure CallSync(count: Integer; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
     procedure Send(const data: array of Const; const onresponse: TRedisResponse = nil);
     procedure SendSync(const data: array of Const; const onresponse: TRedisResponse = nil);
 
@@ -58,8 +58,8 @@ type
   protected
     procedure Open(const host: string; port: Word);
     procedure Close;
-    procedure Call(const getCount: TFunc<Integer>; const getData: TRedisGetParam; const onresponse: TRedisResponse);
-    procedure CallSync(const getCount: TFunc<Integer>; const getData: TRedisGetParam; const onresponse: TRedisResponse = nil);
+    procedure Call(count: Integer; const getData: TRedisGetParam; const onresponse: TRedisResponse);
+    procedure CallSync(count: Integer; const getData: TRedisGetParam; const onresponse: TRedisResponse = nil);
     procedure Send(const data: array of Const; const onresponse: TRedisResponse);
     procedure SendSync(const data: array of Const; const onresponse: TRedisResponse);
     function getReadyState: TRedisState;
@@ -110,17 +110,16 @@ type
 
 { TRedisClient }
 
-procedure TRedisClient.Call(const getCount: TFunc<Integer>; const getData: TRedisGetParam;
+procedure TRedisClient.Call(count: Integer; const getData: TRedisGetParam;
   const onresponse: TRedisResponse);
 type
   TCommand = (multi, exec, discard, other);
 var
-  count, i: Integer;
+  i: Integer;
   buff, item: UTF8String;
   cmd: TCommand;
   str: string;
 begin
-  count := getCount();
   buff := UTF8String('*' + IntToStr(count) + #13#10);
   WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
 
@@ -193,10 +192,10 @@ begin
 
 end;
 
-procedure TRedisClient.CallSync(const getCount: TFunc<Integer>;
+procedure TRedisClient.CallSync(count: Integer;
   const getData: TRedisGetParam; const onresponse: TRedisResponse);
 begin
-  Call(getCount, getData,
+  Call(count, getData,
     procedure(const err: string; const data: TArray<string>) begin
       onresponse(err, data);
       FSyncSignal.SetEvent;
@@ -549,52 +548,50 @@ var
 begin
   len := Length(data);
   arr := @data[0];
-  Call(
-    function: Integer begin Result := len end,
-      function(index: Integer): string
-      var
-        item: PVarRec;
-      begin
-        item := @arr[index];
-        case item.VType of
-          vtUnicodeString: Result := string(item.VUnicodeString);
-          vtInteger : Result := IntToStr(item.VInteger);
-          vtInt64   : Result := IntToStr(item.VInt64^);
-          vtBoolean : Result := BoolToStr(item.VBoolean);
-          vtChar    : Result := string(item.VChar);
-          vtWideChar: Result := string(item.VWideChar);
-          vtExtended: Result := FloatToStr(item.VExtended^);
-          vtCurrency: Result := CurrToStr(item.VCurrency^);
-          vtString  : Result := string(item.VString^);
-          vtPChar   : Result := string(AnsiString(item.VPChar));
-          vtAnsiString: Result := string(AnsiString(item.VAnsiString));
-          vtWideString: Result := string(PWideChar(item.VWideString));
-          vtVariant:
-            with TVarData(item.VVariant^) do
-            case VType of
-              varSmallInt: Result := IntToStr(VSmallInt);
-              varInteger:  Result := IntToStr(VInteger);
-              varSingle:   Result := FloatToStr(VSingle);
-              varDouble:   Result := FloatToStr(VDouble);
-              varCurrency: Result := CurrToStr(VCurrency);
-              varOleStr:   Result := string(VOleStr);
-              varBoolean:  Result := BoolToStr(VBoolean);
-              varShortInt: Result := IntToStr(VShortInt);
-              varByte:     Result := IntToStr(VByte);
-              varWord:     Result := IntToStr(VWord);
-              varLongWord: Result := IntToStr(VLongWord);
-              varInt64:    Result := IntToStr(VInt64);
-              varString:   Result := string(AnsiString(VString));
-              varUString:  Result := string(VUString);
-            else
-              Result := '';
-            end;
-        else
-          Result := '';
-        end;
-      end,
-
-      onresponse);
+  Call(len,
+    function(index: Integer): string
+    var
+      item: PVarRec;
+    begin
+      item := @arr[index];
+      case item.VType of
+        vtUnicodeString: Result := string(item.VUnicodeString);
+        vtInteger : Result := IntToStr(item.VInteger);
+        vtInt64   : Result := IntToStr(item.VInt64^);
+        vtBoolean : Result := BoolToStr(item.VBoolean);
+        vtChar    : Result := string(item.VChar);
+        vtWideChar: Result := string(item.VWideChar);
+        vtExtended: Result := FloatToStr(item.VExtended^);
+        vtCurrency: Result := CurrToStr(item.VCurrency^);
+        vtString  : Result := string(item.VString^);
+        vtPChar   : Result := string(AnsiString(item.VPChar));
+        vtAnsiString: Result := string(AnsiString(item.VAnsiString));
+        vtWideString: Result := string(PWideChar(item.VWideString));
+        vtVariant:
+          with TVarData(item.VVariant^) do
+          case VType of
+            varSmallInt: Result := IntToStr(VSmallInt);
+            varInteger:  Result := IntToStr(VInteger);
+            varSingle:   Result := FloatToStr(VSingle);
+            varDouble:   Result := FloatToStr(VDouble);
+            varCurrency: Result := CurrToStr(VCurrency);
+            varOleStr:   Result := string(VOleStr);
+            varBoolean:  Result := BoolToStr(VBoolean);
+            varShortInt: Result := IntToStr(VShortInt);
+            varByte:     Result := IntToStr(VByte);
+            varWord:     Result := IntToStr(VWord);
+            varLongWord: Result := IntToStr(VLongWord);
+            varInt64:    Result := IntToStr(VInt64);
+            varString:   Result := string(AnsiString(VString));
+            varUString:  Result := string(VUString);
+          else
+            Result := '';
+          end;
+      else
+        Result := '';
+      end;
+    end,
+    onresponse);
 end;
 
 procedure TRedisClient.SendSync(const data: array of Const;
