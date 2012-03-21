@@ -10,11 +10,14 @@ type
     const data: TArray<string>);
   TRedisSynchronize = reference to procedure(const res: TRedisResponse;
     const err: string; const data: TArray<string>);
+  TRedisGetParam = reference to function(index: Integer): string;
 
   IRedisClient = interface
     ['{109A05E5-73FE-4407-8AC6-5697647756F2}']
-    procedure Open(const host: string; port: Word);
+    procedure Open(const host: string; port: Word = 6379);
     procedure Close;
+    procedure Call(const count: TFunc<Integer>; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
+    procedure CallSync(const count: TFunc<Integer>; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
     procedure Send(const data: array of Const; const onresponse: TRedisResponse = nil);
     procedure SendSync(const data: array of Const; const onresponse: TRedisResponse = nil);
 
@@ -36,6 +39,8 @@ type
   end;
 
   TRedisClient = class(TInterfacedObject, IRedisClient)
+  type
+    TMultiState = (msNone, msMulti, msExec, msReturn);
   private
     FReadyState: TRedisState;
     FSocket: TSocket;
@@ -44,14 +49,17 @@ type
     FOnOpen: TProc;
     FOnClose: TProc;
     FResponses: TQueue<TRedisResponse>;
+    FMultiResponses: TQueue<TRedisResponse>;
     FRespSection: TCriticalSection;
     FSyncSignal: TEvent;
-    //FSyncResponse: TRedisResponse;
+    FMulti: TMultiState;
     procedure Listen;
     procedure Return(const err: string; const data: TArray<string>);
   protected
     procedure Open(const host: string; port: Word);
     procedure Close;
+    procedure Call(const getCount: TFunc<Integer>; const getData: TRedisGetParam; const onresponse: TRedisResponse);
+    procedure CallSync(const getCount: TFunc<Integer>; const getData: TRedisGetParam; const onresponse: TRedisResponse = nil);
     procedure Send(const data: array of Const; const onresponse: TRedisResponse);
     procedure SendSync(const data: array of Const; const onresponse: TRedisResponse);
     function getReadyState: TRedisState;
@@ -101,6 +109,102 @@ type
   end;
 
 { TRedisClient }
+
+procedure TRedisClient.Call(const getCount: TFunc<Integer>; const getData: TRedisGetParam;
+  const onresponse: TRedisResponse);
+type
+  TCommand = (multi, exec, discard, other);
+var
+  count, i: Integer;
+  buff, item: UTF8String;
+  cmd: TCommand;
+  str: string;
+begin
+  count := getCount();
+  buff := UTF8String('*' + IntToStr(count) + #13#10);
+  WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
+
+  if count > 0 then
+  begin
+    str := getData(0);
+    if SameText(str, 'multi') then cmd := multi else
+    if SameText(str, 'exec') then cmd := exec else
+    if SameText(str, 'discard') then cmd := discard else
+      cmd := other;
+  end else
+    cmd := other;
+
+  FRespSection.Enter;
+  try
+    case FMulti of
+      msNone:
+          FResponses.Enqueue(onresponse);
+      msMulti:
+        begin
+          case cmd of
+            exec, discard:
+              FResponses.Enqueue(onresponse);
+          else
+            FMultiResponses.Enqueue(onresponse);
+            FResponses.Enqueue(nil);
+          end
+        end;
+    end;
+
+    case cmd of
+      multi:
+        begin
+          if FMulti <> msNone then
+            raise Exception.Create('MULTI calls can not be nested');
+          FMulti := msMulti;
+        end;
+      exec:
+        begin
+          if FMulti <> msMulti then
+            raise Exception.Create('EXEC without MULTI');
+          FMulti := msExec;
+        end;
+      discard:
+        begin
+          if FMulti <> msMulti then
+            raise Exception.Create('DISCARD without MULTI');
+          FMulti := msNone;
+          FRespSection.Enter;
+          try
+            FMultiResponses.Clear;
+          finally
+            FRespSection.Leave;
+          end;
+        end;
+    end;
+
+  finally
+    FRespSection.Leave;
+  end;
+
+  for i := 0 to count - 1 do
+  begin
+    item := utf8string(getData(i));
+    buff := UTF8String('$' + IntToStr(Length(item)) + #13#10);
+    WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
+    item := item + #13#10;
+    WinSock.send(FSocket, PAnsiChar(item)^, Length(item), 0);
+  end;
+
+end;
+
+procedure TRedisClient.CallSync(const getCount: TFunc<Integer>;
+  const getData: TRedisGetParam; const onresponse: TRedisResponse);
+begin
+  Call(getCount, getData,
+    procedure(const err: string; const data: TArray<string>) begin
+      onresponse(err, data);
+      FSyncSignal.SetEvent;
+    end);
+  while FSyncSignal.WaitFor(100) = wrTimeout do
+    CheckSynchronize;
+  CheckSynchronize;
+end;
 
 procedure TRedisClient.Close;
 begin
@@ -176,10 +280,22 @@ end;
 procedure TRedisClient.Return(const err: string; const data: TArray<string>);
 var
   callback: TRedisResponse;
+  multilast: Boolean;
+  dummy: TArray<string>;
 begin
+  multilast := False;
   FRespSection.Enter;
   try
-    callback := FResponses.Dequeue();
+    if FMulti <> msReturn then
+      callback := FResponses.Dequeue() else
+      begin
+        callback := FMultiResponses.Dequeue();
+        if FMultiResponses.Count = 0 then
+        begin
+          FMulti := msNone;
+          multilast := True;
+        end;
+      end;
   finally
     FRespSection.Leave;
   end;
@@ -191,7 +307,8 @@ begin
         callback(err, data);
       end);
   end;
-
+  if multilast then
+    Return('', dummy);
 end;
 
 class constructor TRedisClient.Create;
@@ -205,6 +322,7 @@ destructor TRedisClient.Destroy;
 begin
   Close;
   FResponses.Free;
+  FMultiResponses.Free;
   FRespSection.Free;
   FSyncSignal.Free;
   inherited;
@@ -213,9 +331,11 @@ end;
 constructor TRedisClient.Create;
 begin
   inherited Create;
+  FMulti := msNone;
   FReadyState := rsClosed;
   FSocket := INVALID_SOCKET;
   FResponses := TQueue<TRedisResponse>.Create;
+  FMultiResponses := TQueue<TRedisResponse>.Create;
   FRespSection := TCriticalSection.Create;
   FSyncSignal := TEvent.Create;
 end;
@@ -314,7 +434,7 @@ begin
                 Return('', items);
               end;
           else
-            Assert(False); // unexpected
+            raise Exception.Create('Unexpected');
           end;
         // bulk reply
         5:
@@ -355,7 +475,7 @@ begin
                 end;
               end;
           else
-            Assert(False); // unexpected
+            raise Exception.Create('Unexpected');
           end;
         7:
           begin
@@ -379,7 +499,7 @@ begin
                   st := 10;
               end;
           else
-            Assert(False); // unexpected
+            raise Exception.Create('Unexpected');
           end;
         // multi bulk reply
         9:
@@ -388,23 +508,28 @@ begin
               count := (count * 10) + Ord(c) - Ord('0');
             #13: ;
             #10:
-              if count > 0 then
-                st := 10 else
+              if FMulti = msExec then
               begin
                 st := 1;
-                Return('', items);
-              end;
+                FMulti := msReturn;
+              end else
+                if count > 0 then
+                  st := 10 else
+                begin
+                  st := 1;
+                  Return('', items);
+                end;
           else
-            Assert(False); // unexpected
+            raise Exception.Create('Unexpected');
           end;
         10:
           case c of
             '$': st := 5;
           else
-            Assert(False); // unexpected
+            raise Exception.Create('Unexpected');
           end;
         else
-          Assert(False)// unexpected;
+          raise Exception.Create('Unexpected');
         end;
       end;
       if FReadyState = rsOpen then // remotely closed
@@ -415,64 +540,61 @@ begin
 end;
 
 procedure TRedisClient.Send(const data: array of Const; const onresponse: TRedisResponse);
+type
+  TVarRecArray = array[0..0] of TVarRec;
+  PVarRecArray = ^TVarRecArray;
 var
-  count, i: Integer;
-  buff, item: UTF8String;
+  len: Integer;
+  arr: PVarRecArray;
 begin
-  FRespSection.Enter;
-  try
-    FResponses.Enqueue(onresponse);
-  finally
-    FRespSection.Leave;
-  end;
-
-  count := Length(data);
-  buff := UTF8String('*' + IntToStr(count) + #13#10);
-  WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
-
-  for i := 0 to count - 1 do
-  begin
-    case TVarRec(data[i]).VType of
-      vtUnicodeString: item := UTF8String(string(TVarRec(data[i]).VUnicodeString));
-      vtInteger : item := UTF8String(IntToStr(TVarRec(data[i]).VInteger));
-      vtInt64   : item := UTF8String(IntToStr(TVarRec(data[i]).VInt64^));
-      vtBoolean : item := UTF8String(BoolToStr(TVarRec(data[i]).VBoolean));
-      vtChar    : item := UTF8String(TVarRec(data[i]).VChar);
-      vtWideChar: item := UTF8String(TVarRec(data[i]).VWideChar);
-      vtExtended: item := UTF8String(FloatToStr(TVarRec(data[i]).VExtended^));
-      vtCurrency: item := UTF8String(CurrToStr(TVarRec(data[i]).VCurrency^));
-      vtString  : item := UTF8String(TVarRec(data[i]).VString^);
-      vtPChar   : item := UTF8String(TVarRec(data[i]).VPChar^);
-      vtAnsiString: item := UTF8String(AnsiString(TVarRec(data[i]).VAnsiString));
-      vtWideString: item := UTF8String(PWideChar(TVarRec(data[i]).VWideString));
-      vtVariant:
-        with TVarData(TVarRec(data[i]).VVariant^) do
-        case VType of
-          varSmallInt: item := UTF8String(IntToStr(VSmallInt));
-          varInteger:  item := UTF8String(IntToStr(VInteger));
-          varSingle:   item := UTF8String(FloatToStr(VSingle));
-          varDouble:   item := UTF8String(FloatToStr(VDouble));
-          varCurrency: item := UTF8String(CurrToStr(VCurrency));
-          varOleStr:   item := UTF8String(VOleStr);
-          varBoolean:  item := UTF8String(BoolToStr(VBoolean));
-          varShortInt: item := UTF8String(IntToStr(VShortInt));
-          varByte:     item := UTF8String(IntToStr(VByte));
-          varWord:     item := UTF8String(IntToStr(VWord));
-          varLongWord: item := UTF8String(IntToStr(VLongWord));
-          varInt64:    item := UTF8String(IntToStr(VInt64));
-          varString:   item := UTF8String(AnsiString(VString));
-          varUString:  item := UTF8String(string(VUString));
+  len := Length(data);
+  arr := @data[0];
+  Call(
+    function: Integer begin Result := len end,
+      function(index: Integer): string
+      var
+        item: PVarRec;
+      begin
+        item := @arr[index];
+        case item.VType of
+          vtUnicodeString: Result := string(item.VUnicodeString);
+          vtInteger : Result := IntToStr(item.VInteger);
+          vtInt64   : Result := IntToStr(item.VInt64^);
+          vtBoolean : Result := BoolToStr(item.VBoolean);
+          vtChar    : Result := string(item.VChar);
+          vtWideChar: Result := string(item.VWideChar);
+          vtExtended: Result := FloatToStr(item.VExtended^);
+          vtCurrency: Result := CurrToStr(item.VCurrency^);
+          vtString  : Result := string(item.VString^);
+          vtPChar   : Result := string(AnsiString(item.VPChar));
+          vtAnsiString: Result := string(AnsiString(item.VAnsiString));
+          vtWideString: Result := string(PWideChar(item.VWideString));
+          vtVariant:
+            with TVarData(item.VVariant^) do
+            case VType of
+              varSmallInt: Result := IntToStr(VSmallInt);
+              varInteger:  Result := IntToStr(VInteger);
+              varSingle:   Result := FloatToStr(VSingle);
+              varDouble:   Result := FloatToStr(VDouble);
+              varCurrency: Result := CurrToStr(VCurrency);
+              varOleStr:   Result := string(VOleStr);
+              varBoolean:  Result := BoolToStr(VBoolean);
+              varShortInt: Result := IntToStr(VShortInt);
+              varByte:     Result := IntToStr(VByte);
+              varWord:     Result := IntToStr(VWord);
+              varLongWord: Result := IntToStr(VLongWord);
+              varInt64:    Result := IntToStr(VInt64);
+              varString:   Result := string(AnsiString(VString));
+              varUString:  Result := string(VUString);
+            else
+              Result := '';
+            end;
         else
-          item := '';
+          Result := '';
         end;
-    else
-      item := '';
-    end;
-    buff := UTF8String('$' + IntToStr(Length(item)) + #13#10);
-    WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
-    item := item + #13#10;
-    WinSock.send(FSocket, PAnsiChar(item)^, Length(item), 0);
-  end;
+      end,
+
+      onresponse);
 end;
 
 procedure TRedisClient.SendSync(const data: array of Const;
