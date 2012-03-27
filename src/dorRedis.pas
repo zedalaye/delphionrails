@@ -40,7 +40,11 @@ type
 
   TRedisClient = class(TInterfacedObject, IRedisClient)
   type
-    TMultiState = (msNone, msMulti, msExec, msReturn);
+    TCommand = (cmdMulti, cmdExec, cmdDiscard, cmdOther);
+    TResponseEntry = record
+      command: TCommand;
+      response: TRedisResponse;
+    end;
   private
     FReadyState: TRedisState;
     FSocket: TSocket;
@@ -48,13 +52,11 @@ type
     FOnSynchronize: TRedisSynchronize;
     FOnOpen: TProc;
     FOnClose: TProc;
-    FResponses: TQueue<TRedisResponse>;
-    FMultiResponses: TQueue<TRedisResponse>;
+    FResponses: TQueue<TResponseEntry>;
     FRespSection: TCriticalSection;
     FSyncSignal: TEvent;
-    FMulti: TMultiState;
     procedure Listen;
-    procedure Return(const err: string; const data: TArray<string>);
+    procedure Return(const callback: TRedisResponse; const err: string; const data: TArray<string>);
   protected
     procedure Open(const host: string; port: Word);
     procedure Close;
@@ -112,71 +114,31 @@ type
 
 procedure TRedisClient.Call(count: Integer; const getData: TRedisGetParam;
   const onresponse: TRedisResponse);
-type
-  TCommand = (multi, exec, discard, other);
+
+function ParseCommand(const cmd: string): TCommand;
+begin
+  Result := cmdOther;
+  case cmd[1] of
+    'm', 'M': if SameText(cmd, 'multi') then Result := cmdMulti;
+    'e', 'E': if SameText(cmd, 'exec') then Result := cmdExec;
+    'd', 'D': if SameText(cmd, 'discard') then Result := cmdDiscard;
+  end;
+end;
+
 var
   i: Integer;
   buff, item: UTF8String;
-  cmd: TCommand;
-  str: string;
+  entry: TResponseEntry;
 begin
   buff := UTF8String('*' + IntToStr(count) + #13#10);
   WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
 
-  if count > 0 then
-  begin
-    str := getData(0);
-    if SameText(str, 'multi') then cmd := multi else
-    if SameText(str, 'exec') then cmd := exec else
-    if SameText(str, 'discard') then cmd := discard else
-      cmd := other;
-  end else
-    cmd := other;
+  entry.command := ParseCommand(getData(0));
+  entry.response := onresponse;
 
   FRespSection.Enter;
   try
-    case FMulti of
-      msNone:
-          FResponses.Enqueue(onresponse);
-      msMulti:
-        begin
-          case cmd of
-            exec, discard:
-              FResponses.Enqueue(onresponse);
-          else
-            FMultiResponses.Enqueue(onresponse);
-            FResponses.Enqueue(nil);
-          end
-        end;
-    end;
-
-    case cmd of
-      multi:
-        begin
-          if FMulti <> msNone then
-            raise Exception.Create('MULTI calls can not be nested');
-          FMulti := msMulti;
-        end;
-      exec:
-        begin
-          if FMulti <> msMulti then
-            raise Exception.Create('EXEC without MULTI');
-          FMulti := msExec;
-        end;
-      discard:
-        begin
-          if FMulti <> msMulti then
-            raise Exception.Create('DISCARD without MULTI');
-          FMulti := msNone;
-          FRespSection.Enter;
-          try
-            FMultiResponses.Clear;
-          finally
-            FRespSection.Leave;
-          end;
-        end;
-    end;
-
+    FResponses.Enqueue(entry);
   finally
     FRespSection.Leave;
   end;
@@ -276,28 +238,8 @@ begin
   end;
 end;
 
-procedure TRedisClient.Return(const err: string; const data: TArray<string>);
-var
-  callback: TRedisResponse;
-  multilast: Boolean;
-  dummy: TArray<string>;
+procedure TRedisClient.Return(const callback: TRedisResponse; const err: string; const data: TArray<string>);
 begin
-  multilast := False;
-  FRespSection.Enter;
-  try
-    if FMulti <> msReturn then
-      callback := FResponses.Dequeue() else
-      begin
-        callback := FMultiResponses.Dequeue();
-        if FMultiResponses.Count = 0 then
-        begin
-          FMulti := msNone;
-          multilast := True;
-        end;
-      end;
-  finally
-    FRespSection.Leave;
-  end;
   if Assigned(callback) then
   begin
     if Assigned(FOnSynchronize) then
@@ -306,8 +248,6 @@ begin
         callback(err, data);
       end);
   end;
-  if multilast then
-    Return('', dummy);
 end;
 
 class constructor TRedisClient.Create;
@@ -321,7 +261,6 @@ destructor TRedisClient.Destroy;
 begin
   Close;
   FResponses.Free;
-  FMultiResponses.Free;
   FRespSection.Free;
   FSyncSignal.Free;
   inherited;
@@ -330,11 +269,9 @@ end;
 constructor TRedisClient.Create;
 begin
   inherited Create;
-  FMulti := msNone;
   FReadyState := rsClosed;
   FSocket := INVALID_SOCKET;
-  FResponses := TQueue<TRedisResponse>.Create;
-  FMultiResponses := TQueue<TRedisResponse>.Create;
+  FResponses := TQueue<TResponseEntry>.Create;
   FRespSection := TCriticalSection.Create;
   FSyncSignal := TEvent.Create;
 end;
@@ -345,6 +282,8 @@ begin
 end;
 
 procedure TRedisClient.Listen;
+type
+  TMultiState = (msNone, msMulti, msExec, msReturn);
 begin
   TThreadIt.Create(procedure
     var
@@ -352,189 +291,280 @@ begin
       isneg: Boolean;
       st, n, count: Integer;
       item: RawByteString;
-      items: TArray<string>;
-    begin
-      n := 0; count := 0; isneg := False;
-      st := 1;
-      while (FReadyState = rsOpen) and (recv(FSocket, c, 1, 0) = 1) do
+      items, dummy: TArray<string>;
+      multi: TMultiState;
+      multiresponses: TQueue<TRedisResponse>;
+      e: TResponseEntry;
+
+      procedure Invoke(const err: string = '');
       begin
-        case st of
-        // initial state
-        1:
-          case c of
-            '+':
-              begin
-                st := 2;
-                item := '';
-              end;
-            '-':
-              begin
-                st := 3;
-                item := '';
-              end;
-            ':':
-              begin
-                st := 4;
-                n := 0;
-              end;
-            '$':
-              begin
-                count := 1;
-                st := 5;
-                SetLength(items, 0);
-              end;
-            '*':
-              begin
-                st := 9;
-                SetLength(items, 0);
-                count := 0;
-              end;
-          else
-            st := 0;
-          end;
-        // single line reply
-        2:
-          case c of
-            #13: ;
-            #10:
-              begin
-                st := 1;
-                SetLength(items, 1);
-                items[0] := string(UTF8String(item));
-                Return('', items);
-              end;
-          else
-            item := item + c;
-          end;
-        // error message
-        3 :
-          case c of
-            #13: ;
-            #10:
-              begin
-                st := 1;
-                SetLength(items, 0);
-                Return(string(item), items);
-              end;
-          else
-            item := item + c;
-          end;
-        // integer reply
-        4:
-          case c of
-            '0'..'9':
-              n := (n * 10) + Ord(c) - Ord('0');
-            #13: ;
-            #10:
-              begin
-                st := 1;
-                SetLength(items, 1);
-                items[0] := IntToStr(n);
-                Return('', items);
-              end;
-          else
-            raise Exception.Create('Unexpected');
-          end;
-        // bulk reply
-        5:
-          begin
-            if c <> '-' then
-            begin
-              n := Ord(c) - Ord('0');
-              isneg := False;
-            end else
-            begin
-              n := 0;
-              isneg := True;
+        case multi of
+          msNone: Return(e.response, err, items);
+          msMulti:
+            case e.command of
+              cmdExec, cmdDiscard:
+                Return(e.response, err, items);
             end;
-            st := 6;
-          end;
-        6:
-          case c of
-            '0'..'9':
-              n := (n * 10) + Ord(c) - Ord('0');
-            #13: ;
-            #10:
+          msReturn:
+            begin
+              Return(e.response, err, items);
+              if multiresponses.Count = 1 then
               begin
-                if not isneg then
+                multi := msNone;
+                Return(multiresponses.Dequeue(), '', dummy);
+              end;
+            end;
+        end;
+
+      end;
+
+      procedure getstate;
+      begin
+        if multi <> msReturn then
+        begin
+          FRespSection.Enter;
+          try
+            e := FResponses.Dequeue;
+          finally
+            FRespSection.Leave;
+          end;
+
+          case e.command of
+            cmdOther:
+              if (multi = msMulti) then
+                multiresponses.Enqueue(e.response);
+            cmdMulti:
+              begin
+                if multi <> msNone then
+                  raise Exception.Create('MULTI calls can not be nested');
+                multi := msMulti;
+              end;
+            cmdExec:
+              begin
+                if multi <> msMulti then
+                  raise Exception.Create('EXEC without MULTI');
+                multiresponses.Enqueue(e.response);
+                multi := msExec;
+              end;
+            cmdDiscard:
+              begin
+                if multi <> msMulti then
+                  raise Exception.Create('DISCARD without MULTI');
+                multi := msNone;
+                multiresponses.Clear;
+              end;
+          end;
+        end else
+        begin
+          e.command := cmdOther;
+          e.response := multiresponses.Dequeue();
+        end;
+      end;
+
+      procedure unexpected;
+      begin
+        raise Exception.Create('unexpected');
+      end;
+    begin
+      multi := msNone;
+      multiresponses := TQueue<TRedisResponse>.Create;
+      try
+        n := 0; count := 0; isneg := False;
+        st := 1;
+        while (FReadyState = rsOpen) and (recv(FSocket, c, 1, 0) = 1) do
+        begin
+          write(c);
+          case st of
+          // initial state
+          1:
+            begin
+              getstate;
+              case c of
+                '+':
+                  begin
+                    st := 2;
+                    item := '';
+                  end;
+                '-':
+                  begin
+                    st := 3;
+                    item := '';
+                  end;
+                ':':
+                  begin
+                    st := 4;
+                    n := 0;
+                  end;
+                '$':
+                  begin
+                    count := 1;
+                    st := 5;
+                    SetLength(items, 0);
+                  end;
+                '*':
+                  begin
+                    st := 9;
+                    SetLength(items, 0);
+                    count := 0;
+                  end;
+              else
+                st := 0;
+              end;
+            end;
+          // single line reply
+          2:
+            case c of
+              #13: ;
+              #10:
                 begin
-                  if n > 0 then
-                    st := 7 else
-                    st := 8;
-                  item := '';
-                end else
+                  st := 1;
+                  SetLength(items, 1);
+                  items[0] := string(UTF8String(item));
+                  invoke();
+                end;
+            else
+              item := item + c;
+            end;
+          // error message
+          3 :
+            case c of
+              #13: ;
+              #10:
                 begin
+                  st := 1;
+                  SetLength(items, 0);
+                  invoke(string(item));
+                end;
+            else
+              item := item + c;
+            end;
+          // integer reply
+          4:
+            case c of
+              '0'..'9':
+                n := (n * 10) + Ord(c) - Ord('0');
+              #13: ;
+              #10:
+                begin
+                  st := 1;
+                  SetLength(items, 1);
+                  items[0] := IntToStr(n);
+                  invoke();
+                end;
+            else
+              unexpected
+            end;
+          // bulk reply
+          5:
+            begin
+              if c <> '-' then
+              begin
+                n := Ord(c) - Ord('0');
+                isneg := False;
+              end else
+              begin
+                n := 0;
+                isneg := True;
+              end;
+              st := 6;
+            end;
+          6:
+            case c of
+              '0'..'9':
+                n := (n * 10) + Ord(c) - Ord('0');
+              #13: ;
+              #10:
+                begin
+                  if not isneg then
+                  begin
+                    if n > 0 then
+                      st := 7 else
+                      st := 8;
+                    item := '';
+                  end else
+                  begin
+                    dec(count);
+                    if count = 0 then
+                    begin
+                      st := 1;
+                      invoke();
+                    end else
+                      st := 10;
+                  end;
+                end;
+            else
+              unexpected
+            end;
+          7:
+            begin
+              dec(n);
+              item := item + c;
+              if n = 0 then st := 8;
+            end;
+          8:
+            case c of
+              #13: ;
+              #10:
+                begin
+                  SetLength(items, Length(items) + 1);
+                  items[Length(items) - 1] := string(UTF8String(item));
                   dec(count);
                   if count = 0 then
                   begin
                     st := 1;
-                    Return('', items);
+                    invoke();
                   end else
                     st := 10;
                 end;
-              end;
-          else
-            raise Exception.Create('Unexpected');
-          end;
-        7:
-          begin
-            dec(n);
-            item := item + c;
-            if n = 0 then st := 8;
-          end;
-        8:
-          case c of
-            #13: ;
-            #10:
-              begin
-                SetLength(items, Length(items) + 1);
-                items[Length(items) - 1] := string(UTF8String(item));
-                dec(count);
-                if count = 0 then
-                begin
-                  st := 1;
-                  Return('', items);
-                end else
-                  st := 10;
-              end;
-          else
-            raise Exception.Create('Unexpected');
-          end;
-        // multi bulk reply
-        9:
-          case c of
-            '0'..'9':
-              count := (count * 10) + Ord(c) - Ord('0');
-            #13: ;
-            #10:
-              if FMulti = msExec then
-              begin
-                st := 1;
-                FMulti := msReturn;
-              end else
-                if count > 0 then
-                  st := 10 else
-                begin
-                  st := 1;
-                  Return('', items);
+            else
+              unexpected
+            end;
+          // multi bulk reply
+          9:
+            case c of
+              '0'..'9':
+                count := (count * 10) + Ord(c) - Ord('0');
+              #13: ;
+              #10:
+                case multi of
+                msExec:
+                  begin
+                    st := 1;
+                    if count > 0 then
+                      multi := msReturn else
+                      begin
+                        multi := msNone;
+                        invoke();
+                      end;
+                  end;
+                else
+                  if count > 0 then
+                    st := 10 else
+                  begin
+                    st := 1;
+                    invoke();
+                  end;
                 end;
+            else
+              unexpected
+            end;
+          10:
+            case c of
+              '$': st := 5;
+            else
+              unexpected
+            end;
           else
-            raise Exception.Create('Unexpected');
+            unexpected
           end;
-        10:
-          case c of
-            '$': st := 5;
-          else
-            raise Exception.Create('Unexpected');
-          end;
-        else
-          raise Exception.Create('Unexpected');
         end;
+        if FReadyState = rsOpen then // remotely closed
+          TThread.Synchronize(nil, procedure begin
+            Close;
+          end);
+      finally
+        multiresponses.Free;
       end;
-      if FReadyState = rsOpen then // remotely closed
-        TThread.Synchronize(nil, procedure begin
-          Close;
-        end);
     end);
 end;
 
