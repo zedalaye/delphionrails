@@ -373,7 +373,7 @@ begin
         st := 1;
         while (FReadyState = rsOpen) and (recv(FSocket, c, 1, 0) = 1) do
         begin
-          write(c);
+          //write(c);
           case st of
           // initial state
           1:
