@@ -17,9 +17,7 @@ type
     procedure Open(const host: string; port: Word = 6379);
     procedure Close;
     procedure Call(count: Integer; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
-    procedure CallSync(count: Integer; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
     procedure Send(const data: array of Const; const onresponse: TRedisResponse = nil);
-    procedure SendSync(const data: array of Const; const onresponse: TRedisResponse = nil);
 
     function getReadyState: TRedisState;
     function GetOnClose: TProc;
@@ -41,6 +39,7 @@ type
   TRedisClient = class(TInterfacedObject, IRedisClient)
   type
     TCommand = (cmdMulti, cmdExec, cmdDiscard, cmdOther);
+    TMultiState = (msNone, msMulti, msExec, msReturn);
     TResponseEntry = record
       command: TCommand;
       response: TRedisResponse;
@@ -54,16 +53,18 @@ type
     FOnClose: TProc;
     FResponses: TQueue<TResponseEntry>;
     FRespSection: TCriticalSection;
-    FSyncSignal: TEvent;
+    FFormatSettings: TFormatSettings;
+    FSync: Boolean;
+    // Thread variables
+    FMulti: TMultiState;
+    FMultiresponses: TQueue<TRedisResponse>;
     procedure Listen;
     procedure Return(const callback: TRedisResponse; const err: string; const data: TArray<string>);
   protected
     procedure Open(const host: string; port: Word);
     procedure Close;
     procedure Call(count: Integer; const getData: TRedisGetParam; const onresponse: TRedisResponse);
-    procedure CallSync(count: Integer; const getData: TRedisGetParam; const onresponse: TRedisResponse = nil);
     procedure Send(const data: array of Const; const onresponse: TRedisResponse);
-    procedure SendSync(const data: array of Const; const onresponse: TRedisResponse);
     function getReadyState: TRedisState;
     function GetOnClose: TProc;
     function GetOnError: TRedisMessage;
@@ -74,7 +75,7 @@ type
     procedure SetOnOpen(const value: TProc);
     procedure SetOnSynchronize(const sync: TRedisSynchronize);
   public
-    constructor Create; virtual;
+    constructor Create(sync: Boolean = False); virtual;
     destructor Destroy; override;
     class constructor Create;
     class destructor Destroy;
@@ -151,20 +152,8 @@ begin
     item := item + #13#10;
     WinSock.send(FSocket, PAnsiChar(item)^, Length(item), 0);
   end;
-
-end;
-
-procedure TRedisClient.CallSync(count: Integer;
-  const getData: TRedisGetParam; const onresponse: TRedisResponse);
-begin
-  Call(count, getData,
-    procedure(const err: string; const data: TArray<string>) begin
-      onresponse(err, data);
-      FSyncSignal.SetEvent;
-    end);
-  while FSyncSignal.WaitFor(100) = wrTimeout do
-    CheckSynchronize;
-  CheckSynchronize;
+  if FSync then
+    Listen;
 end;
 
 procedure TRedisClient.Close;
@@ -226,8 +215,8 @@ begin
     FReadyState := rsOpen;
     if Assigned(FOnOpen) then
       FOnOpen();
-
-    Listen;
+    if not FSync then
+      Listen;
   finally
     if FReadyState = rsConnecting then
     begin
@@ -242,11 +231,13 @@ procedure TRedisClient.Return(const callback: TRedisResponse; const err: string;
 begin
   if Assigned(callback) then
   begin
-    if Assigned(FOnSynchronize) then
-      FOnSynchronize(callback, err, data) else
-      TThreadIt.Synchronize(nil, procedure begin
-        callback(err, data);
-      end);
+    if FSync then
+      callback(err, data) else
+      if Assigned(FOnSynchronize) then
+        FOnSynchronize(callback, err, data) else
+        TThreadIt.Synchronize(nil, procedure begin
+          callback(err, data);
+        end);
   end;
 end;
 
@@ -262,18 +253,22 @@ begin
   Close;
   FResponses.Free;
   FRespSection.Free;
-  FSyncSignal.Free;
+  FMultiresponses.Free;
   inherited;
 end;
 
-constructor TRedisClient.Create;
+constructor TRedisClient.Create(sync: Boolean = False);
 begin
   inherited Create;
+  FSync := sync;
+  FMulti := msNone;
+  FMultiresponses := TQueue<TRedisResponse>.Create;
+  FFormatSettings := TFormatSettings.Create;
+  FFormatSettings.DecimalSeparator := '.';
   FReadyState := rsClosed;
   FSocket := INVALID_SOCKET;
   FResponses := TQueue<TResponseEntry>.Create;
   FRespSection := TCriticalSection.Create;
-  FSyncSignal := TEvent.Create;
 end;
 
 function TRedisClient.getReadyState: TRedisState;
@@ -282,45 +277,53 @@ begin
 end;
 
 procedure TRedisClient.Listen;
-type
-  TMultiState = (msNone, msMulti, msExec, msReturn);
+var
+  method: TProc;
 begin
-  TThreadIt.Create(procedure
+  method := procedure
     var
       c: AnsiChar;
       isneg: Boolean;
       st, n, count: Integer;
       item: RawByteString;
       items, dummy: TArray<string>;
-      multi: TMultiState;
-      multiresponses: TQueue<TRedisResponse>;
       e: TResponseEntry;
 
-      procedure Invoke(const err: string = '');
+      function Invoke(const err: string = ''): Boolean;
       begin
-        case multi of
-          msNone: Return(e.response, err, items);
+        case FMulti of
+          msNone:
+          begin
+            Return(e.response, err, items);
+            Result := FSync;
+          end;
           msMulti:
-            case e.command of
-              cmdExec, cmdDiscard:
-                Return(e.response, err, items);
+            begin
+              case e.command of
+                cmdExec, cmdDiscard:
+                  Return(e.response, err, items);
+              end;
+              Result := FSync;
             end;
           msReturn:
             begin
               Return(e.response, err, items);
-              if multiresponses.Count = 1 then
+              if FMultiresponses.Count = 1 then
               begin
-                multi := msNone;
-                Return(multiresponses.Dequeue(), '', dummy);
-              end;
+                FMulti := msNone;
+                Return(FMultiresponses.Dequeue(), '', dummy);
+                Result := FSync;
+              end else
+                Result := False;
             end;
+        else
+          Result := FSync;
         end;
-
       end;
 
       procedure getstate;
       begin
-        if multi <> msReturn then
+        if FMulti <> msReturn then
         begin
           FRespSection.Enter;
           try
@@ -331,33 +334,33 @@ begin
 
           case e.command of
             cmdOther:
-              if (multi = msMulti) then
-                multiresponses.Enqueue(e.response);
+              if (FMulti = msMulti) then
+                FMultiresponses.Enqueue(e.response);
             cmdMulti:
               begin
-                if multi <> msNone then
+                if FMulti <> msNone then
                   raise Exception.Create('MULTI calls can not be nested');
-                multi := msMulti;
+                FMulti := msMulti;
               end;
             cmdExec:
               begin
-                if multi <> msMulti then
+                if FMulti <> msMulti then
                   raise Exception.Create('EXEC without MULTI');
-                multiresponses.Enqueue(e.response);
-                multi := msExec;
+                FMultiresponses.Enqueue(e.response);
+                FMulti := msExec;
               end;
             cmdDiscard:
               begin
-                if multi <> msMulti then
+                if FMulti <> msMulti then
                   raise Exception.Create('DISCARD without MULTI');
-                multi := msNone;
-                multiresponses.Clear;
+                FMulti := msNone;
+                FMultiresponses.Clear;
               end;
           end;
         end else
         begin
           e.command := cmdOther;
-          e.response := multiresponses.Dequeue();
+          e.response := FMultiresponses.Dequeue();
         end;
       end;
 
@@ -366,206 +369,202 @@ begin
         raise Exception.Create('unexpected');
       end;
     begin
-      multi := msNone;
-      multiresponses := TQueue<TRedisResponse>.Create;
-      try
-        n := 0; count := 0; isneg := False;
-        st := 1;
-        while (FReadyState = rsOpen) and (recv(FSocket, c, 1, 0) = 1) do
-        begin
-          //write(c);
-          case st of
-          // initial state
-          1:
-            begin
-              getstate;
-              case c of
-                '+':
-                  begin
-                    st := 2;
-                    item := '';
-                  end;
-                '-':
-                  begin
-                    st := 3;
-                    item := '';
-                  end;
-                ':':
-                  begin
-                    st := 4;
-                    n := 0;
-                  end;
-                '$':
-                  begin
-                    count := 1;
-                    st := 5;
-                    SetLength(items, 0);
-                  end;
-                '*':
-                  begin
-                    st := 9;
-                    SetLength(items, 0);
-                    count := 0;
-                  end;
-              else
-                st := 0;
-              end;
-            end;
-          // single line reply
-          2:
+      n := 0; count := 0; isneg := False;
+      st := 1;
+      while (FReadyState = rsOpen) and (recv(FSocket, c, 1, 0) = 1) do
+      begin
+        case st of
+        // initial state
+        1:
+          begin
+            getstate;
             case c of
-              #13: ;
-              #10:
+              '+':
                 begin
-                  st := 1;
-                  SetLength(items, 1);
-                  items[0] := string(UTF8String(item));
-                  invoke();
+                  st := 2;
+                  item := '';
                 end;
-            else
-              item := item + c;
-            end;
-          // error message
-          3 :
-            case c of
-              #13: ;
-              #10:
+              '-':
                 begin
-                  st := 1;
+                  st := 3;
+                  item := '';
+                end;
+              ':':
+                begin
+                  st := 4;
+                  n := 0;
+                end;
+              '$':
+                begin
+                  count := 1;
+                  st := 5;
                   SetLength(items, 0);
-                  invoke(string(item));
                 end;
-            else
-              item := item + c;
-            end;
-          // integer reply
-          4:
-            case c of
-              '0'..'9':
-                n := (n * 10) + Ord(c) - Ord('0');
-              #13: ;
-              #10:
+              '*':
                 begin
-                  st := 1;
-                  SetLength(items, 1);
-                  items[0] := IntToStr(n);
-                  invoke();
+                  st := 9;
+                  SetLength(items, 0);
+                  count := 0;
                 end;
             else
-              unexpected
+              st := 0;
             end;
-          // bulk reply
-          5:
-            begin
-              if c <> '-' then
+          end;
+        // single line reply
+        2:
+          case c of
+            #13: ;
+            #10:
               begin
-                n := Ord(c) - Ord('0');
-                isneg := False;
-              end else
-              begin
-                n := 0;
-                isneg := True;
+                st := 1;
+                SetLength(items, 1);
+                items[0] := string(UTF8String(item));
+                if invoke() then Exit;
               end;
-              st := 6;
-            end;
-          6:
-            case c of
-              '0'..'9':
-                n := (n * 10) + Ord(c) - Ord('0');
-              #13: ;
-              #10:
-                begin
-                  if not isneg then
-                  begin
-                    if n > 0 then
-                      st := 7 else
-                      st := 8;
-                    item := '';
-                  end else
-                  begin
-                    dec(count);
-                    if count = 0 then
-                    begin
-                      st := 1;
-                      invoke();
-                    end else
-                      st := 10;
-                  end;
-                end;
-            else
-              unexpected
-            end;
-          7:
+          else
+            item := item + c;
+          end;
+        // error message
+        3 :
+          case c of
+            #13: ;
+            #10:
+              begin
+                st := 1;
+                SetLength(items, 0);
+                if invoke(string(item)) then Exit;
+              end;
+          else
+            item := item + c;
+          end;
+        // integer reply
+        4:
+          case c of
+            '0'..'9':
+              n := (n * 10) + Ord(c) - Ord('0');
+            #13: ;
+            #10:
+              begin
+                st := 1;
+                SetLength(items, 1);
+                items[0] := IntToStr(n);
+                if invoke() then Exit;
+              end;
+          else
+            unexpected
+          end;
+        // bulk reply
+        5:
+          begin
+            if c <> '-' then
             begin
-              dec(n);
-              item := item + c;
-              if n = 0 then st := 8;
+              n := Ord(c) - Ord('0');
+              isneg := False;
+            end else
+            begin
+              n := 0;
+              isneg := True;
             end;
-          8:
-            case c of
-              #13: ;
-              #10:
+            st := 6;
+          end;
+        6:
+          case c of
+            '0'..'9':
+              n := (n * 10) + Ord(c) - Ord('0');
+            #13: ;
+            #10:
+              begin
+                if not isneg then
                 begin
-                  SetLength(items, Length(items) + 1);
-                  items[Length(items) - 1] := string(UTF8String(item));
+                  if n > 0 then
+                    st := 7 else
+                    st := 8;
+                  item := '';
+                end else
+                begin
                   dec(count);
                   if count = 0 then
                   begin
                     st := 1;
-                    invoke();
+                    if invoke() then Exit;
                   end else
                     st := 10;
                 end;
-            else
-              unexpected
-            end;
-          // multi bulk reply
-          9:
-            case c of
-              '0'..'9':
-                count := (count * 10) + Ord(c) - Ord('0');
-              #13: ;
-              #10:
-                case multi of
-                msExec:
-                  begin
-                    st := 1;
-                    if count > 0 then
-                      multi := msReturn else
-                      begin
-                        multi := msNone;
-                        invoke();
-                      end;
-                  end;
-                else
-                  if count > 0 then
-                    st := 10 else
-                  begin
-                    st := 1;
-                    invoke();
-                  end;
-                end;
-            else
-              unexpected
-            end;
-          10:
-            case c of
-              '$': st := 5;
-            else
-              unexpected
-            end;
+              end;
           else
             unexpected
           end;
+        7:
+          begin
+            dec(n);
+            item := item + c;
+            if n = 0 then st := 8;
+          end;
+        8:
+          case c of
+            #13: ;
+            #10:
+              begin
+                SetLength(items, Length(items) + 1);
+                items[Length(items) - 1] := string(UTF8String(item));
+                dec(count);
+                if count = 0 then
+                begin
+                  st := 1;
+                  if invoke() then Exit;
+                end else
+                  st := 10;
+              end;
+          else
+            unexpected
+          end;
+        // FMulti bulk reply
+        9:
+          case c of
+            '0'..'9':
+              count := (count * 10) + Ord(c) - Ord('0');
+            #13: ;
+            #10:
+              case FMulti of
+              msExec:
+                begin
+                  st := 1;
+                  if count > 0 then
+                    FMulti := msReturn else
+                    begin
+                      FMulti := msNone;
+                      if invoke() then Exit;
+                    end;
+                end;
+              else
+                if count > 0 then
+                  st := 10 else
+                begin
+                  st := 1;
+                  if invoke() then Exit;
+                end;
+              end;
+          else
+            unexpected
+          end;
+        10:
+          case c of
+            '$': st := 5;
+          else
+            unexpected
+          end;
+        else
+          unexpected
         end;
-        if FReadyState = rsOpen then // remotely closed
-          TThread.Synchronize(nil, procedure begin
-            Close;
-          end);
-      finally
-        multiresponses.Free;
       end;
-    end);
+      if FReadyState = rsOpen then // remotely closed
+        TThread.Synchronize(nil, procedure begin
+          Close;
+        end);
+    end;
+  if FSync then
+    method() else
+    TThreadIt.Create(method);
 end;
 
 procedure TRedisClient.Send(const data: array of Const; const onresponse: TRedisResponse);
@@ -591,8 +590,8 @@ begin
         vtBoolean : Result := BoolToStr(item.VBoolean);
         vtChar    : Result := string(item.VChar);
         vtWideChar: Result := string(item.VWideChar);
-        vtExtended: Result := FloatToStr(item.VExtended^);
-        vtCurrency: Result := CurrToStr(item.VCurrency^);
+        vtExtended: Result := FloatToStr(item.VExtended^, FFormatSettings);
+        vtCurrency: Result := CurrToStr(item.VCurrency^, FFormatSettings);
         vtString  : Result := string(item.VString^);
         vtPChar   : Result := string(AnsiString(item.VPChar));
         vtAnsiString: Result := string(AnsiString(item.VAnsiString));
@@ -602,9 +601,9 @@ begin
           case VType of
             varSmallInt: Result := IntToStr(VSmallInt);
             varInteger:  Result := IntToStr(VInteger);
-            varSingle:   Result := FloatToStr(VSingle);
-            varDouble:   Result := FloatToStr(VDouble);
-            varCurrency: Result := CurrToStr(VCurrency);
+            varSingle:   Result := FloatToStr(VSingle, FFormatSettings);
+            varDouble:   Result := FloatToStr(VDouble, FFormatSettings);
+            varCurrency: Result := CurrToStr(VCurrency, FFormatSettings);
             varOleStr:   Result := string(VOleStr);
             varBoolean:  Result := BoolToStr(VBoolean);
             varShortInt: Result := IntToStr(VShortInt);
@@ -622,19 +621,6 @@ begin
       end;
     end,
     onresponse);
-end;
-
-procedure TRedisClient.SendSync(const data: array of Const;
-  const onresponse: TRedisResponse);
-begin
-  Send(data,
-    procedure(const err: string; const data: TArray<string>) begin
-      onresponse(err, data);
-      FSyncSignal.SetEvent;
-    end);
-  while FSyncSignal.WaitFor(100) = wrTimeout do
-    CheckSynchronize;
-  CheckSynchronize;
 end;
 
 procedure TRedisClient.SetOnClose(const value: TProc);
