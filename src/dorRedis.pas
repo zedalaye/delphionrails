@@ -257,7 +257,7 @@ begin
   inherited;
 end;
 
-constructor TRedisClient.Create(sync: Boolean = False);
+constructor TRedisClient.Create(sync: Boolean);
 begin
   inherited Create;
   FSync := sync;
