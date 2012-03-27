@@ -75,7 +75,7 @@ type
     procedure SetOnOpen(const value: TProc);
     procedure SetOnSynchronize(const sync: TRedisSynchronize);
   public
-    constructor Create(sync: Boolean = False); virtual;
+    constructor Create(sync: Boolean); virtual;
     destructor Destroy; override;
     class constructor Create;
     class destructor Destroy;
