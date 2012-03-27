@@ -558,9 +558,9 @@ begin
         end;
       end;
       if FReadyState = rsOpen then // remotely closed
-        TThread.Synchronize(nil, procedure begin
-          Close;
-        end);
+        if FSync then
+          Close else
+          TThread.Synchronize(nil, procedure begin Close end);
     end;
   if FSync then
     method() else
