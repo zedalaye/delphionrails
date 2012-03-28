@@ -5,35 +5,109 @@ uses SysUtils, WinSock, SyncObjs, Generics.Collections;
 
 type
   TRedisState = (rsConnecting, rsOpen, rsClosing, rsClosed);
-  TRedisMessage = reference to procedure(const err: string);
-  TRedisResponse = reference to procedure(const err: string;
-    const data: TArray<string>);
-  TRedisSynchronize = reference to procedure(const res: TRedisResponse;
-    const err: string; const data: TArray<string>);
+  TProcByte = reference to procedure(value: Byte);
+  TProcInteger = reference to procedure(value: Integer);
+  TProcInt64 = reference to procedure(value: Int64);
+  TProcBoolean = reference to procedure(value: Boolean);
+  TProcString = reference to procedure(const value: string);
+
+  TRedisSynchronize = reference to procedure(const res: TProcString;
+    const value: string);
   TRedisGetParam = reference to function(index: Integer): string;
 
   IRedisClient = interface
     ['{109A05E5-73FE-4407-8AC6-5697647756F2}']
     procedure Open(const host: string; port: Word = 6379);
     procedure Close;
-    procedure Call(count: Integer; const data: TRedisGetParam; const onresponse: TRedisResponse = nil);
-    procedure Send(const data: array of Const; const onresponse: TRedisResponse = nil);
-
+    procedure Call(count: Integer; const getData: TRedisGetParam;
+      const onresponse: TProcString = nil;
+      const onerror: TProcString = nil;
+      const onreturn: TProcString = nil); overload;
+    procedure Call(const data: array of Const;
+      const onresponse: TProcString = nil;
+      const onerror: TProcString = nil;
+      const onreturn: TProcString = nil); overload;
+    procedure Call(const data: string;
+      const onresponse: TProcString = nil;
+      const onerror: TProcString = nil;
+      const onreturn: TProcString = nil); overload;
     function getReadyState: TRedisState;
     function GetOnClose: TProc;
-    function GetOnError: TRedisMessage;
+    function GetOnError: TProcString;
     function GetOnOpen: TProc;
     function GetOnSynchronize: TRedisSynchronize;
 
     procedure SetOnClose(const value: TProc);
-    procedure SetOnError(const value: TRedisMessage);
+    procedure SetOnError(const value: TProcString);
     procedure SetOnOpen(const value: TProc);
     procedure SetOnSynchronize(const sync: TRedisSynchronize);
 
     property OnOpen: TProc read GetOnOpen write SetOnOpen;
     property OnClose: TProc read GetOnClose write SetOnClose;
-    property OnError: TRedisMessage read GetOnError write SetOnError;
+    property OnError: TProcString read GetOnError write SetOnError;
     property OnSynchronize: TRedisSynchronize read GetOnSynchronize write SetOnSynchronize;
+  end;
+
+  IRedisClientSync = interface(IRedisClient)
+  ['{E6EB6CD5-262E-49A7-863A-F84FB65DE421}']
+    procedure Auth(const password: string);
+    procedure BGRewriteAOF;
+    procedure BGSave;
+    // keys
+    function Del(const keys: array of const): Int64;
+    function Exists(const key: string): Boolean;
+    function Expire(const key: string; timeout: Cardinal): Boolean;
+    function ExpireAt(const key: string; date: TDateTime): Boolean;
+    function Keys(const pattern: string; const onkey: TProcString = nil): Int64;
+    function Move(const key: string; db: Word): Boolean;
+    function ObjectRefcount(const key: string): Int64;
+    function ObjectEncoding(const key: string): string;
+    function ObjectIdletime(const key: string): Int64;
+    function Persist(const key: string): Boolean;
+    function PExpire(const key: string; milliseconds: UInt64): Boolean;
+    function PExpireAt(const key: string; date: TDateTime): Boolean;
+    function PTTL(const key: string): Int64;
+    function RandomKey: string;
+    procedure Rename(const key, newkey: string);
+    function RenameNX(const key, newkey: string): Boolean;
+    function Sort(const pattern: string; const onkey: TProcString = nil): Int64;
+    // string
+    function Append(const key, value: string): Int64;
+    function Decr(const key: string): Int64;
+    function DecrBy(const key: string; decrement: Int64): Int64;
+    function Get(const key: string): string;
+    function GetBit(const key: string; offset: byte): Byte;
+  end;
+
+  IRedisClientAsync = interface(IRedisClient)
+  ['{C234E5CE-199E-4D68-8877-6FC82B8DB1D6}']
+    procedure Auth(const password: string; const return: TProc = nil);
+    procedure BGRewriteAOF(const return: TProc = nil);
+    procedure BGSave(const return: TProc = nil);
+    //keys
+    procedure Del(const keys: array of const; const return: TProcInt64 = nil);
+    procedure Exists(const key: string; const return: TProcBoolean);
+    procedure Expire(const key: string; timeout: Cardinal; const return: TProcBoolean = nil);
+    procedure ExpireAt(const key: string; date: TDateTime; const return: TProcBoolean = nil);
+    procedure Keys(const pattern: string; const onkey: TProcString; const return: TProc = nil);
+    procedure Move(const key: string; db: Word; const return: TProcBoolean);
+    procedure ObjectRefcount(const key: string; const return: TProcInt64);
+    procedure ObjectEncoding(const key: string; const return: TProcString);
+    procedure ObjectIdletime(const key: string; const return: TProcInt64);
+    procedure Persist(const key: string; const return: TProcBoolean);
+    procedure PExpire(const key: string; milliseconds: UInt64; const return: TProcBoolean);
+    procedure PExpireAt(const key: string; date: TDateTime; const return: TProcBoolean = nil);
+    procedure PTTL(const key: string; const return: TProcInt64);
+    procedure RandomKey(const return: TProcString);
+    procedure Rename(const key, newkey: string; const return: TProc = nil);
+    procedure RenameNX(const key, newkey: string; const return: TProcBoolean = nil);
+    procedure Sort(const pattern: string; const onkey: TProcString; const return: TProc = nil);
+    // string
+    procedure Append(const key, value: string; const return: TProcInt64 = nil);
+    procedure Decr(const key: string; const return: TProcInt64 = nil);
+    procedure DecrBy(const key: string; decrement: Int64; const return: TProcInt64 = nil);
+    procedure Get(const key: string; const return: TProcString);
+    procedure GetBit(const key: string; offset: byte; const return: TProcByte);
   end;
 
   TRedisClient = class(TInterfacedObject, IRedisClient)
@@ -42,12 +116,14 @@ type
     TMultiState = (msNone, msMulti, msExec, msReturn);
     TResponseEntry = record
       command: TCommand;
-      response: TRedisResponse;
+      onerror: TProcString;
+      onresponse: TProcString;
+      onreturn: TProcString;
     end;
   private
     FReadyState: TRedisState;
     FSocket: TSocket;
-    FOnError: TRedisMessage;
+    FOnError: TProcString;
     FOnSynchronize: TRedisSynchronize;
     FOnOpen: TProc;
     FOnClose: TProc;
@@ -57,21 +133,25 @@ type
     FSync: Boolean;
     // Thread variables
     FMulti: TMultiState;
-    FMultiresponses: TQueue<TRedisResponse>;
+    FMultiresponses: TQueue<TResponseEntry>;
     procedure Listen;
-    procedure Return(const callback: TRedisResponse; const err: string; const data: TArray<string>);
+    procedure Return(const callback: TProcString; const value: string = '');
   protected
     procedure Open(const host: string; port: Word);
     procedure Close;
-    procedure Call(count: Integer; const getData: TRedisGetParam; const onresponse: TRedisResponse);
-    procedure Send(const data: array of Const; const onresponse: TRedisResponse);
+    procedure Call(count: Integer; const getData: TRedisGetParam;
+      const onresponse, onerror, onreturn: TProcString); overload;
+    procedure Call(const data: array of Const;
+      const onresponse, onerror, onreturn: TProcString); overload;
+    procedure Call(const data: string;
+      const onresponse, onerror, onreturn: TProcString); overload;
     function getReadyState: TRedisState;
     function GetOnClose: TProc;
-    function GetOnError: TRedisMessage;
+    function GetOnError: TProcString;
     function GetOnOpen: TProc;
     function GetOnSynchronize: TRedisSynchronize;
     procedure SetOnClose(const value: TProc);
-    procedure SetOnError(const value: TRedisMessage);
+    procedure SetOnError(const value: TProcString);
     procedure SetOnOpen(const value: TProc);
     procedure SetOnSynchronize(const sync: TRedisSynchronize);
   public
@@ -81,9 +161,129 @@ type
     class destructor Destroy;
   end;
 
+  TRedisClientSync = class(TRedisClient, IRedisClientSync)
+  protected
+    procedure doError(const error: string); virtual;
+  protected
+    procedure Auth(const password: string);
+    procedure BGRewriteAOF;
+    procedure BGSave;
+    // keys function
+    function Del(const keys: array of const): Int64;
+    function Exists(const key: string): Boolean;
+    function Expire(const key: string; seconds: Cardinal): Boolean;
+    function ExpireAt(const key: string; date: TDateTime): Boolean;
+    function Keys(const pattern: string; const onkey: TProcString): Int64;
+    function Move(const key: string; db: Word): Boolean;
+    function ObjectRefcount(const key: string): Int64;
+    function ObjectEncoding(const key: string): string;
+    function ObjectIdletime(const key: string): Int64;
+    function Persist(const key: string): Boolean;
+    function PExpire(const key: string; milliseconds: UInt64): Boolean;
+    function PExpireAt(const key: string; date: TDateTime): Boolean;
+    function PTTL(const key: string): Int64;
+    function RandomKey: string;
+    procedure Rename(const key, newkey: string);
+    function RenameNX(const key, newkey: string): Boolean;
+    function Sort(const pattern: string; const onkey: TProcString = nil): Int64;
+    // string
+    function Append(const key, value: string): Int64;
+    function Decr(const key: string): Int64;
+    function DecrBy(const key: string; decrement: Int64): Int64;
+    function Get(const key: string): string;
+    function GetBit(const key: string; offset: byte): Byte;
+  public
+    constructor Create; reintroduce;
+  end;
+
+  TRedisClientAsync = class(TRedisClient, IRedisClientAsync)
+  protected
+    procedure doError(const error: string); virtual;
+  protected
+    procedure Auth(const password: string; const return: TProc);
+    procedure BGRewriteAOF(const return: TProc);
+    procedure BGSave(const return: TProc);
+    // keys function
+    procedure Del(const keys: array of const; const return: TProcInt64);
+    procedure Exists(const key: string; const return: TProcBoolean);
+    procedure Expire(const key: string; seconds: Cardinal; const return: TProcBoolean);
+    procedure ExpireAt(const key: string; date: TDateTime; const return: TProcBoolean);
+    procedure Keys(const pattern: string; const onkey: TProcString = nil; const return: TProc = nil);
+    procedure Move(const key: string; db: Word; const return: TProcBoolean);
+    procedure ObjectRefcount(const key: string; const return: TProcInt64);
+    procedure ObjectEncoding(const key: string; const return: TProcString);
+    procedure ObjectIdletime(const key: string; const return: TProcInt64);
+    procedure Persist(const key: string; const return: TProcBoolean);
+    procedure PExpire(const key: string; milliseconds: UInt64; const return: TProcBoolean);
+    procedure PExpireAt(const key: string; date: TDateTime; const return: TProcBoolean);
+    procedure PTTL(const key: string; const return: TProcInt64);
+    procedure RandomKey(const return: TProcString);
+    procedure Rename(const key, newkey: string; const return: TProc = nil);
+    procedure RenameNX(const key, newkey: string; const return: TProcBoolean = nil);
+    procedure Sort(const pattern: string; const onkey: TProcString; const return: TProc = nil);
+    // string
+    procedure Append(const key, value: string; const return: TProcInt64);
+    procedure Decr(const key: string; const return: TProcInt64 = nil);
+    procedure DecrBy(const key: string; decrement: Int64; const return: TProcInt64 = nil);
+    procedure Get(const key: string; const return: TProcString);
+    procedure GetBit(const key: string; offset: byte; const return: TProcByte);
+  public
+    constructor Create; reintroduce;
+  end;
 
 implementation
-uses Classes;
+uses Classes, DateUtils;
+
+type
+  TVarRecArray = array[0..0] of TVarRec;
+  PVarRecArray = ^TVarRecArray;
+
+function VarItem(item: PVarRec; var fs: TFormatSettings): string;
+begin
+  case item.VType of
+    vtUnicodeString: Result := string(item.VUnicodeString);
+    vtInteger : Result := IntToStr(item.VInteger);
+    vtInt64   : Result := IntToStr(item.VInt64^);
+    vtBoolean : Result := BoolToStr(item.VBoolean);
+    vtChar    : Result := string(item.VChar);
+    vtWideChar: Result := string(item.VWideChar);
+    vtExtended: Result := FloatToStr(item.VExtended^, fs);
+    vtCurrency: Result := CurrToStr(item.VCurrency^, fs);
+    vtString  : Result := string(item.VString^);
+    vtPChar   : Result := string(AnsiString(item.VPChar));
+    vtAnsiString: Result := string(AnsiString(item.VAnsiString));
+    vtWideString: Result := string(PWideChar(item.VWideString));
+    vtVariant:
+      with TVarData(item.VVariant^) do
+      case VType of
+        varSmallInt: Result := IntToStr(VSmallInt);
+        varInteger:  Result := IntToStr(VInteger);
+        varSingle:   Result := FloatToStr(VSingle, fs);
+        varDouble:   Result := FloatToStr(VDouble, fs);
+        varCurrency: Result := CurrToStr(VCurrency, fs);
+        varOleStr:   Result := string(VOleStr);
+        varBoolean:  Result := BoolToStr(VBoolean);
+        varShortInt: Result := IntToStr(VShortInt);
+        varByte:     Result := IntToStr(VByte);
+        varWord:     Result := IntToStr(VWord);
+        varLongWord: Result := IntToStr(VLongWord);
+        varInt64:    Result := IntToStr(VInt64);
+        varString:   Result := string(AnsiString(VString));
+        varUString:  Result := string(VUString);
+      else
+        Result := '';
+      end;
+  else
+    Result := '';
+  end;
+end;
+
+function DateTimeToMilisec(const AValue: TDateTime): Int64;
+begin
+  Result := MilliSecondsBetween(UnixDateDelta, AValue);
+  if AValue < UnixDateDelta then
+    Result := -Result;
+end;
 
 (******************************************************************************)
 (* TThreadIt                                                                  *)
@@ -114,7 +314,7 @@ type
 { TRedisClient }
 
 procedure TRedisClient.Call(count: Integer; const getData: TRedisGetParam;
-  const onresponse: TRedisResponse);
+  const onresponse, onerror, onreturn: TProcString);
 
 function ParseCommand(const cmd: string): TCommand;
 begin
@@ -134,8 +334,10 @@ begin
   buff := UTF8String('*' + IntToStr(count) + #13#10);
   WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
 
-  entry.command := ParseCommand(getData(0));
-  entry.response := onresponse;
+  entry.command  := ParseCommand(getData(0));
+  entry.onresponse := onresponse;
+  entry.onerror    := onerror;
+  entry.onreturn      := onreturn;
 
   FRespSection.Enter;
   try
@@ -154,6 +356,26 @@ begin
   end;
   if FSync then
     Listen;
+end;
+
+procedure TRedisClient.Call(const data: string; const onresponse, onerror,
+  onreturn: TProcString);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    list.Delimiter := ' ';
+    list.DelimitedText := data;
+    Call(list.Count,
+      function(index: Integer): string
+      begin
+        Result := list[index];
+      end,
+      onresponse, onerror, onreturn);
+  finally
+    list.Free;
+  end;
 end;
 
 procedure TRedisClient.Close;
@@ -227,16 +449,16 @@ begin
   end;
 end;
 
-procedure TRedisClient.Return(const callback: TRedisResponse; const err: string; const data: TArray<string>);
+procedure TRedisClient.Return(const callback: TProcString; const value: string);
 begin
   if Assigned(callback) then
   begin
     if FSync then
-      callback(err, data) else
+      callback(value) else
       if Assigned(FOnSynchronize) then
-        FOnSynchronize(callback, err, data) else
+        FOnSynchronize(callback, value) else
         TThreadIt.Synchronize(nil, procedure begin
-          callback(err, data);
+          callback(value);
         end);
   end;
 end;
@@ -262,7 +484,7 @@ begin
   inherited Create;
   FSync := sync;
   FMulti := msNone;
-  FMultiresponses := TQueue<TRedisResponse>.Create;
+  FMultiresponses := TQueue<TResponseEntry>.Create;
   FFormatSettings := TFormatSettings.Create;
   FFormatSettings.DecimalSeparator := '.';
   FReadyState := rsClosed;
@@ -284,34 +506,34 @@ begin
     var
       c: AnsiChar;
       isneg: Boolean;
-      st, n, count: Integer;
+      st: Integer;
+      n, count: Int64;
       item: RawByteString;
-      items, dummy: TArray<string>;
       e: TResponseEntry;
 
-      function Invoke(const err: string = ''): Boolean;
+      function Quit: Boolean;
       begin
         case FMulti of
           msNone:
           begin
-            Return(e.response, err, items);
+            Return(e.onreturn);
             Result := FSync;
           end;
           msMulti:
             begin
               case e.command of
                 cmdExec, cmdDiscard:
-                  Return(e.response, err, items);
+                  Return(e.onreturn);
               end;
               Result := FSync;
             end;
           msReturn:
             begin
-              Return(e.response, err, items);
+              Return(e.onreturn);
               if FMultiresponses.Count = 1 then
               begin
                 FMulti := msNone;
-                Return(FMultiresponses.Dequeue(), '', dummy);
+                Return(FMultiresponses.Dequeue().onreturn);
                 Result := FSync;
               end else
                 Result := False;
@@ -335,7 +557,10 @@ begin
           case e.command of
             cmdOther:
               if (FMulti = msMulti) then
-                FMultiresponses.Enqueue(e.response);
+              begin
+                FMultiresponses.Enqueue(e);
+                e.onresponse := nil;
+              end;
             cmdMulti:
               begin
                 if FMulti <> msNone then
@@ -346,7 +571,7 @@ begin
               begin
                 if FMulti <> msMulti then
                   raise Exception.Create('EXEC without MULTI');
-                FMultiresponses.Enqueue(e.response);
+                FMultiresponses.Enqueue(e);
                 FMulti := msExec;
               end;
             cmdDiscard:
@@ -358,10 +583,7 @@ begin
               end;
           end;
         end else
-        begin
-          e.command := cmdOther;
-          e.response := FMultiresponses.Dequeue();
-        end;
+          e := FMultiresponses.Dequeue();
       end;
 
       procedure unexpected;
@@ -398,12 +620,10 @@ begin
                 begin
                   count := 1;
                   st := 5;
-                  SetLength(items, 0);
                 end;
               '*':
                 begin
                   st := 9;
-                  SetLength(items, 0);
                   count := 0;
                 end;
             else
@@ -417,9 +637,8 @@ begin
             #10:
               begin
                 st := 1;
-                SetLength(items, 1);
-                items[0] := string(UTF8String(item));
-                if invoke() then Exit;
+                Return(e.onresponse, string(UTF8String(item)));
+                if Quit then Exit;
               end;
           else
             item := item + c;
@@ -431,8 +650,8 @@ begin
             #10:
               begin
                 st := 1;
-                SetLength(items, 0);
-                if invoke(string(item)) then Exit;
+                Return(e.onerror, string(item));
+                if Quit then Exit;
               end;
           else
             item := item + c;
@@ -446,9 +665,8 @@ begin
             #10:
               begin
                 st := 1;
-                SetLength(items, 1);
-                items[0] := IntToStr(n);
-                if invoke() then Exit;
+                Return(e.onresponse, IntToStr(n));
+                if Quit then Exit;
               end;
           else
             unexpected
@@ -486,7 +704,7 @@ begin
                   if count = 0 then
                   begin
                     st := 1;
-                    if invoke() then Exit;
+                    if Quit then Exit;
                   end else
                     st := 10;
                 end;
@@ -505,13 +723,12 @@ begin
             #13: ;
             #10:
               begin
-                SetLength(items, Length(items) + 1);
-                items[Length(items) - 1] := string(UTF8String(item));
+                Return(e.onresponse, string(UTF8String(item)));
                 dec(count);
                 if count = 0 then
                 begin
                   st := 1;
-                  if invoke() then Exit;
+                  if Quit then Exit;
                 end else
                   st := 10;
               end;
@@ -533,7 +750,7 @@ begin
                     FMulti := msReturn else
                     begin
                       FMulti := msNone;
-                      if invoke() then Exit;
+                      if Quit then Exit;
                     end;
                 end;
               else
@@ -541,7 +758,7 @@ begin
                   st := 10 else
                 begin
                   st := 1;
-                  if invoke() then Exit;
+                  if Quit then Exit;
                 end;
               end;
           else
@@ -560,17 +777,16 @@ begin
       if FReadyState = rsOpen then // remotely closed
         if FSync then
           Close else
-          TThread.Synchronize(nil, procedure begin Close end);
+          TThread.Synchronize(nil,
+            procedure begin Close end);
     end;
   if FSync then
     method() else
     TThreadIt.Create(method);
 end;
 
-procedure TRedisClient.Send(const data: array of Const; const onresponse: TRedisResponse);
-type
-  TVarRecArray = array[0..0] of TVarRec;
-  PVarRecArray = ^TVarRecArray;
+procedure TRedisClient.Call(const data: array of Const;
+  const onresponse, onerror, onreturn: TProcString);
 var
   len: Integer;
   arr: PVarRecArray;
@@ -579,48 +795,10 @@ begin
   arr := @data[0];
   Call(len,
     function(index: Integer): string
-    var
-      item: PVarRec;
     begin
-      item := @arr[index];
-      case item.VType of
-        vtUnicodeString: Result := string(item.VUnicodeString);
-        vtInteger : Result := IntToStr(item.VInteger);
-        vtInt64   : Result := IntToStr(item.VInt64^);
-        vtBoolean : Result := BoolToStr(item.VBoolean);
-        vtChar    : Result := string(item.VChar);
-        vtWideChar: Result := string(item.VWideChar);
-        vtExtended: Result := FloatToStr(item.VExtended^, FFormatSettings);
-        vtCurrency: Result := CurrToStr(item.VCurrency^, FFormatSettings);
-        vtString  : Result := string(item.VString^);
-        vtPChar   : Result := string(AnsiString(item.VPChar));
-        vtAnsiString: Result := string(AnsiString(item.VAnsiString));
-        vtWideString: Result := string(PWideChar(item.VWideString));
-        vtVariant:
-          with TVarData(item.VVariant^) do
-          case VType of
-            varSmallInt: Result := IntToStr(VSmallInt);
-            varInteger:  Result := IntToStr(VInteger);
-            varSingle:   Result := FloatToStr(VSingle, FFormatSettings);
-            varDouble:   Result := FloatToStr(VDouble, FFormatSettings);
-            varCurrency: Result := CurrToStr(VCurrency, FFormatSettings);
-            varOleStr:   Result := string(VOleStr);
-            varBoolean:  Result := BoolToStr(VBoolean);
-            varShortInt: Result := IntToStr(VShortInt);
-            varByte:     Result := IntToStr(VByte);
-            varWord:     Result := IntToStr(VWord);
-            varLongWord: Result := IntToStr(VLongWord);
-            varInt64:    Result := IntToStr(VInt64);
-            varString:   Result := string(AnsiString(VString));
-            varUString:  Result := string(VUString);
-          else
-            Result := '';
-          end;
-      else
-        Result := '';
-      end;
+      Result := VarItem(@arr[index], FFormatSettings);
     end,
-    onresponse);
+    onresponse, onerror, onreturn);
 end;
 
 procedure TRedisClient.SetOnClose(const value: TProc);
@@ -628,7 +806,7 @@ begin
   FOnClose := value;
 end;
 
-procedure TRedisClient.SetOnError(const value: TRedisMessage);
+procedure TRedisClient.SetOnError(const value: TProcString);
 begin
   FOnError := value;
 end;
@@ -653,7 +831,7 @@ begin
   Result := FOnClose;
 end;
 
-function TRedisClient.GetOnError: TRedisMessage;
+function TRedisClient.GetOnError: TProcString;
 begin
   Result := FOnError;
 end;
@@ -666,6 +844,876 @@ end;
 function TRedisClient.GetOnSynchronize: TRedisSynchronize;
 begin
   Result := FOnSynchronize
+end;
+
+{ TRedisClientSync }
+
+function TRedisClientSync.Append(const key, value: string): Int64;
+var
+  ret: Integer;
+begin
+  ret := 0;
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'APPEND';
+        1: Result := key;
+        2: Result := value;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt64(data) end,
+    doError, nil);
+  Result := ret;
+end;
+
+procedure TRedisClientSync.Auth(const password: string);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'AUTH';
+        1: Result := password;
+      end;
+    end,
+    nil, doError, nil);
+end;
+
+procedure TRedisClientSync.BGRewriteAOF;
+begin
+  Call(1,
+    function(index: Integer): string begin
+      Result := 'BGREWRITEAOF' end,
+    nil, doError, nil);
+end;
+
+
+procedure TRedisClientSync.BGSave;
+begin
+  Call(1,
+    function(index: Integer): string begin
+      Result := 'BGSAVE' end,
+    nil, doError, nil);
+end;
+
+constructor TRedisClientSync.Create;
+begin
+  inherited Create(True);
+end;
+
+function TRedisClientSync.Decr(const key: string): Int64;
+var
+  ret: Int64;
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'DECR';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt64(data);
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.DecrBy(const key: string; decrement: Int64): Int64;
+var
+  ret: Int64;
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'DECRBY';
+        1: Result := key;
+        2: Result := IntToStr(decrement);
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt64(data);
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.Del(const keys: array of const): Int64;
+var
+  ret: Int64;
+  arr: PVarRecArray;
+begin
+  arr := @keys[0];
+  Call(Length(keys) + 1,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'DEL';
+      else
+        Result := VarItem(@arr[index-1], FFormatSettings);
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt(data);
+    end, doError, nil);
+  Result := ret;
+end;
+
+procedure TRedisClientSync.doError(const error: string);
+begin
+  if Assigned(FOnError) then
+    FOnError(error) else
+    raise Exception.Create(error);
+end;
+
+function TRedisClientSync.Exists(const key: string): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'EXISTS';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data <> '0'
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.Expire(const key: string; seconds: Cardinal): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'EXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(seconds);
+      end;
+    end,
+    procedure(const data: string) begin
+        ret := data <> '0'
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.ExpireAt(const key: string; date: TDateTime): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'EXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(DateTimeToUnix(date));
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data <> '0'
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.Get(const key: string): string;
+var
+  ret: string;
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'GET';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data;
+    end, doError, nil);
+  Result := ret;
+end;
+
+
+function TRedisClientSync.GetBit(const key: string; offset: byte): Byte;
+var
+  ret: Byte;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'GETBIT';
+        1: Result := key;
+        2: Result := IntToStr(offset);
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt(data);
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.Keys(const pattern: string;
+  const onkey: TProcString): Int64;
+var
+  ret: Integer;
+begin
+  ret := 0;
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'KEYS';
+        1: Result := pattern;
+      end;
+    end,
+    procedure(const data: string) begin
+      inc(ret);
+      if Assigned(onkey) then
+        onkey(data);
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.Move(const key: string; db: Word): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'MOVE';
+        1: Result := key;
+        2: Result := IntToStr(db);
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data <> '0'
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.ObjectEncoding(const key: string): string;
+var
+  ret: string;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'OBJECT';
+        1: Result := 'ENCODING';
+        2: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.ObjectIdletime(const key: string): Int64;
+var
+  ret: Int64;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'OBJECT';
+        1: Result := 'IDLETIME';
+        2: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt64(data)
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.ObjectRefcount(const key: string): Int64;
+var
+  ret: Int64;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'OBJECT';
+        1: Result := 'REFCOUNT';
+        2: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt64(data)
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.Persist(const key: string): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'PERSIST';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data <> '0';
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.PExpire(const key: string;
+  milliseconds: UInt64): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'PEXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(milliseconds);
+      end;
+    end,
+    procedure(const data: string) begin
+        ret := data <> '0'
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.PExpireAt(const key: string;
+  date: TDateTime): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'EXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(DateTimeToMilisec(date));
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data <> '0'
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.PTTL(const key: string): Int64;
+var
+  ret: Int64;
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'PTTL';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := StrToInt64(data)
+    end, doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.RandomKey: string;
+var
+  ret: string;
+begin
+  Call(1,
+    function(index: Integer): string begin
+      Result := 'RANDOMKEY';
+    end,
+    procedure(const data: string) begin
+      ret := data
+    end, doError, nil);
+  Result := ret;
+end;
+
+procedure TRedisClientSync.Rename(const key, newkey: string);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'RENAME';
+        1: Result := key;
+        2: Result := newkey;
+      end;
+    end,
+    nil, doError, nil);
+end;
+
+function TRedisClientSync.RenameNX(const key, newkey: string): Boolean;
+var
+  ret: Boolean;
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'RENAME';
+        1: Result := key;
+        2: Result := newkey;
+      end;
+    end,
+    procedure(const data: string) begin
+      ret := data <> '0';
+    end,
+    doError, nil);
+  Result := ret;
+end;
+
+function TRedisClientSync.Sort(const pattern: string;
+  const onkey: TProcString): Int64;
+var
+  list: TStringList;
+  ret: Int64;
+begin
+  ret := 0;
+  list := TStringList.Create;
+  try
+    list.Delimiter := ' ';
+    list.DelimitedText := pattern;
+    Call(list.Count + 1,
+      function(index: Integer): string
+      begin
+        case index of
+          0: Result := 'SORT';
+        else
+          Result := list[index - 1];
+        end;
+      end,
+      procedure(const data: string) begin
+        inc(ret);
+        if Assigned(onkey) then
+          onkey(data);
+      end, doError, nil);
+  finally
+    list.Free;
+  end;
+  Result := ret;
+end;
+
+{ TRedisClientAsync }
+
+procedure TRedisClientAsync.Append(const key, value: string;
+  const return: TProcInt64);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'APPEND';
+        1: Result := key;
+        2: Result := value;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt64(data));
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.Auth(const password: string; const return: TProc);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'AUTH';
+        1: Result := password;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return();
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.BGRewriteAOF(const return: TProc);
+begin
+  Call(1,
+    function(index: Integer): string begin
+      Result := 'BGREWRITEAOF' end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return();
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.BGSave(const return: TProc);
+begin
+  Call(1,
+    function(index: Integer): string begin
+      Result := 'BGSAVE' end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return();
+    end, doError, nil);
+end;
+
+constructor TRedisClientAsync.Create;
+begin
+  inherited Create(False);
+end;
+
+procedure TRedisClientAsync.Decr(const key: string; const return: TProcInt64);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'DECR';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt64(data));
+    end, doError, nil);
+end;
+
+
+procedure TRedisClientAsync.DecrBy(const key: string; decrement: Int64;
+  const return: TProcInt64);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'DECRBY';
+        1: Result := key;
+        2: Result := IntToStr(decrement);
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt64(data));
+    end, doError, nil);
+end;
+
+
+procedure TRedisClientAsync.Del(const keys: array of const;
+  const return: TProcInt64);
+var
+  arr: PVarRecArray;
+begin
+  Assert(Length(keys) > 0);
+  arr := @keys[0];
+  Call(Length(keys) + 1,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'DEL';
+      else
+        Result := VarItem(@arr[index-1], FFormatSettings);
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt64(data));
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.doError(const error: string);
+begin
+  if Assigned(FOnError) then
+    FOnError(error) else
+    raise Exception.Create(error);
+end;
+
+procedure TRedisClientAsync.Exists(const key: string; const return: TProcBoolean);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'EXISTS';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end, doError, nil);
+end;
+
+
+procedure TRedisClientAsync.Expire(const key: string; seconds: Cardinal;
+  const return: TProcBoolean);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'EXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(seconds);
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.ExpireAt(const key: string; date: TDateTime;
+  const return: TProcBoolean);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'EXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(DateTimeToUnix(date));
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.Get(const key: string; const return: TProcString);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'GET';
+        1: Result := key;
+      end;
+    end,
+    return, doError, nil);
+end;
+
+procedure TRedisClientAsync.GetBit(const key: string; offset: byte;
+  const return: TProcByte);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'GETBIT';
+        1: Result := key;
+        2: Result := IntToStr(offset);
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt(data));
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.Keys(const pattern: string;
+  const onkey: TProcString; const return: TProc);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'KEYS';
+        1: Result := pattern;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(onkey) then
+        onkey(data);
+    end, doError,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return();
+    end);
+end;
+
+procedure TRedisClientAsync.Move(const key: string; db: Word;
+  const return: TProcBoolean);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'MOVE';
+        1: Result := key;
+        2: Result := IntToStr(db);
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.ObjectEncoding(const key: string;
+  const return: TProcString);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'OBJECT';
+        1: Result := 'ENCODING';
+        2: Result := key;
+      end;
+    end,
+    return, doError, nil);
+end;
+
+procedure TRedisClientAsync.ObjectIdletime(const key: string;
+  const return: TProcInt64);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'OBJECT';
+        1: Result := 'IDLETIME';
+        2: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt64(data));
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.ObjectRefcount(const key: string;
+  const return: TProcInt64);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'OBJECT';
+        1: Result := 'REFCOUNT';
+        2: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt64(data));
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.Persist(const key: string;
+  const return: TProcBoolean);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'PERSIST';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.PExpire(const key: string; milliseconds: UInt64;
+  const return: TProcBoolean);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'PEXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(milliseconds);
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.PExpireAt(const key: string; date: TDateTime;
+  const return: TProcBoolean);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'PEXPIRE';
+        1: Result := key;
+        2: Result := IntToStr(DateTimeToMilisec(date));
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.PTTL(const key: string; const return: TProcInt64);
+begin
+  Call(2,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'PTTL';
+        1: Result := key;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(StrToInt64(data));
+    end, doError, nil);
+end;
+
+procedure TRedisClientAsync.RandomKey(const return: TProcString);
+begin
+
+end;
+
+procedure TRedisClientAsync.Rename(const key, newkey: string;
+  const return: TProc);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'RENAME';
+        1: Result := key;
+        2: Result := newkey;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return();
+    end,
+    doError, nil);
+end;
+
+
+procedure TRedisClientAsync.RenameNX(const key, newkey: string;
+  const return: TProcBoolean);
+begin
+  Call(3,
+    function(index: Integer): string begin
+      case index of
+        0: Result := 'RENAME';
+        1: Result := key;
+        2: Result := newkey;
+      end;
+    end,
+    procedure(const data: string) begin
+      if Assigned(return) then
+        return(data <> '0');
+    end,
+    doError, nil);
+end;
+
+procedure TRedisClientAsync.Sort(const pattern: string;
+  const onkey: TProcString; const return: TProc);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    list.Delimiter := ' ';
+    list.DelimitedText := pattern;
+    Call(list.Count + 1,
+      function(index: Integer): string
+      begin
+        case index of
+          0: Result := 'SORT';
+        else
+          Result := list[index - 1];
+        end;
+      end,
+      onkey, doError,
+      procedure (const data: string) begin
+        if Assigned(return) then
+          return();
+      end);
+  finally
+    list.Free;
+  end;
 end;
 
 end.
