@@ -140,6 +140,21 @@ type
     function RPopLPush(const source, destination: string): NString;
     function RPush(const key: string; const values: array of const): Cardinal;
     function RPushX(const key, value: string): Cardinal;
+    // sets
+    function SAdd(const key: string; const members: array of const): Cardinal;
+    function SCard(const key: string): Cardinal;
+    procedure SDiff(const keys: array of const; const onValue: TProcString);
+    function SDiffStore(const destination: string; const keys: array of const): Cardinal;
+    procedure SInter(const keys: array of const; const onValue: TProcString);
+    function SInterStore(const destination: string; const keys: array of const): Cardinal;
+    function SIsMember(const key, member: string): Boolean;
+    procedure SMembers(const key: string; const onValue: TProcString);
+    function SMove(const source, destination, member: string): Boolean;
+    function SPop(const key: string): NString;
+    function SRandMember(const key: string): NString;
+    function SRem(const key: string; const members: array of const): Cardinal;
+    procedure SUnion(const keys: array of const; const onValue: TProcString);
+    function SUnionStore(const destination: string; const keys: array of const): Cardinal;
   end;
 
   IRedisClientAsync = interface(IRedisClient)
@@ -219,6 +234,21 @@ type
     procedure RPopLPush(const source, destination: string; const Result: TProcString = nil);
     procedure RPush(const key: string; const values: array of const; const Result: TProcCardinal = nil);
     procedure RPushX(const key, value: string; const Result: TProcCardinal = nil);
+    // sets
+    procedure SAdd(const key: string; const members: array of const; const Result: TProcCardinal);
+    procedure SCard(const key: string; const Result: TProcCardinal);
+    procedure SDiff(const keys: array of const; const onValue: TProcString; const Result: TProc = nil);
+    procedure SDiffStore(const destination: string; const keys: array of const; const Result: TProcCardinal = nil);
+    procedure SInter(const keys: array of const; const onValue: TProcString; const Result: TProc = nil);
+    procedure SInterStore(const destination: string; const keys: array of const; const Result: TProcCardinal = nil);
+    procedure SIsMember(const key, member: string; const Result: TProcBoolean = nil);
+    procedure SMembers(const key: string; const onValue: TProcString; const Result: TProc = nil);
+    procedure SMove(const source, destination, member: string; const Result: TProcBoolean = nil);
+    procedure SPop(const key: string; const Result: TProcString);
+    procedure SRandMember(const key: string; const Result: TProcString);
+    procedure SRem(const key: string; const members: array of const; const Result: TProcCardinal = nil);
+    procedure SUnion(const keys: array of const; const onValue: TProcString; const Result: TProc = nil);
+    procedure SUnionStore(const destination: string; const keys: array of const; const Result: TProcCardinal = nil);
   end;
 
   TRedisClient = class(TInterfacedObject, IRedisClient)
@@ -247,6 +277,7 @@ type
     FMultiresponses: TQueue<TResponseEntry>;
     procedure Listen;
     procedure Return(const callback: TProcString; const value: NString);
+    function VarItem(const item: PVarRec): string;
   protected
     procedure Open(const host: string; port: Word);
     procedure Close;
@@ -357,6 +388,21 @@ type
     function RPopLPush(const source, destination: string): NString;
     function RPush(const key: string; const values: array of const): Cardinal;
     function RPushX(const key, value: string): Cardinal;
+    // sets
+    function SAdd(const key: string; const members: array of const): Cardinal;
+    function SCard(const key: string): Cardinal;
+    procedure SDiff(const keys: array of const; const onValue: TProcString);
+    function SDiffStore(const destination: string; const keys: array of const): Cardinal;
+    procedure SInter(const keys: array of const; const onValue: TProcString);
+    function SInterStore(const destination: string; const keys: array of const): Cardinal;
+    function SIsMember(const key, member: string): Boolean;
+    procedure SMembers(const key: string; const onValue: TProcString);
+    function SMove(const source, destination, member: string): Boolean;
+    function SPop(const key: string): NString;
+    function SRandMember(const key: string): NString;
+    function SRem(const key: string; const members: array of const): Cardinal;
+    procedure SUnion(const keys: array of const; const onValue: TProcString);
+    function SUnionStore(const destination: string; const keys: array of const): Cardinal;
   public
     constructor Create; reintroduce;
   end;
@@ -440,6 +486,21 @@ type
     procedure RPopLPush(const source, destination: string; const Result: TProcString);
     procedure RPush(const key: string; const values: array of const; const Result: TProcCardinal);
     procedure RPushX(const key, value: string; const Result: TProcCardinal);
+    // sets
+    procedure SAdd(const key: string; const members: array of const; const Result: TProcCardinal);
+    procedure SCard(const key: string; const Result: TProcCardinal);
+    procedure SDiff(const keys: array of const; const onValue: TProcString; const Result: TProc);
+    procedure SDiffStore(const destination: string; const keys: array of const; const Result: TProcCardinal);
+    procedure SInter(const keys: array of const; const onValue: TProcString; const Result: TProc);
+    procedure SInterStore(const destination: string; const keys: array of const; const Result: TProcCardinal);
+    procedure SIsMember(const key, member: string; const Result: TProcBoolean);
+    procedure SMembers(const key: string; const onValue: TProcString; const Result: TProc);
+    procedure SMove(const source, destination, member: string; const Result: TProcBoolean);
+    procedure SPop(const key: string; const Result: TProcString);
+    procedure SRandMember(const key: string; const Result: TProcString);
+    procedure SRem(const key: string; const members: array of const; const Result: TProcCardinal);
+    procedure SUnion(const keys: array of const; const onValue: TProcString; const Result: TProc);
+    procedure SUnionStore(const destination: string; const keys: array of const; const Result: TProcCardinal);
   public
     constructor Create; reintroduce;
   end;
@@ -524,46 +585,6 @@ begin
           Inc(e);
         end;
     end;
-end;
-
-function VarItem(const item: PVarRec; var fs: TFormatSettings): string;
-begin
-  case item.VType of
-    vtUnicodeString: Result := string(item.VUnicodeString);
-    vtInteger : Result := IntToStr(item.VInteger);
-    vtInt64   : Result := IntToStr(item.VInt64^);
-    vtBoolean : Result := IntToStr(Ord(item.VBoolean));
-    vtChar    : Result := string(item.VChar);
-    vtWideChar: Result := string(item.VWideChar);
-    vtExtended: Result := FloatToStr(item.VExtended^, fs);
-    vtCurrency: Result := CurrToStr(item.VCurrency^, fs);
-    vtString  : Result := string(item.VString^);
-    vtPChar   : Result := string(AnsiString(item.VPChar));
-    vtAnsiString: Result := string(AnsiString(item.VAnsiString));
-    vtWideString: Result := string(PWideChar(item.VWideString));
-    vtVariant:
-      with TVarData(item.VVariant^) do
-      case VType of
-        varSmallInt: Result := IntToStr(VSmallInt);
-        varInteger:  Result := IntToStr(VInteger);
-        varSingle:   Result := FloatToStr(VSingle, fs);
-        varDouble:   Result := FloatToStr(VDouble, fs);
-        varCurrency: Result := CurrToStr(VCurrency, fs);
-        varOleStr:   Result := string(VOleStr);
-        varBoolean:  Result := IntToStr(Ord(VBoolean));
-        varShortInt: Result := IntToStr(VShortInt);
-        varByte:     Result := IntToStr(VByte);
-        varWord:     Result := IntToStr(VWord);
-        varLongWord: Result := IntToStr(VLongWord);
-        varInt64:    Result := IntToStr(VInt64);
-        varString:   Result := string(AnsiString(VString));
-        varUString:  Result := string(VUString);
-      else
-        Result := '';
-      end;
-  else
-    Result := '';
-  end;
 end;
 
 function DateTimeToMilisec(const AValue: TDateTime): Int64;
@@ -1312,7 +1333,7 @@ begin
   arr := @data[0];
   Call(len,
     function(index: Cardinal): string begin
-      Result := VarItem(@arr[index], FFormatSettings);
+      Result := VarItem(@arr[index]);
     end,
     onresponse, onerror, onreturn);
 end;
@@ -1335,6 +1356,46 @@ end;
 procedure TRedisClient.SetOnSynchronize(const sync: TRedisSynchronize);
 begin
   FOnSynchronize := sync;
+end;
+
+function TRedisClient.VarItem(const item: PVarRec): string;
+begin
+  case item.VType of
+    vtUnicodeString: Result := string(item.VUnicodeString);
+    vtInteger : Result := IntToStr(item.VInteger);
+    vtInt64   : Result := IntToStr(item.VInt64^);
+    vtBoolean : Result := IntToStr(Ord(item.VBoolean));
+    vtChar    : Result := string(item.VChar);
+    vtWideChar: Result := string(item.VWideChar);
+    vtExtended: Result := FloatToStr(item.VExtended^, FFormatSettings);
+    vtCurrency: Result := CurrToStr(item.VCurrency^, FFormatSettings);
+    vtString  : Result := string(item.VString^);
+    vtPChar   : Result := string(AnsiString(item.VPChar));
+    vtAnsiString: Result := string(AnsiString(item.VAnsiString));
+    vtWideString: Result := string(PWideChar(item.VWideString));
+    vtVariant:
+      with TVarData(item.VVariant^) do
+      case VType of
+        varSmallInt: Result := IntToStr(VSmallInt);
+        varInteger:  Result := IntToStr(VInteger);
+        varSingle:   Result := FloatToStr(VSingle, FFormatSettings);
+        varDouble:   Result := FloatToStr(VDouble, FFormatSettings);
+        varCurrency: Result := CurrToStr(VCurrency, FFormatSettings);
+        varOleStr:   Result := string(VOleStr);
+        varBoolean:  Result := IntToStr(Ord(VBoolean));
+        varShortInt: Result := IntToStr(VShortInt);
+        varByte:     Result := IntToStr(VByte);
+        varWord:     Result := IntToStr(VWord);
+        varLongWord: Result := IntToStr(VLongWord);
+        varInt64:    Result := IntToStr(VInt64);
+        varString:   Result := string(AnsiString(VString));
+        varUString:  Result := string(VUString);
+      else
+        Result := '';
+      end;
+  else
+    Result := '';
+  end;
 end;
 
 class destructor TRedisClient.Destroy;
@@ -1420,7 +1481,7 @@ begin
         Result := 'BLPOP'
       else
         if index < count - 1 then
-          Result := VarItem(@arr[index-1], FFormatSettings) else
+          Result := VarItem(@arr[index-1]) else
           Result := IntToStr(timeout);
     end,
     onValue, doError);
@@ -1440,7 +1501,7 @@ begin
         Result := 'BRPOP'
       else
         if index < count - 1 then
-          Result := VarItem(@arr[index-1], FFormatSettings) else
+          Result := VarItem(@arr[index-1]) else
           Result := IntToStr(timeout);
     end,
     onValue, doError);
@@ -1502,7 +1563,7 @@ begin
       case index of
         0: Result := 'DEL';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     Ret(Result), doError);
@@ -1618,7 +1679,7 @@ begin
         0: Result := 'HDEL';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     Ret(Result), doError);
@@ -1738,7 +1799,7 @@ begin
         0: Result := 'HMGET';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     onValue, doError);
@@ -1756,7 +1817,7 @@ begin
         0: Result := 'HMSET';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     nil, doError);
@@ -1934,7 +1995,7 @@ begin
         0: Result := 'LPUSH';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     Ret(Result), doError);
@@ -2023,7 +2084,7 @@ begin
       case index of
         0: Result := 'MGET';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     onvalue, doError);
@@ -2052,7 +2113,7 @@ begin
       case index of
         0: Result := 'MSET';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     nil, doError);
@@ -2068,7 +2129,7 @@ begin
       case index of
         0: Result := 'MSETNX';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     Ret(Result), doError);
@@ -2265,7 +2326,7 @@ begin
         0: Result := 'RPUSH';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     Ret(Result), doError);
@@ -2282,6 +2343,68 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+function TRedisClientSync.SAdd(const key: string;
+  const members: array of const): Cardinal;
+var
+  arr: PVarRecArray;
+begin
+  arr := @members;
+  Call(2 + Length(members),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SADD';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.SCard(const key: string): Cardinal;
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SCARD';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientSync.SDiff(const keys: array of const;
+  const onValue: TProcString);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      if index = 0 then
+        Result := 'SDIFF' else
+        Result := VarItem(@arr[index-1]);
+    end,
+    onValue, doError);
+end;
+
+function TRedisClientSync.SDiffStore(const destination: string;
+  const keys: array of const): Cardinal;
+var
+  arr: PVarRecArray;
+begin
+  Call(2 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SDIFFSTORE';
+        1: Result := destination;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError)
 end;
 
 function TRedisClientSync.SetBit(const key: string; offset: Cardinal;
@@ -2343,6 +2466,79 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientSync.SInter(const keys: array of const;
+  const onValue: TProcString);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      if index = 0 then
+        Result := 'SINTER' else
+        Result := VarItem(@arr[index-1]);
+    end,
+    onValue, doError);
+end;
+
+function TRedisClientSync.SInterStore(const destination: string;
+  const keys: array of const): Cardinal;
+var
+  arr: PVarRecArray;
+begin
+  Call(2 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SINTERSTORE';
+        1: Result := destination;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError)
+end;
+
+function TRedisClientSync.SIsMember(const key, member: string): Boolean;
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SISMEMBER';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientSync.SMembers(const key: string;
+  const onValue: TProcString);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SMEMBERS';
+        1: Result := key;
+      end;
+    end,
+    onValue, doError);
+end;
+
+function TRedisClientSync.SMove(const source, destination,
+  member: string): Boolean;
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SMOVE';
+        1: Result := source;
+        2: Result := destination;
+        3: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 procedure TRedisClientSync.Sort(const pattern: string;
   const onkey: TProcString);
 var
@@ -2366,6 +2562,48 @@ begin
   end;
 end;
 
+function TRedisClientSync.SPop(const key: string): NString;
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SPOP';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.SRandMember(const key: string): NString;
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SRANDMEMBER';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.SRem(const key: string;
+  const members: array of const): Cardinal;
+var
+  arr: PVarRecArray;
+begin
+  arr := @members;
+  Call(2 + Length(members),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SREM';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 function TRedisClientSync.StrLen(const key: string): Cardinal;
 begin
   Call(2,
@@ -2376,6 +2614,38 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+procedure TRedisClientSync.SUnion(const keys: array of const;
+  const onValue: TProcString);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      if index = 0 then
+        Result := 'SUNION' else
+        Result := VarItem(@arr[index-1])
+    end,
+    onValue, doError);
+end;
+
+function TRedisClientSync.SUnionStore(const destination: string;
+  const keys: array of const): Cardinal;
+var
+  arr: PVarRecArray;
+begin
+  Call(2 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SUNIONSTORE';
+        1: Result := destination;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError)
 end;
 
 { TRedisClientAsync }
@@ -2436,7 +2706,7 @@ begin
         Result := 'BLPOP'
       else
         if index < count - 1 then
-          Result := VarItem(@arr[index-1], FFormatSettings) else
+          Result := VarItem(@arr[index-1]) else
           Result := IntToStr(timeout);
     end,
     onValue, doError, Ret(Result));
@@ -2456,7 +2726,7 @@ begin
         Result := 'BRPOP'
       else
         if index < count - 1 then
-          Result := VarItem(@arr[index-1], FFormatSettings) else
+          Result := VarItem(@arr[index-1]) else
           Result := IntToStr(timeout);
     end,
     onValue, doError, Ret(Result));
@@ -2520,7 +2790,7 @@ begin
       case index of
         0: Result := 'DEL';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     Ret(Result), doError);
@@ -2640,7 +2910,7 @@ begin
         0: Result := 'HDEL';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     Ret(Result), doError);
@@ -2765,7 +3035,7 @@ begin
         0: Result := 'HMGET';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     onValue, doError, Ret(Result));
@@ -2783,7 +3053,7 @@ begin
         0: Result := 'HMSET';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     nil, doError, Ret(Result));
@@ -2968,7 +3238,7 @@ begin
         0: Result := 'LPUSH';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     Ret(Result), doError);
@@ -3059,7 +3329,7 @@ begin
       case index of
         0: Result := 'MGET';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     onvalue, doError, Ret(Result));
@@ -3090,7 +3360,7 @@ begin
       case index of
         0: Result := 'MSET';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     Ret(Result), doError);
@@ -3107,7 +3377,7 @@ begin
       case index of
         0: Result := 'MSETNX';
       else
-        Result := VarItem(@arr[index-1], FFormatSettings);
+        Result := VarItem(@arr[index-1]);
       end;
     end,
     Ret(Result), doError);
@@ -3311,7 +3581,7 @@ begin
         0: Result := 'RPUSH';
         1: Result := key;
       else
-        Result := VarItem(@arr[index-2], FFormatSettings);
+        Result := VarItem(@arr[index-2]);
       end;
     end,
     Ret(Result), doError);
@@ -3329,6 +3599,69 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.SAdd(const key: string;
+  const members: array of const; const Result: TProcCardinal);
+var
+  arr: PVarRecArray;
+begin
+  arr := @members;
+  Call(2 + Length(members),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SADD';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.SCard(const key: string;
+  const Result: TProcCardinal);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SCARD';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.SDiff(const keys: array of const;
+  const onValue: TProcString; const Result: TProc);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      if index = 0 then
+        Result := 'SDIFF' else
+        Result := VarItem(@arr[index-1]);
+    end,
+    onValue, doError, Ret(Result));
+end;
+
+procedure TRedisClientAsync.SDiffStore(const destination: string;
+  const keys: array of const; const Result: TProcCardinal);
+var
+  arr: PVarRecArray;
+begin
+  Call(2 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SDIFFSTORE';
+        1: Result := destination;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError)
 end;
 
 procedure TRedisClientAsync.SetBit(const key: string; offset: Cardinal;
@@ -3393,6 +3726,80 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientAsync.SInter(const keys: array of const;
+  const onValue: TProcString; const Result: TProc);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      if index = 0 then
+        Result := 'SINTER' else
+        Result := VarItem(@arr[index-1]);
+    end,
+    onValue, doError, Ret(Result));
+end;
+
+procedure TRedisClientAsync.SInterStore(const destination: string;
+  const keys: array of const; const Result: TProcCardinal);
+var
+  arr: PVarRecArray;
+begin
+  Call(2 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SINTERSTORE';
+        1: Result := destination;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError)
+end;
+
+procedure TRedisClientAsync.SIsMember(const key, member: string;
+  const Result: TProcBoolean);
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SISMEMBER';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.SMembers(const key: string;
+  const onValue: TProcString; const Result: TProc);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SMEMBERS';
+        1: Result := key;
+      end;
+    end,
+    onValue, doError, Ret(Result));
+end;
+
+procedure TRedisClientAsync.SMove(const source, destination, member: string;
+  const Result: TProcBoolean);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SMOVE';
+        1: Result := source;
+        2: Result := destination;
+        3: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 procedure TRedisClientAsync.Sort(const pattern: string;
   const onkey: TProcString; const Result: TProc);
 var
@@ -3416,6 +3823,49 @@ begin
   end;
 end;
 
+procedure TRedisClientAsync.SPop(const key: string; const Result: TProcString);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SPOP';
+        1: Result := key;
+      end;
+    end,
+    Result, doError);
+end;
+
+procedure TRedisClientAsync.SRandMember(const key: string;
+  const Result: TProcString);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SRANDMEMBER';
+        1: Result := key;
+      end;
+    end,
+    Result, doError);
+end;
+
+procedure TRedisClientAsync.SRem(const key: string;
+  const members: array of const; const Result: TProcCardinal);
+var
+  arr: PVarRecArray;
+begin
+  arr := @members;
+  Call(2 + Length(members),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SREM';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 procedure TRedisClientAsync.StrLen(const key: string;
   const Result: TProcCardinal);
 begin
@@ -3427,6 +3877,38 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.SUnion(const keys: array of const;
+  const onValue: TProcString; const Result: TProc);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      if index = 0 then
+        Result := 'SUNION' else
+        Result := VarItem(@arr[index-1])
+    end,
+    onValue, doError, Ret(Result));
+end;
+
+procedure TRedisClientAsync.SUnionStore(const destination: string;
+  const keys: array of const; const Result: TProcCardinal);
+var
+  arr: PVarRecArray;
+begin
+  Call(2 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SUNIONSTORE';
+        1: Result := destination;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError)
 end;
 
 end.
