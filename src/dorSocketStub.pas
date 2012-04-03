@@ -718,6 +718,7 @@ begin
     events := EventStorage.Empty;
     if events <> nil then
       for event in events do
+      if event <> nil then
       begin
         EventStorage.FIntercept.Lock;
         try
