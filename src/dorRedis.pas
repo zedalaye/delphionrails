@@ -24,6 +24,7 @@ type
   TProcBoolean = reference to procedure(value: Boolean);
   TProcString = reference to procedure(const value: NString);
   TProcDouble = reference to procedure(value: Double);
+  TProcExtended = reference to procedure(value: Extended);
   TProcKeyValue = reference to procedure(const key, value: string);
 
   TRedisSynchronize = reference to procedure(const res: TProcString;
@@ -65,11 +66,9 @@ type
 
   IRedisClientSync = interface(IRedisClient)
   ['{E6EB6CD5-262E-49A7-863A-F84FB65DE421}']
-    procedure Auth(const password: string);
-    procedure BGRewriteAOF;
-    procedure BGSave;
     // keys
-    function Del(const keys: array of const): Integer;
+    function Del(const keys: array of const): Integer; overload;
+    function Del(const key: string): Boolean; overload;
     function Exists(const key: string): Boolean;
     function Expire(const key: string; timeout: Cardinal): Boolean;
     function ExpireAt(const key: string; date: TDateTime): Boolean;
@@ -85,7 +84,7 @@ type
     function RandomKey: string;
     procedure Rename(const key, newkey: string);
     function RenameNX(const key, newkey: string): Boolean;
-    procedure Sort(const pattern: string; const onkey: TProcString);
+    procedure Sort(const query: string; const onkey: TProcString);
     // string
     function Append(const key, value: string): Int64;
     function Decr(const key: string): Int64;
@@ -155,15 +154,56 @@ type
     function SRem(const key: string; const members: array of const): Cardinal;
     procedure SUnion(const keys: array of const; const onValue: TProcString);
     function SUnionStore(const destination: string; const keys: array of const): Cardinal;
+    // sorted sets
+    function ZAdd(const key: string; const items: array of const): Cardinal;
+    function ZCard(const key: string): Cardinal;
+    function ZCount(const key, min, max: string): Cardinal;
+    function ZIncrBy(const key: string; increment: Int64; const member: string): Extended; overload;
+    function ZIncrBy(const key: string; increment: Extended; const member: string): Extended; overload;
+    function ZInterStore(const destination: string; const keys: array of const; const options: string = ''): Cardinal;
+    procedure ZRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString);
+    procedure ZRangeByScore(const key, min, max: string; const onValue: TProcString; const options: string = ''); overload;
+    function ZRank(const key, member: string): Cardinal;
+    function ZRem(const key: string; const members: array of const): Cardinal;
+    function ZRemRangeByRank(const key: string; start, stop: Int64): Cardinal;
+    function ZRemRangeByScore(const key, min, max: string): Cardinal;
+    procedure ZRevRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString);
+    procedure ZRevRangeByScore(const key, min, max: string; const onValue: TProcString; const options: string = ''); overload;
+    function ZRevRank(const key, member: string): Cardinal;
+    function ZScore(const key, member: string): NString;
+    function ZUnionStore(const destination: string; const keys: array of const; const options: string = ''): Cardinal;
+    // Transaction
+    procedure Discard;
+    procedure Exec;
+    procedure Multi;
+    procedure Unwatch;
+    procedure Watch(const keys: array of const);
+    // connection
+    procedure Auth(const password: string);
+    function Echo(const msg: string): string;
+    procedure Ping;
+    procedure Quit;
+    procedure Select(const index: Byte);
+    // server
+    procedure BGRewriteAOF;
+    procedure BGSave;
+    function ConfigGet(const param: string): string;
+    procedure ConfigSet(const param, value: string);
+    procedure ConfigResetStat;
+    function DBSize: Cardinal;
+    procedure FlushAll;
+    procedure FlushDB;
+    function LastSave: Cardinal;
+    procedure Save;
+    procedure Shutdown(const options: string = '');
+    procedure SlaveOf(const host: string; port: Word);
   end;
 
   IRedisClientAsync = interface(IRedisClient)
   ['{C234E5CE-199E-4D68-8877-6FC82B8DB1D6}']
-    procedure Auth(const password: string; const Result: TProc = nil);
-    procedure BGRewriteAOF(const Result: TProc = nil);
-    procedure BGSave(const Result: TProc = nil);
     //keys
-    procedure Del(const keys: array of const; const Result: TProcInteger = nil);
+    procedure Del(const keys: array of const; const Result: TProcInteger = nil); overload;
+    procedure Del(const key: string; const Result: TProcBoolean = nil); overload;
     procedure Exists(const key: string; const Result: TProcBoolean);
     procedure Expire(const key: string; timeout: Cardinal; const Result: TProcBoolean = nil);
     procedure ExpireAt(const key: string; date: TDateTime; const Result: TProcBoolean = nil);
@@ -179,7 +219,7 @@ type
     procedure RandomKey(const Result: TProcString);
     procedure Rename(const key, newkey: string; const Result: TProc = nil);
     procedure RenameNX(const key, newkey: string; const Result: TProcBoolean = nil);
-    procedure Sort(const pattern: string; const onkey: TProcString; const Result: TProc = nil);
+    procedure Sort(const query: string; const onkey: TProcString; const Result: TProc = nil);
     // string
     procedure Append(const key, value: string; const Result: TProcInt64);
     procedure Decr(const key: string; const Result: TProcInt64 = nil);
@@ -249,12 +289,58 @@ type
     procedure SRem(const key: string; const members: array of const; const Result: TProcCardinal = nil);
     procedure SUnion(const keys: array of const; const onValue: TProcString; const Result: TProc = nil);
     procedure SUnionStore(const destination: string; const keys: array of const; const Result: TProcCardinal = nil);
+    // ordered sets
+    procedure ZAdd(const key: string; const items: array of const; const Result: TProcCardinal = nil);
+    procedure ZCard(const key: string; const Result: TProcCardinal);
+    procedure ZCount(const key, min, max: string; const Result: TProcCardinal);
+    procedure ZIncrBy(const key: string; increment: Int64; const member: string; const Result: TProcExtended = nil); overload;
+    procedure ZIncrBy(const key: string; increment: Extended; const member: string; const Result: TProcExtended = nil); overload;
+    procedure ZInterStore(const destination: string; const keys: array of const; const options: string = ''; const Result: TProcCardinal = nil);
+    procedure ZRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString; const Result: TProc = nil);
+    procedure ZRangeByScore(const key, min, max: string; const onValue: TProcString;
+      const Result: TProc = nil; const options: string = '');
+    procedure ZRank(const key, member: string; const Result: TProcCardinal);
+    procedure ZRem(const key: string; const members: array of const; const Result: TProcCardinal = nil);
+    procedure ZRemRangeByRank(const key: string; start, stop: Int64; const Result: TProcCardinal = nil);
+    procedure ZRemRangeByScore(const key, min, max: string; const Result: TProcCardinal = nil);
+    procedure ZRevRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString; const Result: TProc = nil);
+    procedure ZRevRangeByScore(const key, min, max: string; const onValue: TProcString;
+      const Result: TProc = nil; const options: string = '');
+    procedure ZRevRank(const key, member: string; const Result: TProcCardinal);
+    procedure ZScore(const key, member: string; const Result: TProcString);
+    procedure ZUnionStore(const destination: string; const keys: array of const; const options: string = ''; const Result: TProcCardinal = nil);
+    // transactions
+    procedure Discard(const Result: TProc = nil);
+    procedure Exec(const Result: TProc = nil);
+    procedure Multi(const Result: TProc = nil);
+    procedure Unwatch(const Result: TProc = nil);
+    procedure Watch(const keys: array of const; const Result: TProc = nil);
+    // connection
+    procedure Auth(const password: string; const Result: TProc = nil);
+    procedure Echo(const msg: string; const Result: TProcString = nil);
+    procedure Ping(const Result: TProc = nil);
+    procedure Quit(const Result: TProc = nil);
+    procedure Select(const index: Byte; const Result: TProc = nil);
+    // server
+    procedure BGRewriteAOF(const Result: TProc = nil);
+    procedure BGSave(const Result: TProc = nil);
+    procedure ConfigGet(const param: string; const Result: TProcString = nil);
+    procedure ConfigSet(const param, value: string; const Result: TProc = nil);
+    procedure ConfigResetStat(const Result: TProc = nil);
+    procedure DBSize(const Result: TProcCardinal);
+    procedure FlushAll(const Result: TProc = nil);
+    procedure FlushDB(const Result: TProc = nil);
+    procedure LastSave(const Result: TProcCardinal);
+    procedure Save(const Result: TProc = nil);
+    procedure Shutdown(const options: string = ''; const Result: TProc = nil);
+    procedure SlaveOf(const host: string; port: Word; const Result: TProc = nil);
+    procedure Monitor(const onValue: TProcString);
   end;
 
   TRedisClient = class(TInterfacedObject, IRedisClient)
   type
-    TCommand = (cmdMulti, cmdExec, cmdDiscard, cmdOther);
-    TMultiState = (msNone, msMulti, msExec, msReturn);
+    TCommand = (cmdMulti, cmdExec, cmdDiscard, cmdMonitor, cmdOther);
+    TMultiState = (msNone, msMulti, msExec, msMonitoring, msReturn);
     TResponseEntry = record
       command: TCommand;
       onerror: TProcString;
@@ -310,14 +396,14 @@ type
   end;
 
   TRedisClientSync = class(TRedisClient, IRedisClientSync)
+  private
+    procedure SimpleCommand(const cmd: string);
   protected
     procedure doError(const error: NString); virtual;
-  protected
-    procedure Auth(const password: string);
-    procedure BGRewriteAOF;
-    procedure BGSave;
+  public
     // keys
-    function Del(const keys: array of const): Integer;
+    function Del(const keys: array of const): Integer; overload;
+    function Del(const key: string): Boolean; overload;
     function Exists(const key: string): Boolean;
     function Expire(const key: string; seconds: Cardinal): Boolean;
     function ExpireAt(const key: string; date: TDateTime): Boolean;
@@ -333,7 +419,7 @@ type
     function RandomKey: string;
     procedure Rename(const key, newkey: string);
     function RenameNX(const key, newkey: string): Boolean;
-    procedure Sort(const pattern: string; const onkey: TProcString);
+    procedure Sort(const query: string; const onkey: TProcString);
     // string
     function Append(const key, value: string): Int64;
     function Decr(const key: string): Int64;
@@ -403,19 +489,62 @@ type
     function SRem(const key: string; const members: array of const): Cardinal;
     procedure SUnion(const keys: array of const; const onValue: TProcString);
     function SUnionStore(const destination: string; const keys: array of const): Cardinal;
+    // orderd sets
+    function ZAdd(const key: string; const items: array of const): Cardinal;
+    function ZCard(const key: string): Cardinal;
+    function ZCount(const key, min, max: string): Cardinal;
+    function ZIncrBy(const key: string; increment: Int64; const member: string): Extended; overload;
+    function ZIncrBy(const key: string; increment: Extended; const member: string): Extended; overload;
+    function ZInterStore(const destination: string; const keys: array of const; const options: string): Cardinal;
+    procedure ZRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString); overload;
+    procedure ZRangeByScore(const key, min, max: string; const onValue: TProcString; const options: string);
+    function ZRank(const key, member: string): Cardinal;
+    function ZRem(const key: string; const members: array of const): Cardinal;
+    function ZRemRangeByRank(const key: string; start, stop: Int64): Cardinal;
+    function ZRemRangeByScore(const key, min, max: string): Cardinal;
+    procedure ZRevRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString); overload;
+    procedure ZRevRangeByScore(const key, min, max: string; const onValue: TProcString; const options: string);
+    function ZRevRank(const key, member: string): Cardinal;
+    function ZScore(const key, member: string): NString;
+    function ZUnionStore(const destination: string; const keys: array of const; const options: string): Cardinal;
+    // transaction
+    procedure Discard;
+    procedure Exec;
+    procedure Multi;
+    procedure Unwatch;
+    procedure Watch(const keys: array of const);
+    // connection
+    procedure Auth(const password: string);
+    function Echo(const msg: string): string;
+    procedure Ping;
+    procedure Quit;
+    procedure Select(const index: Byte);
+    // server
+    procedure BGRewriteAOF;
+    procedure BGSave;
+    function ConfigGet(const param: string): string;
+    procedure ConfigSet(const param, value: string);
+    procedure ConfigResetstat;
+    function DBSize: Cardinal;
+    procedure FlushAll;
+    procedure FlushDB;
+    function LastSave: Cardinal;
+    procedure Save;
+    procedure Shutdown(const options: string = '');
+    procedure SlaveOf(const host: string; port: Word);
   public
     constructor Create; reintroduce;
   end;
 
   TRedisClientAsync = class(TRedisClient, IRedisClientAsync)
+  private
+    procedure SimpleCommand(const cmd: string; Result: TProc);
   protected
     procedure doError(const error: NString); virtual;
-  protected
-    procedure Auth(const password: string; const Result: TProc);
-    procedure BGRewriteAOF(const Result: TProc);
-    procedure BGSave(const Result: TProc);
+  public
     // keys
-    procedure Del(const keys: array of const; const Result: TProcInteger);
+    procedure Del(const keys: array of const; const Result: TProcInteger); overload;
+    procedure Del(const key: string; const Result: TProcBoolean); overload;
     procedure Exists(const key: string; const Result: TProcBoolean);
     procedure Expire(const key: string; seconds: Cardinal; const Result: TProcBoolean);
     procedure ExpireAt(const key: string; date: TDateTime; const Result: TProcBoolean);
@@ -431,7 +560,7 @@ type
     procedure RandomKey(const Result: TProcString);
     procedure Rename(const key, newkey: string; const Result: TProc);
     procedure RenameNX(const key, newkey: string; const Result: TProcBoolean);
-    procedure Sort(const pattern: string; const onkey: TProcString; const Result: TProc);
+    procedure Sort(const query: string; const onkey: TProcString; const Result: TProc);
     // string
     procedure Append(const key, value: string; const Result: TProcInt64);
     procedure Decr(const key: string; const Result: TProcInt64);
@@ -501,6 +630,52 @@ type
     procedure SRem(const key: string; const members: array of const; const Result: TProcCardinal);
     procedure SUnion(const keys: array of const; const onValue: TProcString; const Result: TProc);
     procedure SUnionStore(const destination: string; const keys: array of const; const Result: TProcCardinal);
+    // ordered sets
+    procedure ZAdd(const key: string; const items: array of const; const Result: TProcCardinal);
+    procedure ZCard(const key: string; const Result: TProcCardinal);
+    procedure ZCount(const key, min, max: string; const Result: TProcCardinal); overload;
+    procedure ZIncrBy(const key: string; increment: Int64; const member: string; const Result: TProcExtended); overload;
+    procedure ZIncrBy(const key: string; increment: Extended; const member: string; const Result: TProcExtended); overload;
+    procedure ZInterStore(const destination: string; const keys: array of const; const options: string; const Result: TProcCardinal);
+    procedure ZRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString; const Result: TProc);
+    procedure ZRangeByScore(const key, min, max: string; const onValue: TProcString;
+      const Result: TProc; const options: string);
+    procedure ZRank(const key, member: string; const Result: TProcCardinal);
+    procedure ZRem(const key: string; const members: array of const; const Result: TProcCardinal);
+    procedure ZRemRangeByRank(const key: string; start, stop: Int64; const Result: TProcCardinal = nil);
+    procedure ZRemRangeByScore(const key, min, max: string; const Result: TProcCardinal);
+    procedure ZRevRange(const key: string; start, stop: Int64; scores: Boolean; const onValue: TProcString; const Result: TProc);
+    procedure ZRevRangeByScore(const key, min, max: string; const onValue: TProcString;
+      const Result: TProc; const options: string);
+    procedure ZRevRank(const key, member: string; const Result: TProcCardinal);
+    procedure ZScore(const key, member: string; const Result: TProcString);
+    procedure ZUnionStore(const destination: string; const keys: array of const; const options: string; const Result: TProcCardinal);
+    // transaction
+    procedure Discard(const Result: TProc);
+    procedure Exec(const Result: TProc);
+    procedure Multi(const Result: TProc);
+    procedure Unwatch(const Result: TProc);
+    procedure Watch(const keys: array of const; const Result: TProc);
+    // connection
+    procedure Auth(const password: string; const Result: TProc);
+    procedure Echo(const msg: string; const Result: TProcString);
+    procedure Ping(const Result: TProc);
+    procedure Quit(const Result: TProc);
+    procedure Select(const index: Byte; const Result: TProc);
+    // server
+    procedure BGRewriteAOF(const Result: TProc);
+    procedure BGSave(const Result: TProc);
+    procedure ConfigGet(const param: string; const Result: TProcString);
+    procedure ConfigSet(const param, value: string; const Result: TProc);
+    procedure ConfigResetStat(const Result: TProc);
+    procedure DBSize(const Result: TProcCardinal);
+    procedure FlushAll(const Result: TProc);
+    procedure FlushDB(const Result: TProc);
+    procedure LastSave(const Result: TProcCardinal);
+    procedure Save(const Result: TProc);
+    procedure Shutdown(const options: string; const Result: TProc);
+    procedure SlaveOf(const host: string; port: Word; const Result: TProc);
+    procedure Monitor(const onValue: TProcString);
   public
     constructor Create; reintroduce;
   end;
@@ -785,6 +960,36 @@ begin
   end;
 end;
 
+function Ret(const proc: TProcExtended; var fs: TFormatSettings): TProcString; overload;
+var
+  f: PFormatSettings;
+begin
+  if not Assigned(proc) then
+    Result := nil else
+    begin
+      f := @fs;
+      Result := procedure(const data: NString) begin
+        if not data.IsNull then
+          proc(StrToFloat(data, f^)) else
+          proc(0.0);
+      end;
+    end;
+end;
+
+function Ret(var v: Extended; var fs: TFormatSettings): TProcString; overload;
+var
+  r: PExtended;
+  f: PFormatSettings;
+begin
+  r := @v;
+  f := @fs;
+  Result := procedure(const data: NString) begin
+    if not data.IsNull then
+      r^ := StrToFloat(data, f^) else
+      r^ := 0.0;
+  end;
+end;
+
 function Ret(var v: string): TProcString; overload;
 var
   p: PString;
@@ -853,7 +1058,11 @@ function ParseCommand(const cmd: string): TCommand;
 begin
   Result := cmdOther;
   case cmd[1] of
-    'm', 'M': if SameText(cmd, 'multi') then Result := cmdMulti;
+    'm', 'M':
+      case cmd[2] of
+        'u', 'U': if SameText(cmd, 'multi') then Result := cmdMulti;
+        'o', 'O': if SameText(cmd, 'monitor') then Result := cmdMonitor;
+      end;
     'e', 'E': if SameText(cmd, 'exec') then Result := cmdExec;
     'd', 'D': if SameText(cmd, 'discard') then Result := cmdDiscard;
   end;
@@ -867,10 +1076,10 @@ begin
   buff := UTF8String('*' + IntToStr(count) + #13#10);
   WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
 
-  entry.command  := ParseCommand(getData(0));
+  entry.command    := ParseCommand(getData(0));
   entry.onresponse := onresponse;
   entry.onerror    := onerror;
-  entry.onreturn      := onreturn;
+  entry.onreturn   := onreturn;
 
   FRespSection.Enter;
   try
@@ -1082,7 +1291,10 @@ begin
 
       procedure getstate;
       begin
-        if FMulti <> msReturn then
+        if FMulti = msMonitoring then
+          Exit
+        else
+        if (FMulti <> msReturn) then
         begin
           FRespSection.Enter;
           try
@@ -1103,6 +1315,12 @@ begin
                 if FMulti <> msNone then
                   raise Exception.Create('MULTI calls can not be nested');
                 FMulti := msMulti;
+              end;
+            cmdMonitor:
+              begin
+                if FMulti <> msNone then
+                  raise Exception.Create('MONITOR can''t be used now');
+                FMulti := msMonitoring;
               end;
             cmdExec:
               begin
@@ -1452,19 +1670,12 @@ end;
 
 procedure TRedisClientSync.BGRewriteAOF;
 begin
-  Call(1,
-    function(index: Cardinal): string begin
-      Result := 'BGREWRITEAOF' end,
-    nil, doError);
+  SimpleCommand('BGREWRITEAOF');
 end;
-
 
 procedure TRedisClientSync.BGSave;
 begin
-  Call(1,
-    function(index: Cardinal): string begin
-      Result := 'BGSAVE' end,
-    nil, doError);
+  SimpleCommand('BGSAVE');
 end;
 
 procedure TRedisClientSync.BLPop(const keys: array of const; timeout: Cardinal;
@@ -1522,10 +1733,57 @@ begin
     Ret(Result), doError);
 end;
 
+function TRedisClientSync.ConfigGet(const param: string): string;
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'CONFIG';
+        1: Result := 'GET';
+        2: Result := param;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientSync.ConfigResetstat;
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'CONFIG';
+        1: Result := 'RESETSTAT';
+      end;
+    end,
+    nil, doError);
+end;
+
+procedure TRedisClientSync.ConfigSet(const param, value: string);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'CONFIG';
+        1: Result := 'SET';
+        2: Result := param;
+        3: Result := value;
+      end;
+    end,
+    nil, doError);
+end;
 
 constructor TRedisClientSync.Create;
 begin
   inherited Create(True);
+end;
+
+function TRedisClientSync.DBSize: Cardinal;
+begin
+  Call(1,
+    function(index: Cardinal): string begin
+      Result := 'DBSIZE';
+    end,
+    Ret(Result), doError);
 end;
 
 function TRedisClientSync.Decr(const key: string): Int64;
@@ -1553,6 +1811,18 @@ begin
     Ret(Result), doError);
 end;
 
+function TRedisClientSync.Del(const key: string): Boolean;
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'DEL';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 function TRedisClientSync.Del(const keys: array of const): Integer;
 var
   arr: PVarRecArray;
@@ -1569,11 +1839,33 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientSync.Discard;
+begin
+  SimpleCommand('DISCARD');
+end;
+
 procedure TRedisClientSync.doError(const error: NString);
 begin
   if Assigned(FOnError) then
     FOnError(error) else
     raise Exception.Create(error);
+end;
+
+function TRedisClientSync.Echo(const msg: string): string;
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ECHO';
+        1: Result := msg;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientSync.Exec;
+begin
+  SimpleCommand('EXEC');
 end;
 
 function TRedisClientSync.Exists(const key: string): Boolean;
@@ -1612,6 +1904,16 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+procedure TRedisClientSync.FlushAll;
+begin
+  SimpleCommand('FLUSHALL');
+end;
+
+procedure TRedisClientSync.FlushDB;
+begin
+  SimpleCommand('FLUSHDB');
 end;
 
 function TRedisClientSync.Get(const key: string): NString;
@@ -1915,6 +2217,15 @@ begin
     onkey, doError);
 end;
 
+function TRedisClientSync.LastSave: Cardinal;
+begin
+  Call(1,
+    function(index: Cardinal): string begin
+      Result := 'LASTSAVE';
+    end,
+    Ret(Result), doError);
+end;
+
 function TRedisClientSync.LIndex(const key: string; index: Cardinal): NString;
 begin
   Call(3,
@@ -2135,6 +2446,11 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientSync.Multi;
+begin
+  SimpleCommand('MULTI');
+end;
+
 function TRedisClientSync.ObjectEncoding(const key: string): string;
 begin
   Call(3,
@@ -2214,6 +2530,11 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientSync.Ping;
+begin
+  SimpleCommand('PING');
+end;
+
 procedure TRedisClientSync.PSetEx(const key: string;
   milliseconds: UInt64; const value: string);
 begin
@@ -2252,6 +2573,11 @@ begin
       end;
     end,
     nil, doError);
+end;
+
+procedure TRedisClientSync.Quit;
+begin
+  SimpleCommand('QUIT');
 end;
 
 function TRedisClientSync.RandomKey: string;
@@ -2363,6 +2689,11 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientSync.Save;
+begin
+  SimpleCommand('SAVE');
+end;
+
 function TRedisClientSync.SCard(const key: string): Cardinal;
 begin
   Call(2,
@@ -2405,6 +2736,18 @@ begin
       end;
     end,
     Ret(Result), doError)
+end;
+
+procedure TRedisClientSync.Select(const index: Byte);
+begin
+  Call(2,
+    function(i: Cardinal): string begin
+      case i of
+        0: Result := 'SELECT';
+        1: Result := IntToStr(index);
+      end;
+    end,
+    nil, doError)
 end;
 
 function TRedisClientSync.SetBit(const key: string; offset: Cardinal;
@@ -2466,6 +2809,37 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientSync.Shutdown(const options: string);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(list.Count + 1,
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'SHUTDOWN';
+        else
+          Result := list[index - 1];
+        end;
+      end,
+      nil, doError);
+  finally
+    list.Free;
+  end;
+end;
+
+procedure TRedisClientSync.SimpleCommand(const cmd: string);
+begin
+  Call(1,
+    function(index: Cardinal): string begin
+      Result := cmd;
+    end,
+    nil, doError);
+end;
+
 procedure TRedisClientSync.SInter(const keys: array of const;
   const onValue: TProcString);
 var
@@ -2511,6 +2885,19 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientSync.SlaveOf(const host: string; port: Word);
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SLAVEOF';
+        1: Result := host;
+        2: Result := IntToStr(port);
+      end;
+    end,
+    nil, doError);
+end;
+
 procedure TRedisClientSync.SMembers(const key: string;
   const onValue: TProcString);
 begin
@@ -2539,14 +2926,14 @@ begin
     Ret(Result), doError);
 end;
 
-procedure TRedisClientSync.Sort(const pattern: string;
+procedure TRedisClientSync.Sort(const query: string;
   const onkey: TProcString);
 var
   list: TStringList;
 begin
   list := TStringList.Create;
   try
-    ParseCommand(pattern, list);
+    ParseCommand(query, list);
     Call(list.Count + 1,
       function(index: Cardinal): string
       begin
@@ -2648,6 +3035,345 @@ begin
     Ret(Result), doError)
 end;
 
+procedure TRedisClientSync.Unwatch;
+begin
+  SimpleCommand('UNWATCH');
+end;
+
+procedure TRedisClientSync.Watch(const keys: array of const);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'WATCH';
+      else
+        Result := VarItem(@arr[index-1]);
+      end;
+    end,
+    nil, doError);
+end;
+
+
+function TRedisClientSync.ZAdd(const key: string;
+  const items: array of const): Cardinal;
+var
+  arr: PVarRecArray;
+begin
+  arr := @items;
+  Call(2 + Length(items),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZADD';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZCard(const key: string): Cardinal;
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZCARD';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZCount(const key, min, max: string): Cardinal;
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZCOUNT';
+        1: Result := key;
+        2: Result := min;
+        3: Result := max;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZIncrBy(const key: string; increment: Int64;
+  const member: string): Extended;
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZINCRBY';
+        1: Result := key;
+        2: Result := IntToStr(increment);
+        3: Result := member;
+      end;
+    end,
+    Ret(Result, FFormatSettings), doError);
+end;
+
+function TRedisClientSync.ZIncrBy(const key: string; increment: Extended;
+  const member: string): Extended;
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZINCRBY';
+        1: Result := key;
+        2: Result := FloatToStr(increment, FFormatSettings);
+        3: Result := member;
+      end;
+    end,
+    Ret(Result, FFormatSettings), doError);
+end;
+
+function TRedisClientSync.ZInterStore(const destination: string;
+  const keys: array of const; const options: string): Cardinal;
+var
+  list: TStringList;
+  arr: PVarRecArray;
+  arrlen: Cardinal;
+begin
+  arr := @keys;
+  arrlen := Length(keys);
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(3 + arrlen + Cardinal(list.Count),
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZINTERSTORE';
+          1: Result := destination;
+          2: Result := IntToStr(arrlen);
+        else
+          if index < arrlen + 3 then
+            Result := VarItem(@arr[index-3]) else
+            Result := list[index - 3 - arrlen];
+        end;
+      end,
+      Ret(Result), doError);
+  finally
+    list.Free;
+  end;
+end;
+
+procedure TRedisClientSync.ZRange(const key: string; start, stop: Int64;
+  scores: Boolean; const onValue: TProcString);
+var
+  count: Cardinal;
+begin
+  if not scores then
+    count := 4 else
+    count := 5;
+  Call(count,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZRANGE';
+        1: Result := key;
+        2: Result := IntToStr(start);
+        3: Result := IntToStr(stop);
+        4: Result := 'WITHSCORES';
+      end;
+    end,
+    onValue, doError);
+end;
+
+procedure TRedisClientSync.ZRangeByScore(const key, min, max: string;
+  const onValue: TProcString; const options: string);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(4 + list.Count,
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZRANGEBYSCORE';
+          1: Result := key;
+          2: Result := min;
+          3: Result := max;
+        else
+          Result := list[index - 4];
+        end;
+      end,
+      onValue, doError);
+  finally
+    list.Free;
+  end;
+end;
+
+function TRedisClientSync.ZRank(const key, member: string): Cardinal;
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZRANK';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZRem(const key: string;
+  const members: array of const): Cardinal;
+var
+  arr: PVarRecArray;
+begin
+  arr := @members;
+  Call(2 + Length(members),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREM';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZRemRangeByRank(const key: string; start,
+  stop: Int64): Cardinal;
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREMRANGEBYRANK';
+        1: Result := key;
+        2: Result := IntToStr(start);
+        3: Result := IntToStr(stop);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZRemRangeByScore(const key, min,
+  max: string): Cardinal;
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREMRANGEBYSCORE';
+        1: Result := key;
+        2: Result := min;
+        3: Result := max;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientSync.ZRevRange(const key: string; start, stop: Int64;
+  scores: Boolean; const onValue: TProcString);
+var
+  count: Cardinal;
+begin
+  if not scores then
+    count := 4 else
+    count := 5;
+  Call(count,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREVRANGE';
+        1: Result := key;
+        2: Result := IntToStr(start);
+        3: Result := IntToStr(stop);
+        4: Result := 'WITHSCORES';
+      end;
+    end,
+    onValue, doError);
+end;
+
+procedure TRedisClientSync.ZRevRangeByScore(const key, min, max: string;
+  const onValue: TProcString; const options: string);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(4 + list.Count,
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZREVRANGEBYSCORE';
+          1: Result := key;
+          2: Result := min;
+          3: Result := max;
+        else
+          Result := list[index - 4];
+        end;
+      end,
+      onValue, doError);
+  finally
+    list.Free;
+  end;
+end;
+
+function TRedisClientSync.ZRevRank(const key, member: string): Cardinal;
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREVRANK';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZScore(const key, member: string): NString;
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZSCORE';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+function TRedisClientSync.ZUnionStore(const destination: string;
+  const keys: array of const; const options: string): Cardinal;
+var
+  list: TStringList;
+  arr: PVarRecArray;
+  arrlen: Cardinal;
+begin
+  arr := @keys;
+  arrlen := Length(keys);
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(3 + arrlen + Cardinal(list.Count),
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZUNIONSTORE';
+          1: Result := destination;
+          2: Result := IntToStr(arrlen);
+        else
+          if index < arrlen + 3 then
+            Result := VarItem(@arr[index-3]) else
+            Result := list[index - 3 - arrlen];
+        end;
+      end,
+      Ret(Result), doError);
+  finally
+    list.Free;
+  end;
+end;
+
 { TRedisClientAsync }
 
 procedure TRedisClientAsync.Append(const key, value: string;
@@ -2678,18 +3404,12 @@ end;
 
 procedure TRedisClientAsync.BGRewriteAOF(const Result: TProc);
 begin
-  Call(1,
-    function(index: Cardinal): string begin
-      Result := 'BGREWRITEAOF' end,
-    Ret(Result), doError);
+  SimpleCommand('BGREWRITEAOF', Result);
 end;
 
 procedure TRedisClientAsync.BGSave(const Result: TProc);
 begin
-  Call(1,
-    function(index: Cardinal): string begin
-      Result := 'BGSAVE' end,
-    Ret(Result), doError);
+  SimpleCommand('BGSAVE', Result);
 end;
 
 procedure TRedisClientAsync.BLPop(const keys: array of const; timeout: Cardinal;
@@ -2747,9 +3467,59 @@ begin
     Result, doError);
 end;
 
+procedure TRedisClientAsync.ConfigGet(const param: string;
+  const Result: TProcString);
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'CONFIG';
+        1: Result := 'GET';
+        2: Result := param;
+      end;
+    end,
+    Result, doError);
+end;
+
+procedure TRedisClientAsync.ConfigResetStat(const Result: TProc);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'CONFIG';
+        1: Result := 'RESETSTAT';
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ConfigSet(const param, value: string;
+  const Result: TProc);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'CONFIG';
+        1: Result := 'SET';
+        2: Result := param;
+        3: Result := value;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 constructor TRedisClientAsync.Create;
 begin
   inherited Create(False);
+end;
+
+procedure TRedisClientAsync.DBSize(const Result: TProcCardinal);
+begin
+  Call(1,
+    function(index: Cardinal): string begin
+      Result := 'DBSIZE';
+    end,
+    Ret(Result), doError);
 end;
 
 procedure TRedisClientAsync.Decr(const key: string; const Result: TProcInt64);
@@ -2778,6 +3548,18 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientAsync.Del(const key: string; const Result: TProcBoolean);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'DEL';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 procedure TRedisClientAsync.Del(const keys: array of const;
   const Result: TProcInteger);
 var
@@ -2796,11 +3578,33 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientAsync.Discard(const Result: TProc);
+begin
+  SimpleCommand('DISCARD', Result);
+end;
+
 procedure TRedisClientAsync.doError(const error: NString);
 begin
   if Assigned(FOnError) then
     FOnError(error) else
     raise Exception.Create(error);
+end;
+
+procedure TRedisClientAsync.Echo(const msg: string; const Result: TProcString);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ECHO';
+        1: Result := msg;
+      end;
+    end,
+    Result, doError);
+end;
+
+procedure TRedisClientAsync.Exec(const Result: TProc);
+begin
+  SimpleCommand('EXEC', Result);
 end;
 
 procedure TRedisClientAsync.Exists(const key: string; const Result: TProcBoolean);
@@ -2841,6 +3645,16 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.FlushAll(const Result: TProc);
+begin
+  SimpleCommand('FLUSHALL', Result);
+end;
+
+procedure TRedisClientAsync.FlushDB(const Result: TProc);
+begin
+  SimpleCommand('FLUSHDB', Result);
 end;
 
 procedure TRedisClientAsync.Get(const key: string; const Result: TProcString);
@@ -3155,6 +3969,15 @@ begin
     onkey, doError, Ret(Result));
 end;
 
+procedure TRedisClientAsync.LastSave(const Result: TProcCardinal);
+begin
+  Call(1,
+    function(index: Cardinal): string begin
+      Result := 'LASTSAVE';
+    end,
+    Ret(Result), doError);
+end;
+
 procedure TRedisClientAsync.LIndex(const key: string; index: Cardinal;
   const Result: TProcString);
 begin
@@ -3335,6 +4158,15 @@ begin
     onvalue, doError, Ret(Result));
 end;
 
+procedure TRedisClientAsync.Monitor(const onValue: TProcString);
+begin
+  Call(1,
+    function(index: Cardinal): string begin
+      Result := 'MONITOR';
+    end,
+    onValue);
+end;
+
 procedure TRedisClientAsync.Move(const key: string; db: Word;
   const Result: TProcBoolean);
 begin
@@ -3381,6 +4213,11 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.Multi(const Result: TProc);
+begin
+  SimpleCommand('MULTI', Result);
 end;
 
 procedure TRedisClientAsync.ObjectEncoding(const key: string;
@@ -3466,6 +4303,11 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientAsync.Ping(const Result: TProc);
+begin
+  SimpleCommand('PING', Result);
+end;
+
 procedure TRedisClientAsync.PSetEx(const key: string; milliseconds: UInt64;
   const value: string; const Result: TProc);
 begin
@@ -3504,6 +4346,11 @@ begin
       end;
     end,
     Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.Quit(const Result: TProc);
+begin
+  SimpleCommand('QUIT', Result);
 end;
 
 procedure TRedisClientAsync.RandomKey(const Result: TProcString);
@@ -3619,6 +4466,11 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientAsync.Save(const Result: TProc);
+begin
+  SimpleCommand('SAVE', Result);
+end;
+
 procedure TRedisClientAsync.SCard(const key: string;
   const Result: TProcCardinal);
 begin
@@ -3659,6 +4511,18 @@ begin
         1: Result := destination;
       else
         Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError)
+end;
+
+procedure TRedisClientAsync.Select(const index: Byte; const Result: TProc);
+begin
+  Call(2,
+    function(i: Cardinal): string begin
+      case i of
+        0: Result := 'SELECT';
+        1: Result := IntToStr(index);
       end;
     end,
     Ret(Result), doError)
@@ -3726,6 +4590,37 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientAsync.Shutdown(const options: string;
+  const Result: TProc);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(list.Count + 1,
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'SHUTDOWN';
+        else
+          Result := list[index - 1];
+        end;
+      end,
+      Ret(Result), doError);
+  finally
+    list.Free;
+  end;
+end;
+
+procedure TRedisClientAsync.SimpleCommand(const cmd: string; Result: TProc);
+begin
+  Call(1,
+    function(index: Cardinal): string begin
+      Result := cmd end,
+    Ret(Result), doError);
+end;
+
 procedure TRedisClientAsync.SInter(const keys: array of const;
   const onValue: TProcString; const Result: TProc);
 var
@@ -3772,6 +4667,20 @@ begin
     Ret(Result), doError);
 end;
 
+procedure TRedisClientAsync.SlaveOf(const host: string; port: Word;
+  const Result: TProc);
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'SLAVEOF';
+        1: Result := host;
+        2: Result := IntToStr(port);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
 procedure TRedisClientAsync.SMembers(const key: string;
   const onValue: TProcString; const Result: TProc);
 begin
@@ -3800,14 +4709,14 @@ begin
     Ret(Result), doError);
 end;
 
-procedure TRedisClientAsync.Sort(const pattern: string;
+procedure TRedisClientAsync.Sort(const query: string;
   const onkey: TProcString; const Result: TProc);
 var
   list: TStringList;
 begin
   list := TStringList.Create;
   try
-    ParseCommand(pattern, list);
+    ParseCommand(query, list);
     Call(list.Count + 1,
       function(index: Cardinal): string
       begin
@@ -3909,6 +4818,352 @@ begin
       end;
     end,
     Ret(Result), doError)
+end;
+
+procedure TRedisClientAsync.Unwatch(const Result: TProc);
+begin
+  SimpleCommand('UNWATCH', Result);
+end;
+
+procedure TRedisClientAsync.Watch(const keys: array of const;
+  const Result: TProc);
+var
+  arr: PVarRecArray;
+begin
+  arr := @keys;
+  Call(1 + Length(keys),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'WATCH';
+      else
+        Result := VarItem(@arr[index-1]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZAdd(const key: string; const items: array of const;
+  const Result: TProcCardinal);
+var
+  arr: PVarRecArray;
+begin
+  arr := @items;
+  Call(2 + Length(items),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZADD';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZCard(const key: string;
+  const Result: TProcCardinal);
+begin
+  Call(2,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZCARD';
+        1: Result := key;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZCount(const key, min, max: string;
+  const Result: TProcCardinal);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZCOUNT';
+        1: Result := key;
+        2: Result := min;
+        3: Result := max;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZIncrBy(const key: string; increment: Int64;
+  const member: string; const Result: TProcExtended);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZINCRBY';
+        1: Result := key;
+        2: Result := IntToStr(increment);
+        3: Result := member;
+      end;
+    end,
+    Ret(Result, FFormatSettings), doError);
+end;
+
+procedure TRedisClientAsync.ZIncrBy(const key: string; increment: Extended;
+  const member: string; const Result: TProcExtended);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZINCRBY';
+        1: Result := key;
+        2: Result := FloatToStr(increment, FFormatSettings);
+        3: Result := member;
+      end;
+    end,
+    Ret(Result, FFormatSettings), doError);
+end;
+
+procedure TRedisClientAsync.ZInterStore(const destination: string;
+  const keys: array of const; const options: string;
+  const Result: TProcCardinal);
+var
+  list: TStringList;
+  arr: PVarRecArray;
+  arrlen: Cardinal;
+begin
+  arr := @keys;
+  arrlen := Length(keys);
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(3 + arrlen + Cardinal(list.Count),
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZINTERSTORE';
+          1: Result := destination;
+          2: Result := IntToStr(arrlen);
+        else
+          if index < arrlen + 3 then
+            Result := VarItem(@arr[index-3]) else
+            Result := list[index - 3 - arrlen];
+        end;
+      end,
+      Ret(Result), doError);
+  finally
+    list.Free;
+  end;
+end;
+
+procedure TRedisClientAsync.ZRange(const key: string; start, stop: Int64;
+  scores: Boolean; const onValue: TProcString; const Result: TProc);
+var
+  count: Cardinal;
+begin
+  if not scores then
+    count := 4 else
+    count := 5;
+  Call(count,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZRANGE';
+        1: Result := key;
+        2: Result := IntToStr(start);
+        3: Result := IntToStr(stop);
+        4: Result := 'WITHSCORES';
+      end;
+    end,
+    onValue, doError);
+end;
+
+procedure TRedisClientAsync.ZRangeByScore(const key, min, max: string;
+  const onValue: TProcString; const Result: TProc; const options: string);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(4 + list.Count,
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZRANGEBYSCORE';
+          1: Result := key;
+          2: Result := min;
+          3: Result := max;
+        else
+          Result := list[index - 4];
+        end;
+      end,
+      onValue, doError, Ret(Result));
+  finally
+    list.Free;
+  end;
+end;
+
+procedure TRedisClientAsync.ZRank(const key, member: string;
+  const Result: TProcCardinal);
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZRANK';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZRem(const key: string;
+  const members: array of const; const Result: TProcCardinal);
+var
+  arr: PVarRecArray;
+begin
+  arr := @members;
+  Call(2 + Length(members),
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREM';
+        1: Result := key;
+      else
+        Result := VarItem(@arr[index-2]);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZRemRangeByRank(const key: string; start,
+  stop: Int64; const Result: TProcCardinal);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREMRANGEBYRANK';
+        1: Result := key;
+        2: Result := IntToStr(start);
+        3: Result := IntToStr(stop);
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZRemRangeByScore(const key, min, max: string;
+  const Result: TProcCardinal);
+begin
+  Call(4,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREMRANGEBYSCORE';
+        1: Result := key;
+        2: Result := min;
+        3: Result := max;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZRevRange(const key: string; start, stop: Int64;
+  scores: Boolean; const onValue: TProcString; const Result: TProc);
+var
+  count: Cardinal;
+begin
+  if not scores then
+    count := 4 else
+    count := 5;
+  Call(count,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREVRANGE';
+        1: Result := key;
+        2: Result := IntToStr(start);
+        3: Result := IntToStr(stop);
+        4: Result := 'WITHSCORES';
+      end;
+    end,
+    onValue, doError);
+end;
+
+procedure TRedisClientAsync.ZRevRangeByScore(const key, min, max: string;
+  const onValue: TProcString; const Result: TProc; const options: string);
+var
+  list: TStringList;
+begin
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(4 + list.Count,
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZREVRANGEBYSCORE';
+          1: Result := key;
+          2: Result := min;
+          3: Result := max;
+        else
+          Result := list[index - 4];
+        end;
+      end,
+      onValue, doError, Ret(Result));
+  finally
+    list.Free;
+  end;
+end;
+
+procedure TRedisClientAsync.ZRevRank(const key, member: string;
+  const Result: TProcCardinal);
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZREVRANK';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Ret(Result), doError);
+end;
+
+procedure TRedisClientAsync.ZScore(const key, member: string;
+  const Result: TProcString);
+begin
+  Call(3,
+    function(index: Cardinal): string begin
+      case index of
+        0: Result := 'ZSCORE';
+        1: Result := key;
+        2: Result := member;
+      end;
+    end,
+    Result, doError);
+end;
+
+procedure TRedisClientAsync.ZUnionStore(const destination: string;
+  const keys: array of const; const options: string;
+  const Result: TProcCardinal);
+var
+  list: TStringList;
+  arr: PVarRecArray;
+  arrlen: Cardinal;
+begin
+  arr := @keys;
+  arrlen := Length(keys);
+  list := TStringList.Create;
+  try
+    ParseCommand(options, list);
+    Call(3 + arrlen + Cardinal(list.Count),
+      function(index: Cardinal): string
+      begin
+        case index of
+          0: Result := 'ZUNIONSTORE';
+          1: Result := destination;
+          2: Result := IntToStr(arrlen);
+        else
+          if index < arrlen + 3 then
+            Result := VarItem(@arr[index-3]) else
+            Result := list[index - 3 - arrlen];
+        end;
+      end,
+      Ret(Result), doError);
+  finally
+    list.Free;
+  end;
 end;
 
 end.
