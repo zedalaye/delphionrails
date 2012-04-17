@@ -1202,7 +1202,7 @@ begin
         FOnSynchronize(callback, value) else
         begin
           s := value;
-          TThreadIt.Synchronize(nil, procedure begin
+          TThreadIt.Queue(nil, procedure begin
             callback(s);
           end);
         end;
