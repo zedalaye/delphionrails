@@ -358,7 +358,7 @@ type
     inherited Create(False);
   end;
 
-  procedure TThreadIt.Execute;
+procedure TThreadIt.Execute;
   begin
     FProc();
   end;
@@ -457,10 +457,7 @@ begin
     SetEvent(done);
   end);
   if WaitForSingleObject(done, 1000) <> WAIT_OBJECT_0 then
-  begin
-    TerminateThread(trhandle.Handle, 0);
-    trhandle.Free;
-  end;
+    trhandle.Terminate;
   CloseHandle(done);
 
   if ret <> 0 then
