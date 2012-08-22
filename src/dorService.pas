@@ -113,6 +113,15 @@ begin
   end;
 end;
 
+{$IFDEF CONSOLEAPP}
+function CtrlCHandler(dwCtrlType: DWORD): Boolean; stdcall;
+begin
+  SetConsoleCtrlHandler(@CtrlCHandler, False);
+  Result := (CTRL_C_EVENT = dwCtrlType); { Don't stop on CTRL+C }
+  Terminate;
+end;
+{$ENDIF}
+
 {$IFNDEF CONSOLEAPP}
 procedure ServiceCtrlHandler(Opcode: LongWord); stdcall;
 begin
@@ -343,10 +352,14 @@ begin
 {$endif}
   writeln('---------------------------------------');
 
+  SetConsoleCtrlHandler(@CtrlCHandler, True);
+
 tryagain:
   PeekConsoleInput(GetStdHandle(STD_INPUT_HANDLE), input, 1, inputread);
   if inputread = 0 then
   begin
+    if FApplication = nil then
+      Exit;
     Sleep(1);
     CheckSynchronize;
     goto tryagain;
@@ -356,8 +369,8 @@ tryagain:
     if input.Event.KeyEvent.AsciiChar = #$D then
     begin
     {$ifdef madExcept}
-      if comparetext(Cmd, 'restart') = 0 then RestartApplication else
-      if comparetext(Cmd, 'report') = 0 then
+      if CompareText(Cmd, 'restart') = 0 then RestartApplication else
+      if CompareText(Cmd, 'report') = 0 then
       begin
         try
           raise Exception.Create('Thread Status');
@@ -367,14 +380,14 @@ tryagain:
         end;
       end else
     {$endif}
-      if comparetext(Cmd, 'exit') = 0 then
+      if CompareText(Cmd, 'exit') = 0 then
       begin
         Terminate;
         Exit;
       end else
-      if comparetext(Cmd, 'pause') = 0 then Suspend else
-      if comparetext(Cmd, 'resume') = 0 then Resume else
-      if comparetext(Cmd, 'clear') = 0 then
+      if CompareText(Cmd, 'pause') = 0 then Suspend else
+      if CompareText(Cmd, 'resume') = 0 then Resume else
+      if CompareText(Cmd, 'clear') = 0 then
       begin
         FThreads.Lock;
         try
