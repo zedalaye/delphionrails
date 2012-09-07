@@ -16,6 +16,9 @@ type
     ['{27621D9A-AAE9-4E24-82F5-A18D84E415F3}']
     function GetConnection: IDBConnection;
     function GetSize: Integer;
+    procedure ClearPool;
+    procedure Lock;
+    procedure Unlock;
   end;
 
   IDBConnection = interface
