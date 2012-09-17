@@ -185,7 +185,11 @@ end;
 
 function DecodeValue(const p: PChar): ISuperObject; inline;
 begin
-  Result := TSuperObject.ParseString(p, False, False);
+  try
+    Result := TSuperObject.ParseString(p, False, False);
+  except
+    Result := nil;
+  end;
   if Result = nil then
     Result := TSuperObject.Create(p);
 end;
