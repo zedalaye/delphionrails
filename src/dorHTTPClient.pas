@@ -23,7 +23,7 @@ type
 
   THeaderCollection = TDictionary<RawByteString,THTTPHeader>.TValueCollection;
 
-  EHTTPRequest = exception;
+  EHTTPRequest = Exception;
 
   IHTTPRequest = interface
     ['{105BFAD3-A4AE-459E-8EA6-377E9E065827}']
@@ -33,9 +33,9 @@ type
     procedure SetRequestHeader(const header, value: RawByteString);
     function GetRequestHeader(const header: RawByteString): RawByteString;
     function GetResponseHeader(const header: RawByteString): RawByteString;
-    function Send(data: TStream = nil): Boolean;
-    function SendText(const data: string; encoding: TEncoding = nil): Boolean;
-    function SendFile(const FileName: string): Boolean;
+    function Send(data: TStream = nil; TimeOut: Cardinal = 0): Boolean;
+    function SendText(const data: string; encoding: TEncoding = nil; TimeOut: Cardinal = 0): Boolean;
+    function SendFile(const FileName: string; TimeOut: Cardinal = 0): Boolean;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
     procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
@@ -73,10 +73,11 @@ type
     private
       FThis: IHTTPRequest;
       FData: TPooledMemoryStream;
+      FTimeOut: Cardinal;
     protected
       procedure Execute; override;
     public
-      constructor Create(const this: IHTTPRequest; data: TStream);
+      constructor Create(const this: IHTTPRequest; data: TStream; TimeOut: Cardinal);
       destructor Destroy; override;
     end;
   private
@@ -121,13 +122,13 @@ type
     procedure LoadEvents;
 
     procedure SetReadyState(ready: TReadyState);
-    function Receive: Boolean;
+    function Receive(TimeOut: Cardinal): Boolean;
     procedure SendHeaders(data: TStream);
     function TCPConnect(const domain: RawByteString; port: Word; ssl: Boolean): Boolean;
     procedure TCPDisconnect;
     function TCPReconnect: Boolean;
 
-    function InternalSend(data: TSTream): Boolean;
+    function InternalSend(data: TSTream; TimeOut: Cardinal): Boolean;
     function InternalOpen(const method: RawByteString; const url: string; async: Boolean; const user, password: string; urlencode: Boolean): Boolean;
     procedure InternalSetRequestHeader(const header, value: RawByteString);
     function IsRedirecting: Boolean;
@@ -137,9 +138,9 @@ type
     procedure SetRequestHeader(const header, value: RawByteString);
     function GetRequestHeader(const header: RawByteString): RawByteString;
     function GetResponseHeader(const header: RawByteString): RawByteString;
-    function Send(data: TStream): Boolean;
-    function SendText(const data: string; encoding: TEncoding): Boolean;
-    function SendFile(const FileName: string): Boolean;
+    function Send(data: TStream; TimeOut: Cardinal): Boolean;
+    function SendText(const data: string; encoding: TEncoding; TimeOut: Cardinal): Boolean;
+    function SendFile(const FileName: string; TimeOut: Cardinal): Boolean;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
     function GetReadyState: TReadyState;
@@ -265,7 +266,7 @@ end;
 function THTTPRequest.GetResponseStream: TStream;
 begin
   if FReadyState <> rsLoaded then
-    raise EHTTPRequest.Create('document is not loaded');
+    raise EHTTPRequest.Create('Document is not loaded.');
   Result := FResponseData;
 end;
 
@@ -278,7 +279,7 @@ var
   contenttype: THTTPHeader;
 begin
   if FReadyState <> rsLoaded then
-    raise EHTTPRequest.Create('document is not loaded');
+    raise EHTTPRequest.Create('Document is not loaded.');
 
   freecharset := False;
   encoding := nil;
@@ -396,19 +397,19 @@ error:
   Result := False;
 end;
 
-function THTTPRequest.InternalSend(data: TSTream): Boolean;
+function THTTPRequest.InternalSend(data: TSTream; TimeOut: Cardinal): Boolean;
 var
   str: THTTPHeader;
 begin
   SendHeaders(data);
-  Result := Receive;
+  Result := Receive(TimeOut);
   // Reconnect ?
   if FReadError then
   begin
     if TCPReconnect then
     begin
       SendHeaders(data);
-      Result := Receive;
+      Result := Receive(TimeOut);
     end;
   end;
 
@@ -417,11 +418,11 @@ begin
   begin
     Inc(FRedirectCount);
     if FRedirectCount > 10 then
-      raise EHTTPRequest.Create('Too many redirections');
+      raise EHTTPRequest.Create('Too many redirections.');
 
     Result := InternalOpen(FMethod, string(str.value), FAsync, FUser, FPassword, False);
     if Result then
-      Result := InternalSend(data);
+      Result := InternalSend(data, TimeOut);
   end;
 end;
 
@@ -440,19 +441,21 @@ function THTTPRequest.Open(const method: RawByteString; const url: string; async
   const user, password: string; urlencode: Boolean = True): Boolean;
 begin
   if not (FReadyState in [rsUninitialized, rsLoaded]) then
-    raise EHTTPRequest.Create('Connection is not ready');
+    raise EHTTPRequest.Create('Connection is not ready.');
   Result := InternalOpen(method, url, async, user, password, urlencode);
 end;
 
-function THTTPRequest.Receive: Boolean;
+function THTTPRequest.Receive(TimeOut: Cardinal): Boolean;
 var
   str: THTTPHeader;
   len, rcv: Integer;
   buff: array[0..1023] of AnsiChar;
-  strm: TPooledMemoryStream;
+  strm: TStream;
   encoding: TContentEncoding;
+  t: timeval;
 begin
   FReadError := False;
+  strm := nil;
   if FResponseData = nil then
   begin
     FResponseData := TPooledMemoryStream.Create;
@@ -460,6 +463,10 @@ begin
   end else
     FResponseData.Size := 0;
   FResponseHeader.Clear;
+
+  t.tv_sec := TimeOut;
+  t.tv_usec := 0;
+  setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @t, SizeOf(t));
 
   if not HTTPParse(
     function (var buf; len: Integer): Integer
@@ -508,6 +515,9 @@ begin
   if FResponseHeader.TryGetValue('content-length', str) and
     TryStrToInt(string(str.value), len) and (len > 0) then
   begin
+    if encoding = encUnknown then
+      strm := FResponseData else
+      strm := TPooledMemoryStream.Create;
     while len > 0 do
     begin
       SetReadyState(rsReceiving);
@@ -522,68 +532,63 @@ begin
         if rcv <> len then
           Exit(False);
       end;
-      FResponseData.Write(buff, rcv);
+      strm.Write(buff, rcv);
       Dec(len, rcv);
     end;
   end;
 
-  if FResponseData.Size > 0 then
-  begin
+  if (strm <> nil) then
     case encoding of
       encDeflate:
         begin
-          strm := TPooledMemoryStream.Create();
-          FResponseData.Seek(0, soFromBeginning);
-          if DecompressStream(FResponseData, strm, True) then
-          begin
-            FResponseData.Free;
-            FResponseData := strm;
-          end else
+          strm.Seek(0, soFromBeginning);
+          try
+            if (strm.Size > 0) then
+              if not DecompressStream(strm, FResponseData, True) then
+                Exit(False);
+          finally
             strm.Free;
+          end;
         end;
       encGZIP:
         begin
-          strm := TPooledMemoryStream.Create();
-          FResponseData.Seek(0, soFromBeginning);
-          if DecompressGZipStream(FResponseData, strm) then
-          begin
-            FResponseData.Free;
-            FResponseData := strm;
-          end else
-          begin
+          strm.Seek(0, soFromBeginning);
+          try
+            if (strm.Size > 0) then
+              if not DecompressGZipStream(strm, FResponseData) then
+                Exit(False);
+          finally
             strm.Free;
-            Exit(False);
           end;
         end;
     end;
-    FResponseData.Seek(0, soFromBeginning);
-  end;
+  FResponseData.Seek(0, soFromBeginning);
   Result := True;
 end;
 
-function THTTPRequest.Send(data: TStream): Boolean;
+function THTTPRequest.Send(data: TStream; TimeOut: Cardinal): Boolean;
 begin
   if FReadyState <> rsOpen then
-    raise EHTTPRequest.Create('socket is not open');
+    raise EHTTPRequest.Create('Socket is not open.');
   FRedirectCount := 0;
   if FAsync then
   begin
-    TThreadAsync.Create(Self, data);
+    TThreadAsync.Create(Self, data, TimeOut);
     Result := True;
   end else
   begin
-    Result := InternalSend(data);
+    Result := InternalSend(data, TimeOut);
     SetReadyState(rsLoaded);
   end;
 end;
 
-function THTTPRequest.SendFile(const FileName: string): Boolean;
+function THTTPRequest.SendFile(const FileName: string; TimeOut: Cardinal): Boolean;
 var
   stream: TFileStream;
 begin
   stream := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
   try
-    Result := Send(stream);
+    Result := Send(stream, TimeOut);
   finally
     stream.Free;
   end;
@@ -654,7 +659,7 @@ begin
   SetReadyState(rsSent);
 end;
 
-function THTTPRequest.SendText(const data: string; encoding: TEncoding): Boolean;
+function THTTPRequest.SendText(const data: string; encoding: TEncoding; TimeOut: Cardinal): Boolean;
 var
   stream: TStringStream;
 begin
@@ -662,7 +667,7 @@ begin
     encoding := TEncoding.UTF8;
   stream := TStringStream.Create(data, encoding);
   try
-    Result := Send(stream);
+    Result := Send(stream, TimeOut);
   finally
     stream.Free;
   end;
@@ -686,7 +691,7 @@ end;
 procedure THTTPRequest.SetRequestHeader(const header, value: RawByteString);
 begin
   if FReadyState <> rsOpen then
-    raise EHTTPRequest.Create('Connection is not open');
+    raise EHTTPRequest.Create('Connection is not open.');
   InternalSetRequestHeader(header, value);
 end;
 
@@ -722,6 +727,8 @@ begin
       rcv := recv(FSocket, p^, 1, 0);
     if rcv <> 1 then
     begin
+      if (WSAGetLastError = WSAETIMEDOUT) then
+        raise EHTTPRequest.Create('Timeout.');
       FReadError := True;
       Exit;
     end;
@@ -898,10 +905,12 @@ end;
 
 { THTTPRequest.TThreadAsync }
 
-constructor THTTPRequest.TThreadAsync.Create(const this: IHTTPRequest; data: TStream);
+constructor THTTPRequest.TThreadAsync.Create(const this: IHTTPRequest;
+  data: TStream; TimeOut: Cardinal);
 begin
   FreeOnTerminate := True;
   FThis := this;
+  FTimeOut := TimeOut;
   if data <> nil then
   begin
     FData := TPooledMemoryStream.Create;
@@ -921,7 +930,7 @@ end;
 
 procedure THTTPRequest.TThreadAsync.Execute;
 begin
-  THTTPRequest(FThis).InternalSend(FData);
+  THTTPRequest(FThis).InternalSend(FData, FTimeOut);
   THTTPRequest(FThis).SetReadyState(rsLoaded);
 end;
 
