@@ -777,6 +777,8 @@ begin
                     begin
                       FErrorCode := 500;
                       Response.Content.WriteString(E.Message, false);
+                      Response.Content.WriteString(CRLF, False);
+                      Response.Content.WriteString(E.StackTrace, false);
                     {$ifdef madExcept}
                       HandleException(etNormal, E);
                     {$endif}
