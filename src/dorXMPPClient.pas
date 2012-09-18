@@ -358,7 +358,7 @@ type
     inherited Create(False);
   end;
 
-procedure TThreadIt.Execute;
+  procedure TThreadIt.Execute;
   begin
     FProc();
   end;
@@ -457,7 +457,11 @@ begin
     SetEvent(done);
   end);
   if WaitForSingleObject(done, 1000) <> WAIT_OBJECT_0 then
+  begin
     trhandle.Terminate;
+    closesocket(FSocket);
+    FSocket := INVALID_SOCKET;
+  end;
   CloseHandle(done);
 
   if ret <> 0 then
