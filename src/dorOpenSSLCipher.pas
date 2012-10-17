@@ -61,6 +61,7 @@ type
     FCipher: TCipher;
   public
     constructor Create(Size: Integer = 256);
+    destructor Destroy; override;
     function Encrypt(const Password, Data: RawByteString; Binary: Boolean = False): RawByteString;
     function Decrypt(const Password, Data: RawByteString; Binary: Boolean = False): RawByteString;
   end;
@@ -115,7 +116,14 @@ end;
 
 constructor TAes.Create(Size: Integer);
 begin
+  inherited Create;
   FCipher := TCipher.Create('aes-' + IntToStr(Size) + '-cbc');
+end;
+
+destructor TAes.Destroy;
+begin
+  FCipher.Free;
+  inherited;
 end;
 
 function TAes.Encrypt(const Password, Data: RawByteString;
