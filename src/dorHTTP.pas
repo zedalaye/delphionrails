@@ -430,15 +430,18 @@ var
   p: PAnsiChar;
   st, saved: TState;
   k, v: RawByteString;
-  delimiters: set of AnsiChar;
+  delimitersKey, delimitersValue: set of AnsiChar;
 label
   redo;
 begin
-  delimiters := [';', '=', #0];
+  delimitersKey := [';', '=', #0];
+  delimitersValue := [';', #0];
   if subkeys then
   begin
-    Include(delimiters, ',');
-    Include(delimiters, ' ');
+    Include(delimitersKey, ',');
+    Include(delimitersKey, ' ');
+    Include(delimitersValue, ',');
+    Include(delimitersValue, ' ');
   end;
 
   group := 0;
@@ -472,7 +475,7 @@ redo:
           goto redo;
         end;
       stKey:
-        if not (p^ in delimiters) then
+        if not (p^ in delimitersKey) then
           k := k + p^ else
           begin
             st := stEat;
@@ -512,7 +515,7 @@ redo:
           Exit(False);
         end;
       stValue:
-        if not (p^ in delimiters) then
+        if not (p^ in delimitersValue) then
           v := v + p^ else
           begin
             st := stEat;
