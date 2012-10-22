@@ -331,7 +331,7 @@ begin
 
   // delete padding, if any
   if PadCount > 0 then
-    stream.Position := stream.Position - PadCount;
+    stream.Size := stream.Position - PadCount;
 end;
 
 function BytesToBase64(bytes: PByte; len: Integer): string;
