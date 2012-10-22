@@ -122,6 +122,7 @@ type
     constructor Create(stream: TStream = nil); reintroduce; overload;
     constructor Create(const filename: string); reintroduce; overload;
     constructor Create(buffer: Pointer; len: Integer); reintroduce; overload;
+    constructor CreateFromBase64(const base64: string);
     destructor Destroy; override;
     function Clone: ISuperObject; override;
     function Write(writer: TSuperWriter; format: boolean; escape: boolean; level: integer): Integer; override;
@@ -338,6 +339,13 @@ begin
   FStream := TPooledMemoryStream.Create;
   if (buffer <> nil) and (len > 0) then
     FStream.Write(buffer^, len);
+end;
+
+constructor TDBBinary.CreateFromBase64(const base64: string);
+begin
+  inherited Create('[BINARY]');
+  FStream := TPooledMemoryStream.Create;
+  Base64ToStream(base64, FStream);
 end;
 
 destructor TDBBinary.Destroy;
