@@ -498,6 +498,10 @@ begin
   end else
     encoding := encUnknown;
 
+  if encoding = encUnknown then
+    strm := FResponseData else
+    strm := TPooledMemoryStream.Create;
+
   if FResponseHeader.TryGetValue('transfer-encoding', str) and AnsiStrings.SameText(str.value, 'chunked') then
   begin
     if not HTTPReadChunked(
@@ -508,16 +512,13 @@ begin
       function (var buf; len: Integer): Integer
       begin
         SetReadyState(rsReceiving);
-        Result := FResponseData.Write(buf, len);
+        Result := strm.Write(buf, len);
       end) then
         Exit(False);
   end else
   if FResponseHeader.TryGetValue('content-length', str) and
     TryStrToInt(string(str.value), len) and (len > 0) then
   begin
-    if encoding = encUnknown then
-      strm := FResponseData else
-      strm := TPooledMemoryStream.Create;
     while len > 0 do
     begin
       SetReadyState(rsReceiving);
