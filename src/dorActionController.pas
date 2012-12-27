@@ -39,12 +39,13 @@ type
     class function HavePeerCertificate: Boolean; virtual;
     class function SSLSubject(const key: AnsiString): AnsiString; virtual;
     class function SSLIssuer(const key: AnsiString): AnsiString; virtual;
+    procedure ETag;
   public
     function Invoke: Boolean; virtual;
   end;
 
 implementation
-uses dorSocketStub;
+uses dorSocketStub, Classes, dorOpenSSL;
 
 { TActionController }
 
@@ -56,6 +57,30 @@ end;
 class function TActionController.ErrorCode: Integer;
 begin
   Result := (CurrentDorThread as THTTPStub).ErrorCode;
+end;
+
+procedure TActionController.ETag;
+var
+  stream: TMemoryStream;
+  buffer: array[0..SHA_DIGEST_LENGTH - 1] of AnsiChar;
+  buffer2: array[0..(SHA_DIGEST_LENGTH * 2) - 1] of AnsiChar;
+begin
+  stream := TMemoryStream.Create;
+  try
+    stream.Size := Return.CalcSize;
+    Return.SaveTo(stream);
+    SHA1(stream.Memory, stream.Size, @buffer);
+    BinToHex(PAnsiChar(@buffer), PAnsiChar(@buffer2), SHA_DIGEST_LENGTH);
+
+    if Request['env'].AsObject.S['if-none-match'] = string(buffer2) then
+      SetErrorCode(304) else
+      begin
+        Response.AsObject.S['Cache-Control'] := 'max-age=946080000, public';
+        Response.AsObject.S['ETag'] := string(buffer2);
+      end;
+  finally
+    stream.Free;
+  end;
 end;
 
 class function TActionController.HavePeerCertificate: Boolean;
