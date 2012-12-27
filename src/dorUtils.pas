@@ -127,7 +127,6 @@ function GetTickCount: Cardinal;
 {$ENDIF}
 
 implementation
-uses uiblib;
 
 const
   Base64Code: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -894,6 +893,16 @@ end;
 procedure TPooledMemoryStream.WriteInteger(const V: Integer);
 begin
   Write(v, sizeof(v));
+end;
+
+function MBUEncode(const str: UnicodeString; cp: Word): RawByteString;
+begin
+  if cp > 0 then
+  begin
+    SetLength(Result, WideCharToMultiByte(cp, 0, PWideChar(str), length(str), nil, 0, nil, nil));
+    WideCharToMultiByte(cp, 0, PWideChar(str), length(str), PAnsiChar(Result), Length(Result), nil, nil);
+  end else
+    Result := AnsiString(str);
 end;
 
 procedure TPooledMemoryStream.WriteString(const str: string; writesize: boolean; cp: Integer);

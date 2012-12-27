@@ -71,12 +71,12 @@ type
     procedure SendFile(const filename: string);
     procedure SendStream(Stream: TStream);
     procedure RenderInternal;
-    procedure RenderScript;
+    function RenderScript: Boolean;
     function DecodeContent: boolean; virtual;
     procedure doBeforeProcessRequest; virtual;
     procedure doAfterProcessRequest; virtual;
   protected
-    procedure ProcessRequest; virtual;
+    function ProcessRequest: Boolean; virtual;
     function Run: Cardinal; override;
     function Upgrade: Cardinal; virtual;
     function WebSocket: Cardinal; virtual;
@@ -581,7 +581,7 @@ end;
 
 
 
-procedure THTTPStub.RenderScript;
+function THTTPStub.RenderScript: Boolean;
 var
   state: Plua_State;
   ite: TSuperObjectIter;
@@ -636,6 +636,7 @@ var
   Render('</body></html>');
   end;
 begin
+  Result := False;
   with Params.AsObject do
   begin
 
@@ -644,6 +645,7 @@ begin
     str := path + rel;
     if FileExists(str) then
     begin
+      Result := True;
 {$IFDEF DEBUG}
       FLuaStack := nil;
 {$ENDIF}
@@ -1055,14 +1057,14 @@ begin
   FResponse.AsObject.S['Location'] := Location;
 end;
 
-procedure THTTPStub.ProcessRequest;
+function THTTPStub.ProcessRequest: Boolean;
 var
   str, path, ext: string;
   rec: TSearchRec;
   clazz: TRttiType;
   inst: TObject;
 begin
-  inherited;
+  Result := False;
   with FParams.AsObject do
     if FFormats[S['format'] + '.charset'] <> nil then
       FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
@@ -1080,7 +1082,10 @@ begin
           inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
         try
           if inst is TActionController then
-            TActionController(inst).Invoke;
+          begin
+            if TActionController(inst).Invoke then
+              Result := True;
+          end;
         finally
           inst.Free;
         end;
@@ -1105,6 +1110,7 @@ begin
         if FileExists(FSendFile) then
         begin
           FErrorCode := 200;
+          Result := True;
           FResponse.AsObject.S['Content-Disposition'] := 'attachment; filename=' + ExtractFileName(FSendFile);
           FResponse.AsObject.S['Content-Transfer-Encoding'] := 'binary';
         end
@@ -1116,7 +1122,8 @@ begin
       // view ?
       RenderInternal;
       if not (FErrorCode in [200..207]) then
-        RenderScript;
+        if RenderScript then
+          Result := True;
       if FErrorCode in [200..207] then
       begin
         FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
@@ -1133,6 +1140,7 @@ begin
     str := str + 'index.' + FParams.AsObject.S['format'];
   if FindFirst(path + str, faAnyFile, rec) = 0 then
   begin
+    Result := True;
     { Although the rec.Time is platform bounded and deprecated (on Windows) in
       favor of the new TimeStamp property, all we need here is an integer
       timestamp that changes with the resource }

@@ -1,8 +1,4 @@
 unit dorUIB;
-{$IFDEF FPC}
-{$mode objfpc}{$H+}
-{$ENDIF}
-
 {$I uib.inc}
 
 interface
@@ -304,11 +300,7 @@ end;
 procedure TDBUIBContext.ExecuteImmediate(const Options: SOString);
 begin
   with FConnection, FLibrary do
-  {$IFDEF UNICODE}
     DSQLExecuteImmediate(FDbHandle, FTrHandle, MBUEncode(Options, CharacterSetCP[FCharacterSet]), 3);
-  {$ELSE}
-    DSQLExecuteImmediate(FDbHandle, FTrHandle, Options, 3);
-  {$ENDIF}
 end;
 
 function TDBUIBContext.newCommand(const Options: ISuperObject; const Connection: IDBConnection): IDBCommand;
@@ -341,11 +333,7 @@ begin
     DSQLAllocateStatement(FDbHandle, FStHandle);
     try
       FStatementType := DSQLPrepare(FDbHandle, Context.FTrHandle, FStHandle,
-  {$IFDEF UNICODE}
         MBUEncode(FSQLParams.Parse(PSOChar(self.S['sql'])), CharacterSetCP[FCharacterSet]), 3, FSQLResult);
-  {$ELSE}
-        AnsiString(FSQLParams.Parse(PSOChar(self.S['sql']))), 3, FSQLResult);
-  {$ENDIF}
     except
       on E: Exception do
       begin
@@ -521,11 +509,7 @@ var
             FSQLParams.AsQuad[Index] := BlobCreate(FDbHandle, FTrHandle, BlobHandle);
             if value.QueryInterface(IDBBlob, blob) = 0 then
               BlobWriteStream(BlobHandle, blob.getData) else
-{$IFDEF UNICODE}
-                BlobWriteString(BlobHandle, MBUEncode(value.AsString, CharacterSetCP[FCharacterSet]));
-{$ELSE}
-                BlobWriteString(BlobHandle, value.AsString);
-{$ENDIF}
+              BlobWriteString(BlobHandle, MBUEncode(value.AsString, CharacterSetCP[FCharacterSet]));
             BlobClose(BlobHandle);
           end;
       else
@@ -646,16 +630,39 @@ begin
         rec := TSuperObject.Create(stObject);
         prm := @FSQLParams.Data.sqlvar[j];
         if prm.ParamNameLength > 0 then
-          rec.S['name'] := string(copy(prm.ParamName, 1, prm.ParamNameLength));
+          rec.S['name'] := LowerCase(string(copy(prm.ParamName, 1, prm.ParamNameLength)));
         add(rec);
         case FSQLParams.FieldType[j] of
           uftChar, uftVarchar, uftCstring:
           begin
             rec.S['type'] := 'str';
-            rec.I['length'] := FSQLParams.SQLLen[j];
+            rec.I['length'] := FSQLParams.SQLLen[j] div BytesPerCharacter[csUTF8];
           end;
-          uftSmallint, uftInteger, uftInt64: rec.S['type'] := 'int';
-          uftNumeric, uftFloat, uftDoublePrecision: rec.S['type'] := 'float';
+          uftSmallint: rec.S['type'] := 'int16';
+          uftInteger: rec.S['type'] := 'int32';
+          uftInt64: rec.S['type'] := 'int64';
+          uftNumeric:
+            begin
+              rec.S['type'] := 'numeric';
+              rec.I['scale'] := -FSQLResult.SQLScale[j];
+              case FSQLResult.SqlType[j] of
+                SQL_SHORT:
+                  if FSQLResult.SQLScale[j] = -4 then
+                    rec.I['precision'] := 5 else
+                    rec.I['precision'] := 4;
+                SQL_LONG:
+                  if FSQLResult.SQLScale[j] = -9 then
+                    rec.I['precision'] := 10 else
+                    rec.I['precision'] := 9;
+                SQL_INT64:
+                  if FSQLResult.SQLScale[j] = -18 then
+                    rec.I['precision'] := 19 else
+                    rec.I['precision'] := 18;
+              end;
+            end;
+
+          uftFloat: rec.S['type'] := 'float';
+          uftDoublePrecision: rec.S['type'] := 'double';
           uftBlob, uftBlobId:
           begin
             if FSQLParams.Data^.sqlvar[j].SqlSubType = 1 then
@@ -703,10 +710,32 @@ begin
           uftChar, uftVarchar, uftCstring:
           begin
             rec.S['type'] := 'str';
-            rec.I['length'] := FSQLResult.SQLLen[j];
+            rec.I['length'] := FSQLResult.SQLLen[j] div BytesPerCharacter[csUTF8];
           end;
-          uftSmallint, uftInteger, uftInt64: rec.S['type'] := 'int';
-          uftNumeric, uftFloat, uftDoublePrecision: rec.S['type'] := 'float';
+          uftSmallint: rec.S['type'] := 'int16';
+          uftInteger: rec.S['type'] := 'int32';
+          uftInt64: rec.S['type'] := 'int64';
+          uftNumeric:
+            begin
+              rec.S['type'] := 'numeric';
+              rec.I['scale'] := -FSQLResult.SQLScale[j];
+              case FSQLResult.SqlType[j] of
+                SQL_SHORT:
+                  if FSQLResult.SQLScale[j] = -4 then
+                    rec.I['precision'] := 5 else
+                    rec.I['precision'] := 4;
+                SQL_LONG:
+                  if FSQLResult.SQLScale[j] = -9 then
+                    rec.I['precision'] := 10 else
+                    rec.I['precision'] := 9;
+                SQL_INT64:
+                  if FSQLResult.SQLScale[j] = -18 then
+                    rec.I['precision'] := 19 else
+                    rec.I['precision'] := 18;
+              end;
+            end;
+          uftFloat: rec.S['type'] := 'float';
+          uftDoublePrecision: rec.S['type'] := 'double';
           uftBlob, uftBlobId:
           begin
             if FSQLResult.Data^.sqlvar[j].SqlSubType = 1 then

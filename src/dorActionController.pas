@@ -40,7 +40,7 @@ type
     class function SSLSubject(const key: AnsiString): AnsiString; virtual;
     class function SSLIssuer(const key: AnsiString): AnsiString; virtual;
   public
-    procedure Invoke; virtual;
+    function Invoke: Boolean; virtual;
   end;
 
 implementation
@@ -68,12 +68,13 @@ begin
   Result := (CurrentDorThread as TClientStub).Source.IsSSL;
 end;
 
-procedure TActionController.Invoke;
+function TActionController.Invoke: Boolean;
 var
   obj: ISuperObject;
   ctx: TSuperRttiContext;
   ite: TSuperAvlEntry;
 begin
+  Result := False;
   ctx := (CurrentDorThread as THTTPStub).Context;
   for obj in Params do
     if obj <> nil then
@@ -81,9 +82,10 @@ begin
 
   case TrySOInvoke(ctx, Self, Params.AsObject.S['action'] + '_' + Request.AsObject.S['method'], Params, obj) of
     irParamError: SetErrorCode(400);
-    irError:
-      SetErrorCode(500);
+    irError: SetErrorCode(500);
+    irMethothodError: Result := False;
   else
+    Result := True;
     for ite in Params.AsObject do
       if (ite.Value <> nil) and (ite.Value.DataPtr = nil) then
         Return.AsObject[ite.Name] := ite.Value;
