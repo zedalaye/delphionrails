@@ -20,6 +20,9 @@ uses superobject, dorHTTPStub;
 
 type
   TActionController = class
+  private
+    FEtag: Boolean;
+    procedure CalcETag;
   protected
     // This empty method is called to force RTTI
     // Could be used for somethingelse later
@@ -60,6 +63,11 @@ begin
 end;
 
 procedure TActionController.ETag;
+begin
+  FEtag := True;
+end;
+
+procedure TActionController.CalcETag;
 var
   stream: TMemoryStream;
   buffer: array[0..SHA_DIGEST_LENGTH - 1] of AnsiChar;
@@ -100,6 +108,7 @@ var
   ite: TSuperAvlEntry;
 begin
   Result := False;
+  FEtag := False;
   ctx := (CurrentDorThread as THTTPStub).Context;
   for obj in Params do
     if obj <> nil then
@@ -119,6 +128,8 @@ begin
     if ErrorCode = 0 then
       SetErrorCode(200);
   end;
+  if FEtag then
+    CalcETag;
 end;
 
 class function TActionController.Params: ISuperObject;
