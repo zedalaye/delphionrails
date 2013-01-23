@@ -79,6 +79,9 @@ const
   SERVICE_DISABLED              = $00000004;
 {$ENDIF}
 
+
+procedure Terminate;
+
 implementation
 uses Classes;
 
