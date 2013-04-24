@@ -1139,7 +1139,7 @@ begin
   if (AnsiChar(str[Length(str)]) in ['/','\']) then
     str := str + 'index.' + FParams.AsObject.S['format'];
   if FindFirst(path + str, faAnyFile, rec) = 0 then
-  begin
+  try
     Result := True;
     { Although the rec.Time is platform bounded and deprecated (on Windows) in
       favor of the new TimeStamp property, all we need here is an integer
@@ -1159,10 +1159,11 @@ begin
     FResponse.AsObject.S['ETag'] := IntToStr(rec.Time) + '-' + IntToStr(rec.Size);
     FSendFile := path + str;
     Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
-    FindClose(rec);
     FErrorCode := 200;
   {$WARN SYMBOL_DEPRECATED ON}
   {$WARN SYMBOL_PLATFORM ON}
+  finally
+    FindClose(rec);
   end else
     FErrorCode :=  404;
 end;
