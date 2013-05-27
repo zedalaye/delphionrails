@@ -61,6 +61,7 @@ type
     FSendFile: string;
     FIsStatic: Boolean;
     FWebSocketVersion: Integer;
+    FStopping: Boolean;
 {$IFDEF DEBUG}
     FLuaStack: PLuaStackInfo;
 {$ENDIF}
@@ -89,6 +90,7 @@ type
     procedure Redirect(const location: string); overload;
     procedure Redirect(const controler, action: string; const id: string = ''); overload;
     property FileToSend: string read FSendFile write FSendFile;
+    property Stopping: Boolean read FStopping write FStopping;
     property Return: ISuperObject read FReturn;
     property Request: THTTPMessage read FRequest;
     property Response: THTTPMessage read FResponse;
@@ -727,7 +729,7 @@ begin
   len := 0;
   line := 0;
   c := #0;
-  while not Stopped do
+  while not Stopping do
   begin
     //ProcessEvents;
     inc(cursor);
@@ -945,6 +947,7 @@ begin
   FCompress := False;
   FCompressLevel := 5;
   FSendFile := '';
+  FStopping := False;
   FIsStatic := False;
 
   with Request.AsObject do
@@ -1091,7 +1094,7 @@ begin
         end;
       end;
 
-      if (FErrorCode >= 300) or (FErrorCode = 204) then
+      if Stopping or (FErrorCode >= 300) or (FErrorCode = 204) then
         Exit;
 
       if (Request.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
@@ -1139,7 +1142,7 @@ begin
   if (AnsiChar(str[Length(str)]) in ['/','\']) then
     str := str + 'index.' + FParams.AsObject.S['format'];
   if FindFirst(path + str, faAnyFile, rec) = 0 then
-  try
+  begin
     Result := True;
     { Although the rec.Time is platform bounded and deprecated (on Windows) in
       favor of the new TimeStamp property, all we need here is an integer
@@ -1159,11 +1162,10 @@ begin
     FResponse.AsObject.S['ETag'] := IntToStr(rec.Time) + '-' + IntToStr(rec.Size);
     FSendFile := path + str;
     Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
+    FindClose(rec);
     FErrorCode := 200;
   {$WARN SYMBOL_DEPRECATED ON}
   {$WARN SYMBOL_PLATFORM ON}
-  finally
-    FindClose(rec);
   end else
     FErrorCode :=  404;
 end;
@@ -1249,7 +1251,7 @@ begin
 
   stream := TPooledMemoryStream.Create;
   try
-    while not Stopped do
+    while not Stopping do
       if Source.Read(b, 1, 0) = 1 then
       begin
         case state of

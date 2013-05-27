@@ -16,7 +16,7 @@
 unit dorActionController;
 
 interface
-uses superobject, dorHTTPStub;
+uses superobject, dorHTTPStub, Classes;
 
 type
   TActionController = class
@@ -38,6 +38,7 @@ type
     class procedure Redirect(const location: string); overload;
     class procedure Redirect(const controler, action: string; const id: string = ''); overload;
     class procedure SendFile(const path: string);
+    class procedure Send(stream: TStream = nil);
     class function HaveSLL: Boolean; virtual;
     class function HavePeerCertificate: Boolean; virtual;
     class function SSLSubject(const key: AnsiString): AnsiString; virtual;
@@ -48,7 +49,7 @@ type
   end;
 
 implementation
-uses dorSocketStub, Classes, dorOpenSSL;
+uses dorSocketStub, dorOpenSSL;
 
 { TActionController }
 
@@ -150,6 +151,15 @@ end;
 class function TActionController.Return: ISuperObject;
 begin
   Result := (CurrentDorThread as THTTPStub).Return;
+end;
+
+class procedure TActionController.Send(stream: TStream);
+begin
+  with (CurrentDorThread as THTTPStub) do begin
+    if stream <> nil then
+      Response.Content.LoadFromStream(stream);
+    Stopping := True;
+  end;
 end;
 
 class procedure TActionController.SendFile(const path: string);
