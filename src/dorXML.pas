@@ -5,7 +5,7 @@ uses SysUtils, Windows, Classes, Generics.Collections;
 
 type
   IXMLNode = interface;
-  TXMLSaveto = reference to procedure(const data: string);
+  TXMLSaveTo = reference to procedure(const data: string);
   TXMLNodeType = (ntNull, ntNode, ntText, ntCDATA);
   TXMLNodeList = TList<IXMLNode>;
 
@@ -16,13 +16,22 @@ type
     function GetChildNodes: TXMLNodeList;
     function GetText: string;
     procedure SetText(const value: string);
+    function GetValue: string;
     function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer;
     function FirstChild(const name: RawByteString): IXMLNode;
+
     function GetXML: string;
-    procedure SaveToXML(const writer: TXMLSaveto);
-    procedure SaveToText(const writer: TXMLSaveto);
+    procedure SaveToXML(const writer: TXMLSaveTo);
+    procedure SaveToText(const writer: TXMLSaveTo);
     procedure SaveToFile(const filename: string);
     procedure SaveToStream(stream: TStream);
+    procedure LoadFromStream(Stream: TStream);
+
+    function GetPrettyXML: string;
+    procedure SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer);
+    procedure SaveToPrettyFile(const filename: string);
+    procedure SaveToPrettyStream(stream: TStream);
+
     function GetHasAttributes: Boolean;
     function GetHasChildNodes: Boolean;
     function GetDataType: TXMLNodeType;
@@ -31,12 +40,18 @@ type
     procedure SetNullAttr(const name: RawByteString; const value: string);
     function GetNullAttr(const name: RawByteString): string;
     function Append(const name: RawByteString): IXMLNode;
+    function AppendText(const value: string): IXMLNode;
+    function AppendCDATA(const value: string): IXMLNode;
+    function RemoveFirst(const name: RawByteString): IXMLNode;
+    procedure RemoveAll(const name: RawByteString);
 
     property Name: RawByteString read GetName;
     property Attributes: TDictionary<RawByteString, string> read GetAttributes;
     property ChildNodes: TXMLNodeList read GetChildNodes;
     property Text: string read GetText write SetText;
-    property Xml: string read GetXml;
+    property Value: string read GetValue;
+    property XML: string read GetXML;
+    property PrettyXML: string read GetPrettyXML;
     property HasAttributes: Boolean read GetHasAttributes;
     property HasChildNodes: Boolean read GetHasChildNodes;
     property DataType: TXMLNodeType read GetDataType;
@@ -44,22 +59,33 @@ type
     property NullAttr[const name: RawByteString]: string read GetNullAttr write SetNullAttr;
   end;
 
-  TXMLNodeNull = class(TInterfacedObject, IXMLNode)
+  TXMLNodeNull = class(TInterfacedObject, IXMLNode, IStreamPersist)
   protected
-    class procedure Escape(const str: string; const writer: TXMLSaveto);
+    class procedure Instruct(const writer: TXMLSaveTo);
+    class procedure Escape(const str: string; const writer: TXMLSaveTo);
+    class procedure Indent(const Level: Integer; const writer: TXMLSaveTo);
     { IXMLNode }
     function GetName: RawByteString; virtual;
     function GetAttributes: TDictionary<RawByteString, string>; virtual;
     function GetChildNodes: TXMLNodeList; virtual;
     function GetText: string; virtual;
+    function GetValue: string; virtual;
     procedure SetText(const value: string); virtual;
     function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer; virtual;
     function FirstChild(const name: RawByteString): IXMLNode; virtual;
+
     function GetXML: string;
-    procedure SaveToXML(const writer: TXMLSaveto); virtual;
-    procedure SaveToText(const writer: TXMLSaveto); virtual;
+    procedure SaveToXML(const writer: TXMLSaveTo); virtual;
+    procedure SaveToText(const writer: TXMLSaveTo); virtual;
     procedure SaveToFile(const filename: string);
     procedure SaveToStream(stream: TStream);
+    procedure LoadFromStream(Stream: TStream); virtual;
+
+    function GetPrettyXML: string;
+    procedure SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer); virtual;
+    procedure SaveToPrettyFile(const filename: string);
+    procedure SaveToPrettyStream(stream: TStream);
+
     function GetHasAttributes: Boolean; virtual;
     function GetHasChildNodes: Boolean; virtual;
     function GetDataType: TXMLNodeType; virtual;
@@ -68,13 +94,18 @@ type
     procedure SetNullAttr(const name: RawByteString; const value: string); virtual;
     function GetNullAttr(const name: RawByteString): string; virtual;
     function Append(const name: RawByteString): IXMLNode; virtual;
+    function AppendText(const value: string): IXMLNode; virtual;
+    function AppendCDATA(const value: string): IXMLNode; virtual;
+    function RemoveFirst(const name: RawByteString): IXMLNode; virtual;
+    procedure RemoveAll(const name: RawByteString); virtual;
   public
     property Name: RawByteString read GetName;
     property DataType: TXMLNodeType read GetDataType;
     property Attributes: TDictionary<RawByteString, string> read GetAttributes;
     property ChildNodes: TXMLNodeList read GetChildNodes;
     property Text: string read GetText write SetText;
-    property Xml: string read GetXml;
+    property XML: string read GetXML;
+    property PrettyXML: string read GetPrettyXML;
     property HasAttributes: Boolean read GetHasAttributes;
     property HasChildNodes: Boolean read GetHasChildNodes;
     property NullChild[const name: RawByteString]: string read GetNullChild write SetNullChild;
@@ -88,8 +119,10 @@ type
     function GetName: RawByteString; override;
     function GetText: string; override;
     procedure SetText(const value: string); override;
-    procedure SaveToXML(const writer: TXMLSaveto); override;
-    procedure SaveToText(const writer: TXMLSaveto); override;
+    function GetValue: string; override;
+    procedure SaveToXML(const writer: TXMLSaveTo); override;
+    procedure SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer); override;
+    procedure SaveToText(const writer: TXMLSaveTo); override;
     function GetDataType: TXMLNodeType; override;
   public
     constructor Create(const value: string); virtual;
@@ -102,8 +135,10 @@ type
     function GetName: RawByteString; override;
     function GetText: string; override;
     procedure SetText(const value: string); override;
-    procedure SaveToXML(const writer: TXMLSaveto); override;
-    procedure SaveToText(const writer: TXMLSaveto); override;
+    function GetValue: string; override;
+    procedure SaveToXML(const writer: TXMLSaveTo); override;
+    procedure SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer); override;
+    procedure SaveToText(const writer: TXMLSaveTo); override;
     function GetDataType: TXMLNodeType; override;
   public
     constructor Create(const value: string); virtual;
@@ -119,6 +154,7 @@ type
       Action: TCollectionNotification);
     procedure doNotifyAttr(Sender: TObject; const Item: RawByteString;
       Action: TCollectionNotification);
+    procedure Clear;
   protected
     function GetName: RawByteString; override;
     function GetAttributes: TDictionary<RawByteString, string>; override;
@@ -126,8 +162,9 @@ type
     procedure SetText(const value: string); override;
     function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer; override;
     function FirstChild(const name: RawByteString): IXMLNode; override;
-    procedure SaveToXML(const writer: TXMLSaveto); override;
-    procedure SaveToText(const writer: TXMLSaveto); override;
+    procedure SaveToXML(const writer: TXMLSaveTo); override;
+    procedure SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer); override;
+    procedure SaveToText(const writer: TXMLSaveTo); override;
     function GetHasAttributes: Boolean; override;
     function GetHasChildNodes: Boolean; override;
     function GetDataType: TXMLNodeType; override;
@@ -136,6 +173,11 @@ type
     procedure SetNullAttr(const name: RawByteString; const value: string); override;
     function GetNullAttr(const name: RawByteString): string; override;
     function Append(const name: RawByteString): IXMLNode; override;
+    function AppendText(const value: string): IXMLNode; override;
+    function AppendCDATA(const value: string): IXMLNode; override;
+    function RemoveFirst(const name: RawByteString): IXMLNode; override;
+    procedure RemoveAll(const name: RawByteString); override;
+    procedure LoadFromStream(Stream: TStream); override;
   public
     constructor Create(const name: RawByteString); virtual;
     destructor Destroy; override;
@@ -148,11 +190,11 @@ type
   TXMLEvent = reference to function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean;
 
   function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal = CP_ACP): Boolean;
-  function XMLParse(const reader: TXMLReader; cp: Cardinal = CP_ACP): IXMLNode;
-  function XMLParseStream(stream: TStream; cp: Cardinal = CP_ACP): IXMLNode;
-  function XMLParseFile(const filename: TFileName; cp: Cardinal = CP_ACP): IXMLNode;
-  function XMLParseString(const str: AnsiString): IXMLNode; overload;
-  function XMLParseString(const str: string): IXMLNode; overload;
+  function XMLParse(const reader: TXMLReader; const root: IXMLNode = nil; cp: Cardinal = CP_ACP): IXMLNode;
+  function XMLParseStream(stream: TStream;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP): IXMLNode;
+  function XMLParseFile(const filename: TFileName;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP): IXMLNode;
+  function XMLParseString(const str: AnsiString; const root: IXMLNode = nil): IXMLNode; overload;
+  function XMLParseString(const str: string; const root: IXMLNode = nil): IXMLNode; overload;
 
 implementation
 uses Math;
@@ -251,16 +293,16 @@ type
       4: PInteger(@FBuf[FBPos])^ := PInteger(buf)^;
       8: PInt64(@FBuf[FBPos])^ := PInt64(buf)^;
       else
-        move(buf^, FBuf[FBPos], size);
+        Move(buf^, FBuf[FBPos], size);
       end;
-      inc(FBPos, size);
+      Inc(FBPos, size);
       FBuf[FBPos] := #0;
     end;
   end;
 
   function TWriterString.Append(buf: PAnsiChar): Integer;
   begin
-    Result := Append(buf, strlen(buf));
+    Result := Append(buf, StrLen(buf));
   end;
 
   procedure TWriterString.Reset;
@@ -273,7 +315,7 @@ type
   begin
     while (FBPos > 0) and (FBuf[FBPos-1] in [#32, #13, #10]) do
     begin
-      dec(FBPos);
+      Dec(FBPos);
       FBuf[FBPos] := #0;
     end;
   end;
@@ -296,7 +338,7 @@ type
 (* XMLParseSAX                                                              *)
 (******************************************************************************)
 
-function XMLParseSAX(const reader: TXmlReader; const event: TXMLEvent; cp: Cardinal): Boolean;
+function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal): Boolean;
 const
   spaces = [#32,#9,#10,#13];
   alphas = ['a'..'z', 'A'..'Z', '_', ':', #161..#255];
@@ -734,12 +776,12 @@ redo:
         xsElementCDATA:
           begin
             case Position of
-              0: if (c = 'C') then inc(Position) else Exit(False);
-              1: if (c = 'D') then inc(Position) else Exit(False);
-              2: if (c = 'A') then inc(Position) else Exit(False);
-              3: if (c = 'T') then inc(Position) else Exit(False);
-              4: if (c = 'A') then inc(Position) else Exit(False);
-              5: if (c = '[') then inc(Position) else Exit(False);
+              0: if (c = 'C') then Inc(Position) else Exit(False);
+              1: if (c = 'D') then Inc(Position) else Exit(False);
+              2: if (c = 'A') then Inc(Position) else Exit(False);
+              3: if (c = 'T') then Inc(Position) else Exit(False);
+              4: if (c = 'A') then Inc(Position) else Exit(False);
+              5: if (c = '[') then Inc(Position) else Exit(False);
             else
               case c of
                 ']': begin
@@ -755,7 +797,7 @@ redo:
           begin
             case Position of
               0: if (c = ']') then
-                   inc(Position) else
+                   Inc(Position) else
                    begin
                      Value.Append(XML_ARR, 1);
                      Value.Append(@c, 1);
@@ -953,7 +995,7 @@ redo:
   end;
 end;
 
-function XMLParse(const reader: TXMLReader; cp: Cardinal): IXMLNode;
+function XMLParse(const reader: TXMLReader; const root: IXMLNode; cp: Cardinal): IXMLNode;
 var
   stack: TStack<IXMLNode>;
   n: IXMLNode;
@@ -965,7 +1007,13 @@ begin
       begin
         Result := True;
         case node of
-          xtOpen: stack.Push(TXMLNode.Create(name));
+          xtOpen:
+            begin
+              if (stack.Count = 0) and (root <> nil) and (root.DataType = ntNode) then
+                n := root else
+                n := TXMLNode.Create(name);
+              stack.Push(n);
+            end;
           xtClose:
             begin
               n := stack.Pop;
@@ -989,27 +1037,27 @@ begin
   end;
 end;
 
-function XMLParseStream(stream: TStream; cp: Cardinal): IXMLNode;
+function XMLParseStream(stream: TStream; const root: IXMLNode; cp: Cardinal): IXMLNode;
 begin
   Result := XMLParse(function(var c: AnsiChar): Boolean
     begin
       Result := stream.Read(c, 1) = 1
-    end, cp);
+    end, root, cp);
 end;
 
-function XMLParseFile(const filename: TFileName; cp: Cardinal): IXMLNode;
+function XMLParseFile(const filename: TFileName; const root: IXMLNode; cp: Cardinal): IXMLNode;
 var
   stream: TFileStream;
 begin
   stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyNone);
   try
-    Result := XMLParseStream(stream, cp);
+    Result := XMLParseStream(stream, root, cp);
   finally
     stream.Free;
   end;
 end;
 
-function XMLParseString(const str: AnsiString): IXMLNode;
+function XMLParseString(const str: AnsiString; const root: IXMLNode): IXMLNode;
 var
   p: PAnsiChar;
 begin
@@ -1019,16 +1067,16 @@ begin
       if p^ <> #0 then
       begin
         c := p^;
-        inc(p);
+        Inc(p);
         Result := True;
       end else
         Result := False;
-    end, StringCodePage(str));
+    end, root, StringCodePage(str));
 end;
 
-function XMLParseString(const str: string): IXMLNode;
+function XMLParseString(const str: string; const root: IXMLNode): IXMLNode;
 begin
-  Result := XMLParseString(AnsiString(UTF8String(str)));
+  Result := XMLParseString(AnsiString(UTF8String(str)), root);
 end;
 
 { TXMLNodeNull }
@@ -1043,7 +1091,22 @@ begin
   Result := nil;
 end;
 
-class procedure TXMLNodeNull.Escape(const str: string; const writer: TXMLSaveto);
+function TXMLNodeNull.AppendCDATA(const value: string): IXMLNode;
+begin
+  Result := nil;
+end;
+
+function TXMLNodeNull.AppendText(const value: string): IXMLNode;
+begin
+  Result := nil;
+end;
+
+class procedure TXMLNodeNull.Instruct(const writer: TXMLSaveTo);
+begin
+  writer('<?xml version="1.0" encoding="utf-8"?>');
+end;
+
+class procedure TXMLNodeNull.Escape(const str: string; const writer: TXMLSaveTo);
 var
   p1, p2: PChar;
   procedure push(const data: string);
@@ -1073,6 +1136,13 @@ begin
     else
       inc(p2);
     end;
+end;
+
+class procedure TXMLNodeNull.Indent(const Level: Integer;
+  const writer: TXMLSaveTo);
+begin
+  if Level > 0 then
+    writer(StringOfChar(' ', Level));
 end;
 
 function TXMLNodeNull.FindChildNodes(const name: RawByteString;
@@ -1128,9 +1198,27 @@ var
 begin
   sb := TStringBuilder.Create;
   try
-    SaveToText(procedure (const data: string)
-      begin sb.Append(data) end);
-    result := sb.ToString;
+    SaveToText(procedure(const data: string) begin sb.Append(data) end);
+    Result := sb.ToString;
+  finally
+    sb.Free;
+  end;
+end;
+
+function TXMLNodeNull.GetValue: string;
+var
+  sb: TStringBuilder;
+  n: IXMLNode;
+  w: TXMLSaveTo;
+begin
+  w := procedure(const data: string) begin sb.Append(data) end;
+  sb := TStringBuilder.Create;
+  try
+    if ChildNodes <> nil then
+      for n in ChildNodes do
+        if n.DataType = ntText then
+          n.SaveToText(w);
+    Result := sb.ToString;
   finally
     sb.Free;
   end;
@@ -1142,44 +1230,112 @@ var
 begin
   sb := TStringBuilder.Create;
   try
-    SaveToXML(procedure (const data: string)
-      begin sb.Append(data) end);
-    result := sb.ToString;
+    SaveToXML(procedure(const data: string) begin sb.Append(data) end);
+    Result := sb.ToString;
   finally
     sb.Free;
   end;
 end;
 
+function TXMLNodeNull.GetPrettyXML: string;
+var
+  sb: TStringBuilder;
+begin
+  sb := TStringBuilder.Create;
+  try
+    SaveToPrettyXML(procedure(const data: string) begin sb.Append(data) end, 0);
+    Result := sb.ToString;
+  finally
+    sb.Free;
+  end;
+end;
+
+procedure TXMLNodeNull.RemoveAll(const name: RawByteString);
+begin
+
+end;
+
+function TXMLNodeNull.RemoveFirst(const name: RawByteString): IXMLNode;
+begin
+  Result := nil;
+end;
+
+procedure TXMLNodeNull.LoadFromStream(Stream: TStream);
+begin
+
+end;
+
 procedure TXMLNodeNull.SaveToFile(const filename: string);
 var
-  stream: TFileStream;
+  S: TFileStream;
 begin
-  stream := TFileStream.Create(filename, fmCreate);
+  S := TFileStream.Create(filename, fmCreate);
   try
-    SaveToStream(stream);
+    SaveToStream(S);
   finally
-    stream.Free;
+    S.Free;
+  end;
+end;
+
+procedure TXMLNodeNull.SaveToPrettyFile(const filename: string);
+var
+  S: TFileStream;
+begin
+  S := TFileStream.Create(filename, fmCreate);
+  try
+    SaveToPrettyStream(S);
+  finally
+    S.Free;
   end;
 end;
 
 procedure TXMLNodeNull.SaveToStream(stream: TStream);
 var
-  utf: UTF8String;
+  w: TXMLSaveTo;
 begin
-  utf := '<?xml version="1.0" encoding="utf-8"?>';
-  stream.Write(PAnsiChar(utf)^, Length(utf));
-  SaveToXML(procedure(const data: string) begin
-    utf := UTF8String(data);
-    stream.Write(PAnsiChar(utf)^, Length(utf));
-  end);
+  w :=
+    procedure(const data: string)
+    var
+      utf: UTF8String;
+    begin
+      utf := UTF8String(data);
+      stream.Write(PAnsiChar(utf)^, Length(utf));
+    end;
+
+  Instruct(w);
+  SaveToXML(w);
 end;
 
-procedure TXMLNodeNull.SaveToText(const writer: TXMLSaveto);
+procedure TXMLNodeNull.SaveToPrettyStream(stream: TStream);
+var
+  w: TXMLSaveTo;
+begin
+  w :=
+    procedure(const data: string)
+    var
+      utf: UTF8String;
+    begin
+      utf := UTF8String(data);
+      stream.Write(PAnsiChar(utf)^, Length(utf));
+    end;
+
+  Instruct(w);
+  w(#13#10);
+  SaveToPrettyXML(w, 0);
+end;
+
+procedure TXMLNodeNull.SaveToText(const writer: TXMLSaveTo);
 begin
 
 end;
 
-procedure TXMLNodeNull.SaveToXML(const writer: TXMLSaveto);
+procedure TXMLNodeNull.SaveToXML(const writer: TXMLSaveTo);
+begin
+
+end;
+
+procedure TXMLNodeNull.SaveToPrettyXML(const writer: TXMLSaveTo;
+  Level: Integer);
 begin
 
 end;
@@ -1218,19 +1374,31 @@ begin
   Result := FText;
 end;
 
+function TXMLNodeText.GetValue: string;
+begin
+  Result := GetText;
+end;
+
 function TXMLNodeText.GetDataType: TXMLNodeType;
 begin
   Result := ntText;
 end;
 
-procedure TXMLNodeText.SaveToText(const writer: TXMLSaveto);
+procedure TXMLNodeText.SaveToText(const writer: TXMLSaveTo);
 begin
-  Writer(FText);
+  writer(FText);
 end;
 
-procedure TXMLNodeText.SaveToXML(const writer: TXMLSaveto);
+procedure TXMLNodeText.SaveToXML(const writer: TXMLSaveTo);
 begin
   Escape(FText, writer);
+end;
+
+procedure TXMLNodeText.SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer);
+begin
+  Indent(Level, writer);
+  SaveToXML(writer);
+  writer(#13#10);
 end;
 
 procedure TXMLNodeText.SetText(const value: string);
@@ -1255,21 +1423,37 @@ begin
   Result := FCDATA;
 end;
 
+function TXMLNodeCDATA.GetValue: string;
+begin
+  Result := GetText;
+end;
+
 function TXMLNodeCDATA.GetDataType: TXMLNodeType;
 begin
   Result := ntCDATA;
 end;
 
-procedure TXMLNodeCDATA.SaveToText(const writer: TXMLSaveto);
+procedure TXMLNodeCDATA.SaveToText(const writer: TXMLSaveTo);
 begin
   writer(FCDATA);
 end;
 
-procedure TXMLNodeCDATA.SaveToXML(const writer: TXMLSaveto);
+procedure TXMLNodeCDATA.SaveToXML(const writer: TXMLSaveTo);
 begin
   writer('<![CDATA[');
   SaveToText(writer);
   writer(']]>');
+end;
+
+procedure TXMLNodeCDATA.SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer);
+begin
+  writer(#13#10);
+  writer('<![CDATA[');
+  writer(#13#10);
+  SaveToText(writer);
+  writer(#13#10);
+  writer(']]>');
+  writer(#13#10);
 end;
 
 procedure TXMLNodeCDATA.SetText(const value: string);
@@ -1289,6 +1473,18 @@ begin
     Result := nil;
 end;
 
+function TXMLNode.AppendCDATA(const value: string): IXMLNode;
+begin
+  Result := TXMLNodeCDATA.Create(value);
+  ChildNodes.Add(Result);
+end;
+
+function TXMLNode.AppendText(const value: string): IXMLNode;
+begin
+  Result := TXMLNodeText.Create(value);
+  ChildNodes.Add(Result);
+end;
+
 constructor TXMLNode.Create(const name: RawByteString);
 begin
   FName := name;
@@ -1300,18 +1496,28 @@ end;
 destructor TXMLNode.Destroy;
 begin
   inherited;
+  Clear;
+end;
+
+procedure TXMLNode.Clear;
+begin
   if FAttributes <> nil then
   begin
     FAttributes.OnKeyNotify := nil;
     FAttributes.Free;
+    FAttributes := nil;
   end;
   if FChildNodes <> nil then
   begin
     FChildNodes.OnNotify := nil;
     FChildNodes.Free;
+    FChildNodes := nil;
   end;
   if FChildIndex <> nil then
+  begin
     FChildIndex.Free;
+    FChildIndex := nil;
+  end;
 end;
 
 function TXMLNode.GetName: RawByteString;
@@ -1338,6 +1544,28 @@ begin
   if node <> nil then
     Result := node.Text else
     Result := '';
+end;
+
+procedure TXMLNode.LoadFromStream(Stream: TStream);
+begin
+  Clear;
+  XMLParseStream(Stream, Self);
+end;
+
+procedure TXMLNode.RemoveAll(const name: RawByteString);
+var
+  list: TXMLNodeList;
+begin
+  if FindChildNodes(name, list) > 0 then
+    while list.Count > 0 do
+      ChildNodes.Delete(0);
+end;
+
+function TXMLNode.RemoveFirst(const name: RawByteString): IXMLNode;
+begin
+  Result := FirstChild(name);
+  if Result <> nil then
+    ChildNodes.Remove(Result);
 end;
 
 function TXMLNode.GetAttributes: TDictionary<RawByteString, string>;
@@ -1409,7 +1637,7 @@ begin
   Result := (FChildNodes <> nil) and (FChildNodes.Count > 0);
 end;
 
-procedure TXMLNode.SaveToText(const writer: TXMLSaveto);
+procedure TXMLNode.SaveToText(const writer: TXMLSaveTo);
 var
   node: IXMLNode;
 begin
@@ -1418,21 +1646,21 @@ begin
       node.SaveToText(writer);
 end;
 
-procedure TXMLNode.SaveToXML(const writer: TXMLSaveto);
+procedure TXMLNode.SaveToXML(const writer: TXMLSaveTo);
 var
-  atr: TPair<RawByteString, string>;
+  attr: TPair<RawByteString, string>;
   node: IXMLNode;
 begin
   writer('<');
   writer(string(FName));
   if HasAttributes then
-    for atr in Attributes do
+    for attr in Attributes do
     begin
       writer(' ');
-      writer(string(atr.Key));
+      writer(string(attr.Key));
       writer('=');
       writer('"');
-      escape(atr.Value, writer);
+      Escape(attr.Value, writer);
       writer('"');
     end;
 
@@ -1446,6 +1674,46 @@ begin
     writer('>');
   end else
     writer('/>');
+end;
+
+procedure TXMLNode.SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer);
+var
+  attr: TPair<RawByteString, string>;
+  node: IXMLNode;
+begin
+  Indent(Level, writer);
+  writer('<');
+  writer(string(FName));
+  if HasAttributes then
+    for attr in Attributes do
+    begin
+      writer(' ');
+      writer(string(attr.Key));
+      writer('=');
+      writer('"');
+      Escape(attr.Value, writer);
+      writer('"');
+    end;
+
+  if HasChildNodes then
+  begin
+    writer('>');
+    { Don't indent when there's only one text node }
+    if (ChildNodes.Count = 1) and (ChildNodes[0].DataType = ntText) then
+      ChildNodes[0].SaveToXML(writer)
+    else
+    begin
+      writer(#13#10);
+      for node in ChildNodes do
+        node.SaveToPrettyXML(writer, Level + 2);
+      Indent(Level, writer);
+    end;
+    writer('</');
+    writer(string(FName));
+    writer('>');
+  end else
+    writer('/>');
+  writer(#13#10);
 end;
 
 procedure TXMLNode.SetNullAttr(const name: RawByteString; const value: string);
@@ -1474,7 +1742,6 @@ begin
       ChildNodes.Add(node);
     end;
 end;
-
 
 procedure TXMLNode.SetText(const value: string);
 begin
