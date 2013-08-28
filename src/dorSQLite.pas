@@ -513,7 +513,8 @@ begin
     end else
       Process;
   except
-    (ctx as ISuperObject).B['rollback'] := true;
+    if Assigned(ctx) then
+      (ctx as ISuperObject).B['rollback'] := true;
     raise;
   end;
 end;
