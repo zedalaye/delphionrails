@@ -44,6 +44,7 @@ type
     function AppendCDATA(const value: string): IXMLNode;
     function RemoveFirst(const name: RawByteString): IXMLNode;
     procedure RemoveAll(const name: RawByteString);
+    function NullFirst(const name: RawByteString): IXMLNode;
 
     property Name: RawByteString read GetName;
     property Attributes: TDictionary<RawByteString, string> read GetAttributes;
@@ -73,6 +74,7 @@ type
     procedure SetText(const value: string); virtual;
     function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer; virtual;
     function FirstChild(const name: RawByteString): IXMLNode; virtual;
+    function NullFirst(const name: RawByteString): IXMLNode; virtual;
 
     function GetXML: string;
     procedure SaveToXML(const writer: TXMLSaveTo); virtual;
@@ -162,6 +164,7 @@ type
     procedure SetText(const value: string); override;
     function FindChildNodes(const name: RawByteString; out ChildNodes: TXMLNodeList): Integer; override;
     function FirstChild(const name: RawByteString): IXMLNode; override;
+    function NullFirst(const name: RawByteString): IXMLNode; override;
     procedure SaveToXML(const writer: TXMLSaveTo); override;
     procedure SaveToPrettyXML(const writer: TXMLSaveTo; Level: Integer); override;
     procedure SaveToText(const writer: TXMLSaveTo); override;
@@ -1265,6 +1268,11 @@ begin
 
 end;
 
+function TXMLNodeNull.NullFirst(const name: RawByteString): IXMLNode;
+begin
+  Result := nil;
+end;
+
 procedure TXMLNodeNull.SaveToFile(const filename: string);
 var
   S: TFileStream;
@@ -1550,6 +1558,13 @@ procedure TXMLNode.LoadFromStream(Stream: TStream);
 begin
   Clear;
   XMLParseStream(Stream, Self);
+end;
+
+function TXMLNode.NullFirst(const name: RawByteString): IXMLNode;
+begin
+  Result := FirstChild(name);
+  if Result = nil then
+    Result := Append(name);
 end;
 
 procedure TXMLNode.RemoveAll(const name: RawByteString);
