@@ -190,11 +190,11 @@ type
   TXMLEvent = reference to function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean;
 
   function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal = CP_ACP): Boolean;
-  function XMLParse(const reader: TXMLReader; const root: IXMLNode = nil; cp: Cardinal = CP_ACP): IXMLNode;
-  function XMLParseStream(stream: TStream;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP): IXMLNode;
-  function XMLParseFile(const filename: TFileName;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP): IXMLNode;
-  function XMLParseString(const str: AnsiString; const root: IXMLNode = nil): IXMLNode; overload;
-  function XMLParseString(const str: string; const root: IXMLNode = nil): IXMLNode; overload;
+  function XMLParse(const reader: TXMLReader; const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False): IXMLNode;
+  function XMLParseStream(stream: TStream;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False): IXMLNode;
+  function XMLParseFile(const filename: TFileName;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False): IXMLNode;
+  function XMLParseString(const str: AnsiString; const root: IXMLNode = nil; stripNS: Boolean = False): IXMLNode; overload;
+  function XMLParseString(const str: string; const root: IXMLNode = nil; stripNS: Boolean = False): IXMLNode; overload;
 
 implementation
 uses Math;
@@ -995,7 +995,7 @@ redo:
   end;
 end;
 
-function XMLParse(const reader: TXMLReader; const root: IXMLNode; cp: Cardinal): IXMLNode;
+function XMLParse(const reader: TXMLReader; const root: IXMLNode; cp: Cardinal; stripNS: Boolean): IXMLNode;
 var
   stack: TStack<IXMLNode>;
   n: IXMLNode;
@@ -1004,6 +1004,30 @@ begin
   try
     if XMLParseSAX(reader,
       function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean
+        function stripName(const s: RawByteString): RawByteString;
+        var
+          p: PAnsiChar;
+        begin
+          if not stripNS then Exit(s);
+          p := StrScan(PAnsiChar(s), ':');
+          if p <> nil then
+          begin
+            inc(p);
+            Result := p
+          end else
+            Result := s;
+        end;
+
+        function stripAttribute(const s: RawByteString): RawByteString;
+        var
+          p: PAnsiChar;
+        begin
+          if not stripNS then Exit(s);
+          p := StrScan(PAnsiChar(s), ':');
+          if p <> nil then
+            SetString(Result, PAnsiChar(s), p - PAnsiChar(s)) else
+            Result := s;
+        end;
       begin
         Result := True;
         case node of
@@ -1011,7 +1035,7 @@ begin
             begin
               if (stack.Count = 0) and (root <> nil) and (root.DataType = ntNode) then
                 n := root else
-                n := TXMLNode.Create(name);
+                n := TXMLNode.Create(stripName(name));
               stack.Push(n);
             end;
           xtClose:
@@ -1020,7 +1044,7 @@ begin
               if stack.Count > 0 then
                 stack.Peek.ChildNodes.Add(n);
             end;
-          xtAttribute: stack.Peek.Attributes.AddOrSetValue(name, value);
+          xtAttribute: stack.Peek.Attributes.AddOrSetValue(stripAttribute(name), value);
           xtText:
             stack.Peek.ChildNodes.Add(TXMLNodeText.Create(value));
           xtCData:
@@ -1037,27 +1061,27 @@ begin
   end;
 end;
 
-function XMLParseStream(stream: TStream; const root: IXMLNode; cp: Cardinal): IXMLNode;
+function XMLParseStream(stream: TStream; const root: IXMLNode; cp: Cardinal; stripNS: Boolean): IXMLNode;
 begin
   Result := XMLParse(function(var c: AnsiChar): Boolean
     begin
       Result := stream.Read(c, 1) = 1
-    end, root, cp);
+    end, root, cp, stripNS);
 end;
 
-function XMLParseFile(const filename: TFileName; const root: IXMLNode; cp: Cardinal): IXMLNode;
+function XMLParseFile(const filename: TFileName; const root: IXMLNode; cp: Cardinal; stripNS: Boolean): IXMLNode;
 var
   stream: TFileStream;
 begin
   stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyNone);
   try
-    Result := XMLParseStream(stream, root, cp);
+    Result := XMLParseStream(stream, root, cp, stripNS);
   finally
     stream.Free;
   end;
 end;
 
-function XMLParseString(const str: AnsiString; const root: IXMLNode): IXMLNode;
+function XMLParseString(const str: AnsiString; const root: IXMLNode; stripNS: Boolean): IXMLNode;
 var
   p: PAnsiChar;
 begin
@@ -1071,12 +1095,12 @@ begin
         Result := True;
       end else
         Result := False;
-    end, root, StringCodePage(str));
+    end, root, StringCodePage(str), stripNS);
 end;
 
-function XMLParseString(const str: string; const root: IXMLNode): IXMLNode;
+function XMLParseString(const str: string; const root: IXMLNode; stripNS: Boolean): IXMLNode;
 begin
-  Result := XMLParseString(AnsiString(UTF8String(str)), root);
+  Result := XMLParseString(AnsiString(UTF8String(str)), root, stripNS);
 end;
 
 { TXMLNodeNull }
