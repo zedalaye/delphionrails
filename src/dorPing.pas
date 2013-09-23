@@ -78,6 +78,7 @@ begin
       Sleep(slp);
     until (slp = 0) or TTHreadHack(t).Terminated;
     IcmpCloseHandle(handle);
+    FreeLibrary(module);
   end);
   t.FreeOnTerminate := True;
   Result := t;
