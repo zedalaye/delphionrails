@@ -17,7 +17,7 @@ unit dorHTTPStub;
 
 interface
 uses
-  dorSocketStub, dorUtils, classes, superobject;
+  dorSocketStub, dorUtils, classes, supertypes, superobject;
 
 type
   THTTPMessage = class(TSuperObject)

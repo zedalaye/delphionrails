@@ -19,7 +19,7 @@ unit dorUtils;
 {$ENDIF}
 
 interface
-uses Classes, SysUtils, superobject
+uses Classes, SysUtils, supertypes, superobject
 {$IFDEF MSWINDOWS}
 , windows
 {$ENDIF}

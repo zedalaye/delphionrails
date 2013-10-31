@@ -6,7 +6,7 @@ uses
 {$IFDEF MSWINDOWS}
   windows,
 {$ENDIF}
-  dorDB, uibase, uiblib, superobject, syncobjs, dorUtils;
+  dorDB, uibase, uiblib, supertypes, superobject, superdate, syncobjs, dorUtils;
 
 type
   TDBUIBConnectionPool = class(TSuperObject, IDBConnectionPool)

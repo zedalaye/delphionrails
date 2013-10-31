@@ -3,7 +3,7 @@ unit dorDB;
 {$mode ObjFpc}{$H+}
 {$endif}
 interface
-uses superobject, classes, dorUtils, SysUtils, Generics.Collections;
+uses supertypes, superobject, superdate, classes, dorUtils, SysUtils, Generics.Collections;
 
 type
   IDBConnectionPool = interface;
