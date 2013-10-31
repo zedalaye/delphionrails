@@ -46,6 +46,8 @@ type
     function GetResponseText: string;
     function GetRequestHeaders: THeaderCollection;
     function GetResponseHeaders: THeaderCollection;
+    function GetSynchronize: Boolean;
+    procedure SetSynchronize(value: Boolean);
 
     property RequestHeader[const header: RawByteString]: RawByteString read GetRequestHeader write SetRequestHeader;
     property Status: Word read GetStatus;
@@ -54,6 +56,7 @@ type
     property ResponseStream: TStream read GetResponseStream write SetResponseStream;
     property ResponseText: string read GetResponseText;
     property ReadyState: TReadyState read GetReadyState;
+    property Synchronize: Boolean read GetSynchronize write SetSynchronize;
   end;
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
@@ -105,6 +108,8 @@ type
     FReadError: Boolean;
     FRedirectCount: Integer;
 
+    FSynchronize: Boolean;
+
     // SSL
     FCtx: Pointer;
     FSsl: Pointer;
@@ -151,6 +156,8 @@ type
     function GetResponseText: string;
     function GetRequestHeaders: THeaderCollection;
     function GetResponseHeaders: THeaderCollection;
+    function GetSynchronize: Boolean;
+    procedure SetSynchronize(value: Boolean);
   public
     constructor Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
       const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = ''); virtual;
@@ -205,6 +212,7 @@ begin
   FResponseHeader := TDictionary<RawByteString, THTTPHeader>.Create;
   FCookies := TDictionary<RawByteString, TCookie>.Create;
   FCharsets := TDictionary<RawByteString, Integer>.Create;
+  FSynchronize := True;
   LoadCharsets;
   FResponseEvents := TDictionary<RawByteString, TOnHeaderEvent>.Create;
   LoadEvents;
@@ -325,6 +333,11 @@ end;
 function THTTPRequest.GetStatusText: RawByteString;
 begin
   Result := FStatusText;
+end;
+
+function THTTPRequest.GetSynchronize: Boolean;
+begin
+  Result := FSynchronize;
 end;
 
 procedure THTTPRequest.HTTPWriteLine(const data: RawByteString);
@@ -683,7 +696,7 @@ procedure THTTPRequest.SetReadyState(ready: TReadyState);
 begin
   FReadyState := ready;
   if Assigned(FOnReadyStateChange) then
-    if FAsync then
+    if FAsync and FSynchronize then
       TThread.Synchronize(nil, procedure
         begin FOnReadyStateChange(Self) end) else
       FOnReadyStateChange(Self)
@@ -712,6 +725,11 @@ begin
     FResponseData.Free;
   FResponseData := stream;
   FResponseDataOwned := False;
+end;
+
+procedure THTTPRequest.SetSynchronize(value: Boolean);
+begin
+  FSynchronize := value;
 end;
 
 function THTTPRequest.SockRecv(var Buf; len: Integer): Integer;

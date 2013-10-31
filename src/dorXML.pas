@@ -547,7 +547,7 @@ redo:
             case c of
               '>':
                 begin
-                  if not event(xtClose, '', '') then Exit(False);
+                  if not event(xtClose, Stack^.name, '') then Exit(False);
                   if Stack.prev = nil then
                   begin
                     Stack^.state := xsEnd;
