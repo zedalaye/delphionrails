@@ -1,7 +1,7 @@
 unit dorSQLite;
 
 interface
-uses dorDB, SuperObject;
+uses dorDB, SuperObject, supertypes;
 
 type
   TDBSQLiteConnection = class(TDBConnection)

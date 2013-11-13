@@ -7,7 +7,7 @@ type
   THTTPConnection = class(THTTPStub)
   protected
     function GetPassPhrase: AnsiString; override;
-    procedure ProcessRequest; override;
+    function ProcessRequest: Boolean; override;
   end;
 
 implementation
@@ -22,10 +22,10 @@ begin
   Result := PASS_PHRASE;
 end;
 
-procedure THTTPConnection.ProcessRequest;
+function THTTPConnection.ProcessRequest: Boolean;
 begin
-  inherited;
-  if (ErrorCode = 404) and (Params.S['format'] = 'json') then
+  Result := inherited;
+  if Result and (ErrorCode = 404) and (Params.S['format'] = 'json') then
   begin
     Render(Return);
     ErrorCode := 200;
