@@ -239,7 +239,7 @@ begin
       // field name
       4:
         case c of
-          'a'..'z', 'A'..'Z', '0'..'9', '-': key := key + c;
+          'a'..'z', 'A'..'Z', '0'..'9', '-', '_': key := key + c;
           ':': st := 5;
           #13: st := -1;
         else
