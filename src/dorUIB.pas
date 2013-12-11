@@ -338,7 +338,7 @@ begin
       on E: Exception do
       begin
         Context.B['rollback'] := true;
-        raise E;
+        raise;
       end;
     end;
     if (FSQLParams.FieldCount > 0) then
