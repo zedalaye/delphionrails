@@ -780,8 +780,11 @@ begin
                     begin
                       FErrorCode := 500;
                     {$ifdef madExcept}
-                      Response.Content.WriteString(NewException(etNormal, E).BugReport, False);
-                      HandleException(etNormal, E);
+                      with NewException(etNormal, E) do
+                      begin
+                        Response.Content.WriteString(BugReport, False);
+                        AutoSaveBugReport(BugReport);
+                      end;
                     {$else}
                       Response.Content.WriteString(E.Message, False);
                       Response.Content.WriteString(CRLF, False);
