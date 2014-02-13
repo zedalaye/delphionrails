@@ -372,8 +372,8 @@ tryagain:
     if input.Event.KeyEvent.AsciiChar = #$D then
     begin
     {$ifdef madExcept}
-      if CompareText(Cmd, 'restart') = 0 then RestartApplication else
-      if CompareText(Cmd, 'report') = 0 then
+      if SameText(Cmd, 'restart') then RestartApplication else
+      if SameText(Cmd, 'report') then
       begin
         try
           raise Exception.Create('Thread Status');
@@ -383,14 +383,14 @@ tryagain:
         end;
       end else
     {$endif}
-      if CompareText(Cmd, 'exit') = 0 then
+      if SameText(Cmd, 'exit') then
       begin
         Terminate;
         Exit;
       end else
-      if CompareText(Cmd, 'pause') = 0 then Suspend else
-      if CompareText(Cmd, 'resume') = 0 then Resume else
-      if CompareText(Cmd, 'clear') = 0 then
+      if SameText(Cmd, 'pause') then Suspend else
+      if SameText(Cmd, 'resume') then Resume else
+      if SameText(Cmd, 'clear') then
       begin
         FThreads.Lock;
         try
@@ -416,13 +416,13 @@ tryagain:
   goto tryagain;
 {$ELSE}
   if ParamCount > 0 then
-  if CompareText(ParamStr(1), 'INSTALL') = 0 then
+  if SameText(ParamStr(1), 'install') then
   begin
     InstallService;
     Terminate;
     Exit;
   end else
-  if CompareText(ParamStr(1), 'UNINSTALL') = 0 then
+  if SameText(ParamStr(1), 'uninstall') then
   begin
     RemoveService;
     Terminate;

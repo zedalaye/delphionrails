@@ -830,7 +830,7 @@ end;
 
 function TRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
 begin
-  if (FReadTimeout <> Timeout) then
+  if (FWriteTimeout <> Timeout) then
   begin
     setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
     FWriteTimeout := Timeout;
@@ -1133,7 +1133,7 @@ function TSSLRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
 begin
   if FConnected then
   begin
-    if (FReadTimeout <> Timeout) then
+    if (FWriteTimeout <> Timeout) then
     begin
       setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
       FWriteTimeout := Timeout;

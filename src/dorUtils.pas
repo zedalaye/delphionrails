@@ -321,9 +321,9 @@ begin
   while i <= Length(data) - 3 do
   begin
     // reverse process of above
-    buf[0] := (Base64Map[data[i]] shl byte(2)) or (Base64Map[data[i + 1]] shr byte(4));
-    buf[1] := (Base64Map[data[i + 1]] shl 4) or (Base64Map[data[i + 2]] shr 2);
-    buf[2] := (Base64Map[data[i + 2]] shl 6) or (Base64Map[data[i + 3]]);
+    buf[0] := Byte((Base64Map[data[i]] shl 2) or (Base64Map[data[i + 1]] shr 4));
+    buf[1] := Byte((Base64Map[data[i + 1]] shl 4) or (Base64Map[data[i + 2]] shr 2));
+    buf[2] := Byte((Base64Map[data[i + 2]] shl 6) or (Base64Map[data[i + 3]]));
     stream.Write(buf, sizeof(buf));
     inc(i, 4);
   end;
@@ -963,6 +963,8 @@ begin
       else
         Result := Clone;
     end;
+    if Result = nil then
+      Result := TSuperObject.Create(stNull);
   finally
     Unlock;
   end;

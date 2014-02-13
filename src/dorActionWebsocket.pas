@@ -117,37 +117,38 @@ end;
 procedure TActionWebsocket.Output(b: Byte; data: Pointer; len: Int64);
 var
   lenarray: array[0..7] of Byte absolute len;
+  rw: IReadWrite;
 begin
   EnterCriticalSection(FCriticalSection);
   try
-    if FStub.Source <> nil then
-      with FStub, Source do
-      begin
-        Write(b, 1, 0);
-        if len < 126 then
-          Write(len, 1, 0) else
-          if len < High(Word) then
-          begin
-            b := 126;
-            Write(b, 1, 0);
-            Write(lenarray[1], 1, 0);
-            Write(lenarray[0], 1, 0);
-          end else
-          begin
-            b := 127;
-            Write(b, 1, 0);
-            Write(lenarray[7], 1, 0);
-            Write(lenarray[6], 1, 0);
-            Write(lenarray[5], 1, 0);
-            Write(lenarray[4], 1, 0);
-            Write(lenarray[3], 1, 0);
-            Write(lenarray[2], 1, 0);
-            Write(lenarray[1], 1, 0);
-            Write(lenarray[0], 1, 0);
-          end;
-        if data <> nil then
-          Write(data^, len, 0);
-      end;
+    rw := FStub.Source;
+    if rw <> nil then
+    begin
+      rw.Write(b, 1, 0);
+      if len < 126 then
+        rw.Write(len, 1, 0) else
+        if len < High(Word) then
+        begin
+          b := 126;
+          rw.Write(b, 1, 0);
+          rw.Write(lenarray[1], 1, 0);
+          rw.Write(lenarray[0], 1, 0);
+        end else
+        begin
+          b := 127;
+          rw.Write(b, 1, 0);
+          rw.Write(lenarray[7], 1, 0);
+          rw.Write(lenarray[6], 1, 0);
+          rw.Write(lenarray[5], 1, 0);
+          rw.Write(lenarray[4], 1, 0);
+          rw.Write(lenarray[3], 1, 0);
+          rw.Write(lenarray[2], 1, 0);
+          rw.Write(lenarray[1], 1, 0);
+          rw.Write(lenarray[0], 1, 0);
+        end;
+      if data <> nil then
+        rw.Write(data^, len, 0);
+    end;
   finally
     LeaveCriticalSection(FCriticalSection);
   end;
@@ -161,18 +162,21 @@ end;
 procedure TActionWebsocket.OutputMessage(const msg: string);
 var
   utf8: UTF8String;
+  rw: IReadWrite;
 begin
   if FWebSocketVersion <> 0 then
     OutputString($80 or $1, msg) else
-
-    with FStub.Source do
     begin
-      utf8 := #0 + UTF8String(msg) + #255;
-      EnterCriticalSection(FCriticalSection);
-      try
-        Write(PAnsiChar(utf8)^, Length(utf8), 0);
-      finally
-        LeaveCriticalSection(FCriticalSection);
+      rw := FStub.Source;
+      if rw <> nil then
+      begin
+        utf8 := #0 + UTF8String(msg) + #255;
+        EnterCriticalSection(FCriticalSection);
+        try
+          rw.Write(PAnsiChar(utf8)^, Length(utf8), 0);
+        finally
+          LeaveCriticalSection(FCriticalSection);
+        end;
       end;
     end;
 end;
@@ -193,6 +197,7 @@ procedure TActionWebsocket.OutputStream(stream: TStream);
 var
   len: Int64;
   buffer: array[0..1023] of Byte;
+  rw: IReadWrite;
 begin
   if WebSocketVersion > 0 then
   begin
@@ -202,8 +207,13 @@ begin
     len := stream.Read(buffer, SizeOf(buffer));
     while len > 0 do
     begin
-      FStub.Source.Write(buffer, len, 0);
-      len := stream.Read(buffer, SizeOf(buffer));
+      rw := FStub.Source;
+      if rw <> nil then
+      begin
+        rw.Write(buffer, len, 0);
+        len := stream.Read(buffer, SizeOf(buffer));
+      end else
+        Break;
     end;
   end;
 end;

@@ -1156,6 +1156,7 @@ begin
       FCompress := False;
       FErrorCode := 304;
       FSendFile := '';
+      FindClose(rec);
       Exit;
     end;
     FResponse.AsObject.S['Cache-Control'] := 'max-age=946080000, public';
