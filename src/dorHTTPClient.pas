@@ -447,7 +447,7 @@ end;
 
 function THTTPRequest.IsRedirecting: Boolean;
 begin
-  Result := (FStatus = 301) or (FStatus = 302);
+  Result := (FStatus = 201) or (FStatus = 301) or (FStatus = 302);
 end;
 
 function THTTPRequest.Open(const method: RawByteString; const url: string; async: Boolean;
