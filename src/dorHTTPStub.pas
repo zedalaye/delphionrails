@@ -774,17 +774,21 @@ begin
                   Exit(Upgrade);
                 try
                   try
-
                     ProcessRequest; // <<<<<<<<<<<<<<<
                   except
                     on E: Exception do
                     begin
                       FErrorCode := 500;
-                      Response.Content.WriteString(E.Message, false);
-                      Response.Content.WriteString(CRLF, False);
-                      Response.Content.WriteString(E.StackTrace, false);
                     {$ifdef madExcept}
-                      HandleException(etNormal, E);
+                      with NewException(etNormal, E) do
+                      begin
+                        Response.Content.WriteString(BugReport, False);
+                        AutoSaveBugReport(BugReport);
+                      end;
+                    {$else}
+                      Response.Content.WriteString(E.Message, False);
+                      Response.Content.WriteString(CRLF, False);
+                      Response.Content.WriteString(E.StackTrace, False);
                     {$endif}
                     end;
                   end;
