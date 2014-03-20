@@ -50,6 +50,7 @@ type
     procedure SetSynchronize(value: Boolean);
 
     property RequestHeader[const header: RawByteString]: RawByteString read GetRequestHeader write SetRequestHeader;
+    property ResponseHeader[const header: RawByteString]: RawByteString read GetResponseHeader;
     property Status: Word read GetStatus;
     property StatusText: RawByteString read GetStatusText;
     property OnReadyStateChange: TOnReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
