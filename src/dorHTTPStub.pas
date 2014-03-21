@@ -1098,7 +1098,7 @@ begin
         end;
       end;
 
-      if Stopping or (FErrorCode >= 300) or (FErrorCode = 204) then
+      if Stopping or (Response.FContent.Size > 0) or (FErrorCode >= 300) or (FErrorCode = 204) then
         Exit;
 
       if (Request.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
