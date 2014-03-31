@@ -670,7 +670,6 @@ begin
       QueryPerformanceCounter(Start);
     end;
 
-    AllocConsole;
     repeat
       read := data.Read(buffer, SizeOf(buffer));
       if read > 0 then
@@ -687,7 +686,6 @@ begin
               Sleep(1000);
           end;
         end;
-        Writeln(Total);
         SockSend(buffer, read);
       end;
     until read = 0;
