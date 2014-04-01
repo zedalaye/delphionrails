@@ -9,39 +9,39 @@ type
     FDbHandle: Pointer;
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
-    function newContext(const Options: ISuperObject = nil): IDBContext; override;
-    function newCommand(const Options: ISuperObject): IDBCommand; override;
-    function newCommand(const Options: string): IDBCommand; override;
-    function newSelect(const sql: SOString; firstone: boolean = False; asArray: Boolean = False): IDBCommand; override;
-    function newFunction(const sql: SOString): IDBCommand; override;
+    function Transaction(const Options: ISuperObject = nil): IDBTransaction; override;
+    function Query(const Options: ISuperObject): IDBQuery; override;
+    function Query(const Options: string): IDBQuery; override;
+    function Select(const sql: SOString; firstone: boolean = False; asArray: Boolean = False): IDBQuery; override;
+    function newFunction(const sql: SOString): IDBQuery; override;
   public
     constructor Create(const Options: ISuperObject); reintroduce; overload;
     constructor Create(const Options: string); reintroduce; overload;
     destructor Destroy; override;
   end;
 
-  TDBSQLiteContext = class(TDBContext)
+  TDBSQLiteTransaction = class(TDBTransaction)
   private
     FConnection: TDBSQLiteConnection;
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
-    function newCommand(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBCommand; override;
+    function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; override;
   public
     constructor Create(Connection: TDBSQLiteConnection; Options: ISuperObject); reintroduce;
     destructor Destroy; override;
   end;
 
-  TDBSQLiteCommand = class(TDBCommand)
+  TDBSQLiteQuery = class(TDBQuery)
   private
     FNeedReset: boolean;
     FStHandle: Pointer;
     FConnection: TDBSQLiteConnection;
   protected
-    function Execute(const params: ISuperObject = nil; const context: IDBContext = nil): ISuperObject; override;
+    function Execute(const params: ISuperObject = nil; const transaction: IDBTransaction = nil): ISuperObject; override;
     function GetInputMeta: ISuperObject; override;
     function GetOutputMeta: ISuperObject; override;
   public
-    constructor Create(const Connection: TDBSQLiteConnection; const Context: TDBSQLiteContext; Options: ISuperObject); reintroduce;
+    constructor Create(const Connection: TDBSQLiteConnection; const transaction: TDBSQLiteTransaction; Options: ISuperObject); reintroduce;
     destructor Destroy; override;
   end;
 
@@ -242,36 +242,36 @@ begin
   CheckError(sqlite3_exec(FDbHandle, PAnsiChar(UTF8Encode(Options)), nil, nil, nil), FDbHandle);
 end;
 
-function TDBSQLiteConnection.newCommand(
-  const Options: ISuperObject): IDBCommand;
+function TDBSQLiteConnection.Query(
+  const Options: ISuperObject): IDBQuery;
 begin
-  Result := TDBSQLiteCommand.Create(Self, nil, Options);
+  Result := TDBSQLiteQuery.Create(Self, nil, Options);
 end;
 
-function TDBSQLiteConnection.newCommand(const Options: string): IDBCommand;
+function TDBSQLiteConnection.Query(const Options: string): IDBQuery;
 begin
-  Result := TDBSQLiteCommand.Create(Self, nil, TSuperObject.Create(Options));
+  Result := TDBSQLiteQuery.Create(Self, nil, TSuperObject.Create(Options));
 end;
 
-function TDBSQLiteConnection.newContext(const Options: ISuperObject): IDBContext;
+function TDBSQLiteConnection.Transaction(const Options: ISuperObject): IDBTransaction;
 begin
-  Result := TDBSQLiteContext.Create(Self, Options);
+  Result := TDBSQLiteTransaction.Create(Self, Options);
 end;
 
-function TDBSQLiteConnection.newFunction(const sql: SOString): IDBCommand;
+function TDBSQLiteConnection.newFunction(const sql: SOString): IDBQuery;
 begin
-  Result := TDBSQLiteCommand.Create(Self, nil, SO(['sql', sql, 'function', true]));
+  Result := TDBSQLiteQuery.Create(Self, nil, SO(['sql', sql, 'function', true]));
 end;
 
-function TDBSQLiteConnection.newSelect(const sql: SOString; firstone,
-  asArray: Boolean): IDBCommand;
+function TDBSQLiteConnection.Select(const sql: SOString; firstone,
+  asArray: Boolean): IDBQuery;
 begin
-  Result := TDBSQLiteCommand.Create(Self, nil, SO(['sql', sql, 'firstone', firstone, 'array', asArray]));
+  Result := TDBSQLiteQuery.Create(Self, nil, SO(['sql', sql, 'firstone', firstone, 'array', asArray]));
 end;
 
 { TDBSQLiteContext }
 
-constructor TDBSQLiteContext.Create(Connection: TDBSQLiteConnection;
+constructor TDBSQLiteTransaction.Create(Connection: TDBSQLiteConnection;
   Options: ISuperObject);
 var
   sql: string;
@@ -288,7 +288,7 @@ begin
   CheckError(sqlite3_exec(FConnection.FDbHandle, PAnsiChar(AnsiString(sql)), nil, nil, nil), FConnection.FDbHandle);
 end;
 
-destructor TDBSQLiteContext.Destroy;
+destructor TDBSQLiteTransaction.Destroy;
 var
   obj: ISuperObject;
 begin
@@ -299,20 +299,20 @@ begin
   inherited;
 end;
 
-procedure TDBSQLiteContext.ExecuteImmediate(const Options: SOString);
+procedure TDBSQLiteTransaction.ExecuteImmediate(const Options: SOString);
 begin
   CheckError(sqlite3_exec(FConnection.FDbHandle, PAnsiChar(UTF8Encode(Options)), nil, nil, nil), FConnection.FDbHandle);
 end;
 
-function TDBSQLiteContext.newCommand(const Options: ISuperObject; const Connection: IDBConnection): IDBCommand;
+function TDBSQLiteTransaction.Query(const Options: ISuperObject; const Connection: IDBConnection): IDBQuery;
 begin
-  Result := TDBSQLiteCommand.Create(FConnection, Self, Options);
+  Result := TDBSQLiteQuery.Create(FConnection, Self, Options);
 end;
 
-{ TDBSQLiteCommand }
+{ TDBSQLiteQuery }
 
-constructor TDBSQLiteCommand.Create(const Connection: TDBSQLiteConnection;
-  const Context: TDBSQLiteContext; Options: ISuperObject);
+constructor TDBSQLiteQuery.Create(const Connection: TDBSQLiteConnection;
+  const transaction: TDBSQLiteTransaction; Options: ISuperObject);
 begin
   inherited Create(stObject);
   FNeedReset := false;
@@ -326,18 +326,18 @@ begin
   CheckError(sqlite3_prepare_v2(FConnection.FDbHandle, PSOChar(S['sql']), -1, FStHandle, nil), FConnection.FDbHandle);
 end;
 
-destructor TDBSQLiteCommand.Destroy;
+destructor TDBSQLiteQuery.Destroy;
 begin
   if FStHandle <> nil then
     CheckError(sqlite3_finalize(FStHandle), FConnection.FDbHandle);
   inherited;
 end;
 
-function TDBSQLiteCommand.Execute(const params: ISuperObject;
-  const context: IDBContext): ISuperObject;
+function TDBSQLiteQuery.Execute(const params: ISuperObject;
+  const transaction: IDBTransaction): ISuperObject;
 var
   dfArray, dfFirstOne: boolean;
-  ctx: IDBContext;
+  ctx: IDBTransaction;
 
   function getone: ISuperObject;
   var
@@ -462,12 +462,12 @@ begin
     sqlite3_reset(FStHandle) else
     FNeedReset := true;
 
-  ctx := context;
+  ctx := transaction;
   dfFirstOne := B['firstone'];
   dfArray := B['array'];
 
 //  if ctx = nil then
-//    ctx := FConnection.newContext;
+//    ctx := FConnection.Transaction;
 
   count := sqlite3_bind_parameter_count(FStHandle);
   for j := 1 to count do
@@ -520,7 +520,7 @@ begin
 end;
 
 
-function TDBSQLiteCommand.GetInputMeta: ISuperObject;
+function TDBSQLiteQuery.GetInputMeta: ISuperObject;
 var
   j: Integer;
   count: Integer;
@@ -548,7 +548,7 @@ begin
     Result := nil;
 end;
 
-function TDBSQLiteCommand.GetOutputMeta: ISuperObject;
+function TDBSQLiteQuery.GetOutputMeta: ISuperObject;
 var
   j, count: Integer;
   rec: ISuperObject;

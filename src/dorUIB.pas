@@ -31,27 +31,27 @@ type
     FDbHandle: IscDbHandle;
     FCharacterSet: TCharacterSet;
   protected
-    function newContext(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBContext; overload; override;
-    function newContext(const Options: ISuperObject = nil): IDBContext; overload; override;
+    function Transaction(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBTransaction; overload; override;
+    function Transaction(const Options: ISuperObject = nil): IDBTransaction; overload; override;
   public
     constructor Create(const Options: ISuperObject); reintroduce; overload;
     constructor Create(const Options: string); reintroduce; overload;
     destructor Destroy; override;
   end;
 
-  TDBUIBContext = class(TDBContext)
+  TDBUIBTransaction = class(TDBTransaction)
   private
     FTrHandle: IscTrHandle;
     FConnection: TDBUIBConnection;
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
-    function newCommand(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBCommand; override;
+    function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; override;
   public
     constructor Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject); reintroduce;
     destructor Destroy; override;
   end;
 
-  TDBUIBCommand = class(TDBCommand)
+  TDBUIBQuery = class(TDBQuery)
   private
     FStHandle: IscStmtHandle;
     FConnection: TDBUIBConnection;
@@ -59,11 +59,11 @@ type
     FSQLParams: TSQLParams;
     FStatementType: TUIBStatementType;
   protected
-    function Execute(const params: ISuperObject = nil; const context: IDBContext = nil): ISuperObject; override;
+    function Execute(const params: ISuperObject = nil; const transaction: IDBTransaction = nil): ISuperObject; override;
     function GetInputMeta: ISuperObject; override;
     function GetOutputMeta: ISuperObject; override;
   public
-    constructor Create(const Connection: TDBUIBConnection; const Context: TDBUIBContext; const Options: ISuperObject); reintroduce;
+    constructor Create(const Connection: TDBUIBConnection; const Trans: TDBUIBTransaction; const Options: ISuperObject); reintroduce;
     destructor Destroy; override;
   end;
 
@@ -137,9 +137,9 @@ begin
   inherited;
 end;
 
-function TDBUIBConnection.newContext(
+function TDBUIBConnection.Transaction(
   const OtherConnections: array of IDBConnection;
-  const Options: ISuperObject): IDBContext;
+  const Options: ISuperObject): IDBTransaction;
 var
   Cnx: IDBConnection;
   Arr: array of TDBUIBConnection;
@@ -155,17 +155,17 @@ begin
       Inc(I);
     end;
   SetLength(Arr, I);
-  Result := TDBUIBContext.Create(Arr, Options);
+  Result := TDBUIBTransaction.Create(Arr, Options);
 end;
 
-function TDBUIBConnection.newContext(const Options: ISuperObject): IDBContext;
+function TDBUIBConnection.Transaction(const Options: ISuperObject): IDBTransaction;
 begin
-  Result := TDBUIBContext.Create([Self], Options);
+  Result := TDBUIBTransaction.Create([Self], Options);
 end;
 
 { TDBUIBContext }
 
-constructor TDBUIBContext.Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject);
+constructor TDBUIBTransaction.Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject);
 var
   params: RawByteString;
   lockread, lockwrite: string;
@@ -279,7 +279,7 @@ begin
   end;
 end;
 
-destructor TDBUIBContext.Destroy;
+destructor TDBUIBTransaction.Destroy;
 var
   obj: ISuperObject;
 begin
@@ -297,24 +297,24 @@ begin
   inherited Destroy;
 end;
 
-procedure TDBUIBContext.ExecuteImmediate(const Options: SOString);
+procedure TDBUIBTransaction.ExecuteImmediate(const Options: SOString);
 begin
   with FConnection, FLibrary do
     DSQLExecuteImmediate(FDbHandle, FTrHandle, MBUEncode(Options, CharacterSetCP[FCharacterSet]), 3);
 end;
 
-function TDBUIBContext.newCommand(const Options: ISuperObject; const Connection: IDBConnection): IDBCommand;
+function TDBUIBTransaction.Query(const Options: ISuperObject; const Connection: IDBConnection): IDBQuery;
 begin
   if (Connection = nil) or (not (Connection is TDBUIBConnection)) then
-    Result := TDBUIBCommand.Create(FConnection, Self, Options)
+    Result := TDBUIBQuery.Create(FConnection, Self, Options)
   else
-    Result := TDBUIBCommand.Create(TDBUIBConnection(Connection), Self, Options)
+    Result := TDBUIBQuery.Create(TDBUIBConnection(Connection), Self, Options)
 end;
 
-{ TDBUIBCommand }
+{ TDBUIBQuery }
 
-constructor TDBUIBCommand.Create(const Connection: TDBUIBConnection;
-  const Context: TDBUIBContext; const Options: ISuperObject);
+constructor TDBUIBQuery.Create(const Connection: TDBUIBConnection;
+  const Trans: TDBUIBTransaction; const Options: ISuperObject);
 begin
   inherited Create(stObject);
   DataPtr := Self;
@@ -332,12 +332,12 @@ begin
   begin
     DSQLAllocateStatement(FDbHandle, FStHandle);
     try
-      FStatementType := DSQLPrepare(FDbHandle, Context.FTrHandle, FStHandle,
+      FStatementType := DSQLPrepare(FDbHandle, Trans.FTrHandle, FStHandle,
         MBUEncode(FSQLParams.Parse(PSOChar(self.S['sql'])), CharacterSetCP[FCharacterSet]), 3, FSQLResult);
     except
       on E: Exception do
       begin
-        Context.B['rollback'] := true;
+        Trans.B['rollback'] := true;
         raise;
       end;
     end;
@@ -346,7 +346,7 @@ begin
   end;
 end;
 
-destructor TDBUIBCommand.Destroy;
+destructor TDBUIBQuery.Destroy;
 begin
   FSQLResult.Free;
   FSQLParams.Free;
@@ -354,11 +354,11 @@ begin
   inherited;
 end;
 
-function TDBUIBCommand.Execute(const params: ISuperObject; const context: IDBContext): ISuperObject;
+function TDBUIBQuery.Execute(const params: ISuperObject; const transaction: IDBTransaction): ISuperObject;
 var
-  dfFunction, dfArray, dfFirstOne: boolean;
+  dfArray, dfFirstOne, dfNoCursor: boolean;
   str: string;
-  ctx: IDBContext;
+  ctx: IDBTransaction;
 
   function getone: ISuperObject;
   var
@@ -503,7 +503,7 @@ var
           end;
         uftInt64: FSQLParams.AsInt64[index] := value.AsInteger;
         uftBlob, uftBlobId:
-          with FConnection, FLibrary, TDBUIBContext((ctx as ISuperObject).DataPtr) do
+          with FConnection, FLibrary, TDBUIBTransaction((ctx as ISuperObject).DataPtr) do
           begin
             BlobHandle := nil;
             FSQLParams.AsQuad[Index] := BlobCreate(FDbHandle, FTrHandle, BlobHandle);
@@ -519,20 +519,20 @@ var
 
   procedure Process;
   begin
-    with FConnection, FLibrary, TDBUIBContext((ctx as ISuperObject).DataPtr) do
+    with FConnection, FLibrary, TDBUIBTransaction((ctx as ISuperObject).DataPtr) do
       if FSQLResult.FieldCount > 0 then
       begin
-        if not dfFunction then
+        if not dfNoCursor then
           DSQLSetCursorName(FStHandle, AnsiChar('C') + AnsiString(IntToStr(PtrInt(FStHandle))));
         try
           if (FStatementType = stExecProcedure) then
           begin
             DSQLExecute2(FTrHandle, FStHandle, 3, FSQLParams, FSQLResult);
-            dfFirstOne := true;
+            dfFirstOne := True;
           end else
             DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
 
-          if dfFunction then
+          if dfNoCursor then
             Result := getone else
           if not dfFirstOne then
           begin
@@ -544,7 +544,7 @@ var
               Result := getone else
               Result := nil;
         finally
-          if not dfFunction then
+          if not dfNoCursor then
             DSQLFreeStatement(FStHandle, DSQL_close);
         end;
       end else
@@ -557,13 +557,13 @@ var
   j, affected: integer;
   f: TSuperObjectIter;
 begin
-  ctx := context;
+  ctx := transaction;
   dfFirstOne := B['firstone'];
   dfArray := B['array'];
-  dfFunction := B['function'];
+  dfNoCursor := dfFirstOne and (FStatementType = stExecProcedure);
 
   if ctx = nil then
-    ctx := FConnection.newContext;
+    ctx := FConnection.Transaction;
 
   for j := 0 to FSQLParams.FieldCount - 1 do
     FSQLParams.IsNull[j] := true;
@@ -615,7 +615,7 @@ begin
   end;
 end;
 
-function TDBUIBCommand.GetInputMeta: ISuperObject;
+function TDBUIBQuery.GetInputMeta: ISuperObject;
 var
   j: Integer;
   rec: ISuperObject;
@@ -683,7 +683,7 @@ begin
     Result := nil;
 end;
 
-function TDBUIBCommand.GetOutputMeta: ISuperObject;
+function TDBUIBQuery.GetOutputMeta: ISuperObject;
 var
   j: Integer;
   rec: ISuperObject;
