@@ -356,20 +356,17 @@ end;
 
 function TDBUIBQuery.Execute(const params: ISuperObject; const transaction: IDBTransaction): ISuperObject;
 var
-  dfArray, dfFirstOne, dfNoCursor: boolean;
+  dfArray, dfSingleton, dfValue, dfNoCursor: boolean;
   str: string;
   ctx: IDBTransaction;
 
   function getone: ISuperObject;
-  var
-    i: integer;
-    blob: IDBBlob;
-    procedure SetValue(const value: ISuperObject);
+    procedure SetValue(index: Integer; const value: ISuperObject);
     var
       str: string;
       v, a: ISuperObject;
     begin
-      str := LowerCase(FSQLResult.AliasName[i]);
+      str := LowerCase(FSQLResult.AliasName[index]);
       if Result.AsObject.Find(str, v) then
         case ObjectGetType(v) of
           stArray: v.AsArray.Add(value);
@@ -381,88 +378,67 @@ var
         end else
           Result[str] := value;
     end;
+
+    function GetValue(index: Integer): ISuperObject;
+    var
+      blob: IDBBlob;
+    begin
+      if FSQLResult.IsNull[index] then
+        Result := nil else
+      case FSQLResult.FieldType[index] of
+        uftChar, uftVarchar, uftCstring:
+          if FSQLResult.Data.sqlvar[index].SqlSubType > 1 then
+            Result := TSuperObject.Create(FSQLResult.AsString[index]) else
+            Result := TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[index]));
+        uftSmallint, uftInteger, uftInt64: Result := TSuperObject.Create(FSQLResult.AsInt64[index]);
+        uftNumeric:
+          begin
+            if FSQLResult.SQLScale[index] >= -4 then
+              Result := TSuperObject.CreateCurrency(FSQLResult.AsCurrency[index]) else
+              Result := TSuperObject.Create(FSQLResult.AsDouble[index]);
+          end;
+        uftFloat, uftDoublePrecision: Result := TSuperObject.Create(FSQLResult.AsDouble[index]);
+        uftBlob, uftBlobId:
+          begin
+            if FSQLResult.Data^.sqlvar[index].SqlSubType = 1 then
+            begin
+              FSQLResult.ReadBlob(index, str);
+              Result := TSuperObject.Create(str);
+            end else
+            begin
+              blob := TDBBinary.Create;
+              FSQLResult.ReadBlob(index, blob.getData);
+              Result := blob as ISuperObject;
+            end;
+          end;
+        uftTimestamp, uftDate, uftTime: Result := TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[index]));
+      {$IFDEF IB7_UP}
+        uftBoolean: Result := TSuperObject.Create(PChar(FSQLResult.AsBoolean[index]));
+      {$ENDIF}
+       else
+         Result := nil;
+       end;
+    end;
+
+  var
+    i: integer;
   begin
+    if dfValue then
+    begin
+      if FSQLResult.FieldCount > 0 then
+        Result := GetValue(0) else
+        Result := nil;
+    end else
     if dfArray then
     begin
       Result := TSuperObject.Create(stArray);
       for i := 0 to FSQLResult.FieldCount - 1 do
-        if FSQLResult.IsNull[i] then
-          Result.AsArray.Add(nil) else
-        case FSQLResult.FieldType[i] of
-          uftChar, uftVarchar, uftCstring:
-            if FSQLResult.Data.sqlvar[i].SqlSubType > 1 then
-              Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsString[i])) else
-              Result.AsArray.Add(TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[i])));
-          uftSmallint, uftInteger, uftInt64: Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsInt64[i]));
-          uftNumeric:
-            begin
-              if FSQLResult.SQLScale[i] >= -4 then
-                Result.AsArray.Add(TSuperObject.CreateCurrency(FSQLResult.AsCurrency[i])) else
-                Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsDouble[i]));
-            end;
-          uftFloat, uftDoublePrecision: Result.AsArray.Add(TSuperObject.Create(FSQLResult.AsDouble[i]));
-          uftBlob, uftBlobId:
-            begin
-              if FSQLResult.Data^.sqlvar[i].SqlSubType = 1 then
-              begin
-                FSQLResult.ReadBlob(i, str);
-                Result.AsArray.Add(TSuperObject.Create(str));
-              end else
-              begin
-                blob := TDBBinary.Create;
-                FSQLResult.ReadBlob(i, blob.getData);
-                Result.AsArray.Add(blob as ISuperObject);
-              end;
-            end;
-          uftTimestamp, uftDate, uftTime: Result.AsArray.Add(TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[i])));
-        {$IFDEF IB7_UP}
-          uftBoolean: Result.AsArray.Add(TSuperObject.Create(PChar(FSQLResult.AsBoolean[i])));
-        {$ENDIF}
-         else
-           Result.AsArray.Add(nil);
-         end;
+        Result.AsArray.Add(GetValue(i));
     end else
     begin
       Result := TSuperObject.Create(stObject);
       for i := 0 to FSQLResult.FieldCount - 1 do
-        if FSQLResult.IsNull[i] then
-          SetValue(nil) else
-        case FSQLResult.FieldType[i] of
-          uftChar, uftVarchar, uftCstring:
-             if FSQLResult.Data.sqlvar[i].SqlSubType > 1 then
-               SetValue(TSuperObject.Create(FSQLResult.AsString[i])) else
-               SetValue(TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[i])));
-          uftSmallint, uftInteger, uftInt64:
-            SetValue(TSuperObject.Create(FSQLResult.AsInt64[i]));
-          uftNumeric:
-            begin
-              if FSQLResult.SQLScale[i] >= -4 then
-                SetValue(TSuperObject.CreateCurrency(FSQLResult.AsCurrency[i])) else
-                SetValue(TSuperObject.Create(FSQLResult.AsDouble[i]));
-            end;
-          uftFloat, uftDoublePrecision:
-            SetValue(TSuperObject.Create(FSQLResult.AsDouble[i]));
-          uftBlob, uftBlobId:
-            begin
-              if FSQLResult.Data^.sqlvar[i].SqlSubType = 1 then
-              begin
-                FSQLResult.ReadBlob(i, str);
-                SetValue(TSuperObject.Create(str));
-              end else
-              begin
-                blob := TDBBinary.Create;
-                FSQLResult.ReadBlob(i, blob.getData);
-                SetValue(blob as ISuperObject);
-              end;
-            end;
-          uftTimestamp, uftDate, uftTime:
-            SetValue(TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[i])));
-        {$IFDEF IB7_UP}
-          uftBoolean: SetValue(TSuperObject.Create(PChar(FSQLResult.AsBoolean[i])));
-        {$ENDIF}
-         else
-           SetValue(nil);
-         end;
+        SetValue(i, GetValue(i));
     end;
   end;
 
@@ -528,13 +504,13 @@ var
           if (FStatementType = stExecProcedure) then
           begin
             DSQLExecute2(FTrHandle, FStHandle, 3, FSQLParams, FSQLResult);
-            dfFirstOne := True;
+            dfSingleton := True;
           end else
             DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
 
           if dfNoCursor then
             Result := getone else
-          if not dfFirstOne then
+          if not dfSingleton then
           begin
             Result := TSuperObject.Create(stArray);
             while DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) do
@@ -558,9 +534,10 @@ var
   f: TSuperObjectIter;
 begin
   ctx := transaction;
-  dfFirstOne := B['firstone'];
+  dfSingleton := B['singleton'];
   dfArray := B['array'];
-  dfNoCursor := dfFirstOne and (FStatementType = stExecProcedure);
+  dfValue := B['value'];
+  dfNoCursor := dfSingleton and (FStatementType = stExecProcedure);
 
   if ctx = nil then
     ctx := FConnection.Transaction;
