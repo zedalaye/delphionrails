@@ -34,15 +34,19 @@ type
     function Transaction(const Options: SOString): IDBTransaction; overload;
     function Query(const Options: ISuperObject = nil): IDBQuery; overload;
     function Query(const sql: SOString; options: TQueryOptions = []): IDBQuery; overload;
-    function Singleton(const sql: SOString): IDBQuery;
+    function Singleton(const Sql: SOString): IDBQuery;
+    function Table(const Sql: SOString): IDBQuery;
+    function Row(const Sql: SOString): IDBQuery;
     procedure ExecuteImmediate(const Options: SOString); overload;
   end;
 
   IDBTransaction = interface
   ['{51992399-2D1A-47EF-9DB1-C5654325F41B}']
     function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; overload;
-    function Query(const sql: SOString; options: TQueryOptions = []; const Connection: IDBConnection = nil): IDBQuery; overload;
-    function Singleton(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
+    function Query(const Sql: SOString; options: TQueryOptions = []; const Connection: IDBConnection = nil): IDBQuery; overload;
+    function Singleton(const Sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
+    function Table(const Sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
+    function Row(const Sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
     procedure ExecuteImmediate(const Options: SOString); overload;
     function Execute(const Query: IDBQuery; const params: ISuperObject = nil): ISuperObject; overload;
     function Execute(const Query: IDBQuery; const params: array of const): ISuperObject; overload;
@@ -81,8 +85,10 @@ type
     function Transaction(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBTransaction; overload; virtual; abstract;
     function Transaction(const Options: SOString): IDBTransaction; overload; virtual;
     function Query(const Options: ISuperObject = nil): IDBQuery; overload; virtual;
-    function Query(const sql: SOString; options: TQueryOptions = []): IDBQuery; overload; virtual;
-    function Singleton(const sql: SOString): IDBQuery;
+    function Query(const Sql: SOString; options: TQueryOptions = []): IDBQuery; overload; virtual;
+    function Singleton(const Sql: SOString): IDBQuery;
+    function Table(const Sql: SOString): IDBQuery;
+    function Row(const Sql: SOString): IDBQuery;
   end;
 
   TDBTransaction = class(TSuperObject, IDBTransaction)
@@ -96,6 +102,8 @@ type
     function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; overload; virtual; abstract;
     function Query(const sql: SOString; options: TQueryOptions = []; const Connection: IDBConnection = nil): IDBQuery; overload; virtual;
     function Singleton(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
+    function Table(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
+    function Row(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
     function Execute(const Query: IDBQuery; const params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Execute(const Query: IDBQuery; const params: array of const): ISuperObject; overload; virtual;
     function Execute(const Query: IDBQuery; const params: SOString): ISuperObject; overload; virtual;
@@ -184,9 +192,19 @@ begin
   Result := Transaction.Query(sql, options);
 end;
 
+function TDBConnection.Row(const Sql: SOString): IDBQuery;
+begin
+  Result := Query(sql, [qoSingleton, qoArray]);
+end;
+
 function TDBConnection.Singleton(const sql: SOString): IDBQuery;
 begin
   Result := Query(sql, [qoSingleton]);
+end;
+
+function TDBConnection.Table(const Sql: SOString): IDBQuery;
+begin
+  Result := Query(sql, [qoArray]);
 end;
 
 function TDBConnection.Transaction(const Options: SOString): IDBTransaction;
@@ -238,10 +256,22 @@ begin
   Result := Query(obj, Connection);
 end;
 
+function TDBTransaction.Row(const sql: SOString;
+  const Connection: IDBConnection): IDBQuery;
+begin
+  Result := Query(sql, [qoSingleton, qoArray], Connection);
+end;
+
 function TDBTransaction.Singleton(const sql: SOString;
   const Connection: IDBConnection): IDBQuery;
 begin
   Result := Query(sql, [qoSingleton], Connection);
+end;
+
+function TDBTransaction.Table(const sql: SOString;
+  const Connection: IDBConnection): IDBQuery;
+begin
+  Result := Query(sql, [qoArray], Connection);
 end;
 
 procedure TDBTransaction.TriggerCommitEvent;
