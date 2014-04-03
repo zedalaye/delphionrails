@@ -21,8 +21,8 @@ type
 
   IDBConnectionPool = interface
     ['{27621D9A-AAE9-4E24-82F5-A18D84E415F3}']
-    function GetConnection: IDBConnection;
-    function GetSize: Integer;
+    function Connection: IDBConnection;
+    function Size: Integer;
     procedure ClearPool;
     procedure Lock;
     procedure Unlock;
@@ -32,43 +32,59 @@ type
   ['{843E105A-B8E0-42A9-AFA0-CF5AA843DB8B}']
     function Transaction(const Options: ISuperObject = nil): IDBTransaction; overload;
     function Transaction(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBTransaction; overload;
-    function Transaction(const Options: SOString): IDBTransaction; overload;
-    function Query(const Options: ISuperObject = nil): IDBQuery; overload;
-    function Query(const sql: SOString; options: TQueryOptions = []): IDBQuery; overload;
-    function Singleton(const Sql: SOString): IDBQuery;
-    function Table(const Sql: SOString): IDBQuery;
-    function Row(const Sql: SOString): IDBQuery;
-    function List(const Sql: SOString): IDBQuery;
-    function Cell(const Sql: SOString): IDBQuery;
-    procedure ExecuteImmediate(const Options: SOString); overload;
+    function Transaction(const Options: string): IDBTransaction; overload;
+    function Query(const Sql: string): IDBQuery; overload;
+    procedure ExecuteImmediate(const Sql: string); overload;
   end;
 
   IDBTransaction = interface
   ['{51992399-2D1A-47EF-9DB1-C5654325F41B}']
-    function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; overload;
-    function Query(const Sql: SOString; options: TQueryOptions = []; const Connection: IDBConnection = nil): IDBQuery; overload;
-    function Singleton(const Sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function Table(const Sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function Row(const Sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function List(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function Cell(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    procedure ExecuteImmediate(const Options: SOString); overload;
-    function Execute(const Query: IDBQuery; const params: ISuperObject = nil): ISuperObject; overload;
-    function Execute(const Query: IDBQuery; const params: array of const): ISuperObject; overload;
-    function Execute(const Query: IDBQuery; const params: SOString): ISuperObject; overload;
-    function Execute(const Query: IDBQuery; const params: Variant): ISuperObject; overload;
+    function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery;
+    procedure ExecuteImmediate(const Sql: string); overload;
+    function Execute(const Query: IDBQuery; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload;
+    function Execute(const Query: IDBQuery; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload;
+    function Execute(const Sql: string; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload;
+    function Execute(const Sql: string; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload;
+    function Singleton(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Singleton(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Singleton(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Singleton(const Sql: string; const Params: array of const): ISuperObject; overload;
+    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Table(const Sql: string; const Params: array of const): ISuperObject; overload;
+    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Row(const Sql: string; const Params: array of const): ISuperObject; overload;
+    function List(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function List(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function List(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function List(const Sql: string; const Params: array of const): ISuperObject; overload;
+    function Cell(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Cell(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Cell(const Sql: string; const Params: array of const): ISuperObject; overload;
     procedure OnCommit(const proc: TProc);
     procedure OnRollback(const proc: TProc);
   end;
 
   IDBQuery = interface
   ['{A39B974A-96EA-4047-A57B-A2B3EBE7BABD}']
-    function Execute(const params: ISuperObject = nil; const transaction: IDBTransaction = nil): ISuperObject; overload;
-    function Execute(const params: array of const; const transaction: IDBTransaction = nil): ISuperObject; overload;
-    function Execute(const params: SOString; const transaction: IDBTransaction = nil): ISuperObject; overload;
-    function Execute(const params: Variant; const transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Execute(const Params: ISuperObject = nil; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Execute(const Params: array of const; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Singleton(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Singleton(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Table(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Table(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Row(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Row(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function List(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function List(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Cell(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Cell(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
     function GetInputMeta: ISuperObject;
-    function GetOutputMeta: ISuperObject;
+    function GetOutputMeta(byindex: Boolean): ISuperObject;
   end;
 
   IDBBlob = interface
@@ -83,55 +99,73 @@ type
 
   // Abstact classes
 
-  TDBConnection = class(TSuperObject, IDBConnection)
+  TDBConnection = class(TInterfacedObject, IDBConnection)
   protected
-    procedure ExecuteImmediate(const Options: SOString); virtual;
     function Transaction(const Options: ISuperObject = nil): IDBTransaction; overload; virtual; abstract;
     function Transaction(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBTransaction; overload; virtual; abstract;
-    function Transaction(const Options: SOString): IDBTransaction; overload; virtual;
-    function Query(const Options: ISuperObject = nil): IDBQuery; overload; virtual;
-    function Query(const Sql: SOString; options: TQueryOptions = []): IDBQuery; overload; virtual;
-    function Singleton(const Sql: SOString): IDBQuery;
-    function Table(const Sql: SOString): IDBQuery;
-    function Row(const Sql: SOString): IDBQuery;
-    function List(const Sql: SOString): IDBQuery;
-    function Cell(const Sql: SOString): IDBQuery;
+    function Transaction(const Options: string): IDBTransaction; overload;
+    function Query(const Sql: string): IDBQuery; overload;
+    procedure ExecuteImmediate(const Sql: string); overload;
   end;
 
-  TDBTransaction = class(TSuperObject, IDBTransaction)
+  TDBTransaction = class(TInterfacedObject, IDBTransaction)
   private
     FCommitEvent: TList<TProc>;
     FRollbackEvent: TList<TProc>;
   protected
     procedure TriggerCommitEvent;
     procedure TriggerRollbackEvent;
-    procedure ExecuteImmediate(const Options: SOString); virtual; abstract;
-    function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; overload; virtual; abstract;
-    function Query(const sql: SOString; options: TQueryOptions = []; const Connection: IDBConnection = nil): IDBQuery; overload; virtual;
-    function Singleton(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function Table(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function Row(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function List(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function Cell(const sql: SOString; const Connection: IDBConnection = nil): IDBQuery;
-    function Execute(const Query: IDBQuery; const params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Execute(const Query: IDBQuery; const params: array of const): ISuperObject; overload; virtual;
-    function Execute(const Query: IDBQuery; const params: SOString): ISuperObject; overload; virtual;
-    function Execute(const Query: IDBQuery; const params: Variant): ISuperObject; overload; virtual;
+    function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery; virtual;
+    procedure ExecuteImmediate(const Sql: string); virtual; abstract;
+
+    function Execute(const Query: IDBQuery; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload; virtual;
+    function Execute(const Query: IDBQuery; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload; virtual;
+    function Execute(const Sql: string; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload; virtual;
+    function Execute(const Sql: string; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload; virtual;
+    function Singleton(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Singleton(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Singleton(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Singleton(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Table(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Row(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+    function List(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function List(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function List(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function List(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+    function Cell(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Cell(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Cell(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
     procedure OnCommit(const proc: TProc);
     procedure OnRollback(const proc: TProc);
   public
-    constructor Create(jt: TSuperType = stObject); override;
+    constructor Create; virtual;
     destructor Destroy; override;
   end;
 
-  TDBQuery = class(TSuperObject, IDBQuery)
+  TDBQuery = class(TInterfacedObject, IDBQuery)
   protected
-    function Execute(const params: ISuperObject = nil; const transaction: IDBTransaction = nil): ISuperObject; overload; virtual; abstract;
-    function Execute(const params: array of const; const transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
-    function Execute(const params: SOString; const transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
-    function Execute(const params: Variant; const transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Execute(const Params: ISuperObject = nil; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual; abstract;
+    function Execute(const Params: array of const; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Singleton(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Singleton(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Table(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Table(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Row(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Row(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function List(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function List(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Cell(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Cell(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
     function GetInputMeta: ISuperObject; virtual; abstract;
-    function GetOutputMeta: ISuperObject; virtual; abstract;
+    function GetOutputMeta(byindex: Boolean): ISuperObject; virtual; abstract;
   end;
 
   TDBBinary = class(TSuperObject, IDBBlob)
@@ -162,7 +196,7 @@ type
 
 implementation
 
-function DecodeValue(const s: SOString): ISuperObject; inline;
+function DecodeValue(const s: string): ISuperObject; inline;
 begin
   Result := TSuperObject.ParseString(PSOChar(s), False, False);
   if Result = nil then
@@ -186,51 +220,20 @@ end;
 
 { TDBConnection }
 
-function TDBConnection.Query(const Options: ISuperObject): IDBQuery;
+function TDBConnection.Query(const Sql: string): IDBQuery;
 begin
-  Result := Transaction.Query(Options);
+  Result := Transaction.Query(Sql);
 end;
 
-function TDBConnection.Cell(const Sql: SOString): IDBQuery;
+procedure TDBConnection.ExecuteImmediate(const Sql: string);
 begin
-  Result := Query(sql, [qoSingleton, qoValue]);
+  Transaction.ExecuteImmediate(Sql);
 end;
 
-procedure TDBConnection.ExecuteImmediate(const Options: SOString);
-begin
-  Transaction.ExecuteImmediate(Options);
-end;
-
-function TDBConnection.List(const Sql: SOString): IDBQuery;
-begin
-  Result := Query(sql, [qoValue]);
-end;
-
-function TDBConnection.Query(const sql: SOString; options: TQueryOptions): IDBQuery;
-begin
-  Result := Transaction.Query(sql, options);
-end;
-
-function TDBConnection.Row(const Sql: SOString): IDBQuery;
-begin
-  Result := Query(sql, [qoSingleton, qoArray]);
-end;
-
-function TDBConnection.Singleton(const sql: SOString): IDBQuery;
-begin
-  Result := Query(sql, [qoSingleton]);
-end;
-
-function TDBConnection.Table(const Sql: SOString): IDBQuery;
-begin
-  Result := Query(sql, [qoArray]);
-end;
-
-function TDBConnection.Transaction(const Options: SOString): IDBTransaction;
+function TDBConnection.Transaction(const Options: string): IDBTransaction;
 begin
   Result := Transaction(TSuperObject.ParseString(PSOChar(Options), false));
 end;
-
 
 { TDBContext }
 
@@ -244,13 +247,73 @@ begin
   FRollbackEvent.Add(proc);
 end;
 
-function TDBTransaction.Cell(const sql: SOString;
-  const Connection: IDBConnection): IDBQuery;
+function TDBTransaction.Cell(const Query: IDBQuery;
+  const Params: ISuperObject): ISuperObject;
 begin
-  Result := Query(sql, [qoSingleton, qoValue], Connection);
+  Result := Query.Cell(Params, Self);
 end;
 
-constructor TDBTransaction.Create(jt: TSuperType);
+function TDBTransaction.Cell(const Query: IDBQuery;
+  const Params: array of const): ISuperObject;
+begin
+  Result := Query.Cell(Params, Self);
+end;
+
+function TDBTransaction.Query(const Sql: string;
+  const Connection: IDBConnection): IDBQuery;
+begin
+  Result := Query(Sql, Connection);
+end;
+
+function TDBTransaction.Row(const Sql: string;
+  const Params: ISuperObject): ISuperObject;
+begin
+  Result := Row(Query(Sql), Params);
+end;
+
+function TDBTransaction.Row(const Sql: string;
+  const Params: array of const): ISuperObject;
+begin
+  Result := Row(Query(Sql), Params);
+end;
+
+function TDBTransaction.Row(const Query: IDBQuery;
+  const Params: array of const): ISuperObject;
+begin
+  Result := Query.Row(Params, Self);
+end;
+
+function TDBTransaction.Row(const Query: IDBQuery;
+  const Params: ISuperObject): ISuperObject;
+begin
+  Result := Query.Row(Params, Self);
+end;
+
+function TDBTransaction.Singleton(const Query: IDBQuery;
+  const Params: ISuperObject): ISuperObject;
+begin
+  Result := Query.Singleton(Params, Self);
+end;
+
+function TDBTransaction.Singleton(const Query: IDBQuery;
+  const Params: array of const): ISuperObject;
+begin
+  Result := Query.Singleton(Params, Self);
+end;
+
+function TDBTransaction.Cell(const Sql: string;
+  const Params: ISuperObject): ISuperObject;
+begin
+  Result := Cell(Query(Sql), Params);
+end;
+
+function TDBTransaction.Cell(const Sql: string;
+  const Params: array of const): ISuperObject;
+begin
+  Result := Cell(Query(Sql), Params);
+end;
+
+constructor TDBTransaction.Create;
 begin
   inherited;
   FCommitEvent := TList<TProc>.Create;
@@ -264,47 +327,52 @@ begin
   inherited;
 end;
 
+function TDBTransaction.Execute(const Sql: string; const Params: ISuperObject;
+  Options: TQueryOptions): ISuperObject;
+begin
+  Result := Execute(Query(Sql), Params, Options);
+end;
+
+function TDBTransaction.Execute(const Sql: string; const Params: array of const;
+  Options: TQueryOptions): ISuperObject;
+begin
+  Result := Execute(Query(Sql), Params, Options);
+end;
+
 function TDBTransaction.Execute(const Query: IDBQuery;
-  const params: Variant): ISuperObject;
+  const Params: array of const; Options: TQueryOptions): ISuperObject;
 begin
-  Result := Query.Execute(so(params), Self);
+  Result := Query.Execute(params, Options, Self);
 end;
 
-function TDBTransaction.List(const sql: SOString;
-  const Connection: IDBConnection): IDBQuery;
+function TDBTransaction.Execute(const Query: IDBQuery;
+  const Params: ISuperObject; Options: TQueryOptions): ISuperObject;
 begin
-  Result := Query(sql, [qoValue], Connection);
+  Result := Query.Execute(params, Options, Self);
 end;
 
-function TDBTransaction.Query(const sql: SOString; options: TQueryOptions; const Connection: IDBConnection): IDBQuery;
-var
-  obj: ISuperObject;
+function TDBTransaction.List(const Query: IDBQuery;
+  const Params: array of const): ISuperObject;
 begin
-  obj := SO(['sql', sql]);
-  if qoSingleton in options then obj.B['singleton'] := True;
-  if qoArray in options then obj.B['array'] := True;
-  if qoValue in options then obj.B['value'] := True;
-
-//  if qoNoCursor in options then obj.B['nocursor'] := True;
-  Result := Query(obj, Connection);
+  Result := Query.List(Params, Self);
 end;
 
-function TDBTransaction.Row(const sql: SOString;
-  const Connection: IDBConnection): IDBQuery;
+function TDBTransaction.List(const Query: IDBQuery;
+  const Params: ISuperObject): ISuperObject;
 begin
-  Result := Query(sql, [qoSingleton, qoArray], Connection);
+  Result := Query.List(Params, Self);
 end;
 
-function TDBTransaction.Singleton(const sql: SOString;
-  const Connection: IDBConnection): IDBQuery;
+function TDBTransaction.Table(const Query: IDBQuery;
+  const Params: ISuperObject): ISuperObject;
 begin
-  Result := Query(sql, [qoSingleton], Connection);
+  Result := Query.Table(Params, Self);
 end;
 
-function TDBTransaction.Table(const sql: SOString;
-  const Connection: IDBConnection): IDBQuery;
+function TDBTransaction.Table(const Query: IDBQuery;
+  const Params: array of const): ISuperObject;
 begin
-  Result := Query(sql, [qoArray], Connection);
+  Result := Query.Table(Params, Self);
 end;
 
 procedure TDBTransaction.TriggerCommitEvent;
@@ -319,44 +387,6 @@ var
   p: TProc;
 begin
   for p in FRollbackEvent do p();
-end;
-
-function TDBTransaction.Execute(const Query: IDBQuery;
-  const params: SOString): ISuperObject;
-begin
-  Result := Query.Execute(DecodeValue(params), Self);
-end;
-
-function TDBTransaction.Execute(const Query: IDBQuery;
-  const params: array of const): ISuperObject;
-begin
-  Result := Query.Execute(SA(params), Self);
-end;
-
-function TDBTransaction.Execute(const Query: IDBQuery;
-  const params: ISuperObject = nil): ISuperObject;
-begin
-  Result := Query.Execute(params, Self);
-end;
-
-{ TDBCommand }
-
-function TDBQuery.Execute(const params: Variant;
-  const transaction: IDBTransaction): ISuperObject;
-begin
-  Result := Execute(SO(params), transaction);
-end;
-
-function TDBQuery.Execute(const params: SOString;
-  const transaction: IDBTransaction): ISuperObject;
-begin
-  Result := Execute(DecodeValue(params), transaction);
-end;
-
-function TDBQuery.Execute(const params: array of const;
-  const transaction: IDBTransaction): ISuperObject;
-begin
-  Result := Execute(SA(params), transaction);
 end;
 
 { TDBBinary }
@@ -474,6 +504,110 @@ end;
 function TDBDateTime.AsDateTime: Double;
 begin
   Result := JavaToDelphiDateTime(AsInteger);
+end;
+
+{ TDBQuery }
+
+function TDBQuery.Cell(const Params: ISuperObject;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoSingleton, qoValue], Transaction);
+end;
+
+function TDBQuery.Cell(const Params: array of const;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoSingleton, qoValue], Transaction);
+end;
+
+function TDBQuery.Execute(const Params: array of const; Options: TQueryOptions;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(SA(Params), Options, Transaction);
+end;
+
+function TDBQuery.List(const Params: ISuperObject;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoValue], Transaction);
+end;
+
+function TDBQuery.List(const Params: array of const;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoValue], Transaction);
+end;
+
+function TDBQuery.Row(const Params: ISuperObject;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoSingleton, qoArray], Transaction);
+end;
+
+function TDBQuery.Row(const Params: array of const;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoSingleton, qoArray], Transaction);
+end;
+
+function TDBQuery.Singleton(const Params: ISuperObject;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoSingleton], Transaction);
+end;
+
+function TDBQuery.Singleton(const Params: array of const;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoSingleton], Transaction);
+end;
+
+function TDBQuery.Table(const Params: array of const;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoArray], Transaction);
+end;
+
+function TDBQuery.Table(const Params: ISuperObject;
+  const Transaction: IDBTransaction): ISuperObject;
+begin
+  Result := Execute(Params, [qoArray], Transaction);
+end;
+
+function TDBTransaction.List(const Sql: string;
+  const Params: array of const): ISuperObject;
+begin
+  Result := List(Query(Sql), Params);
+end;
+
+function TDBTransaction.List(const Sql: string;
+  const Params: ISuperObject): ISuperObject;
+begin
+  Result := List(Query(Sql), Params);
+end;
+
+function TDBTransaction.Singleton(const Sql: string;
+  const Params: ISuperObject): ISuperObject;
+begin
+  Result := Singleton(Query(Sql), Params);
+end;
+
+function TDBTransaction.Singleton(const Sql: string;
+  const Params: array of const): ISuperObject;
+begin
+  Result := Singleton(Query(Sql), Params);
+end;
+
+function TDBTransaction.Table(const Sql: string;
+  const Params: array of const): ISuperObject;
+begin
+  Result := Table(Query(Sql), Params);
+end;
+
+function TDBTransaction.Table(const Sql: string;
+  const Params: ISuperObject): ISuperObject;
+begin
+  Result := Table(Query(Sql), Params);
 end;
 
 end.

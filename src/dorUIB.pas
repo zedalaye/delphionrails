@@ -6,22 +6,29 @@ uses
 {$IFDEF MSWINDOWS}
   windows,
 {$ENDIF}
-  dorDB, uibase, uiblib, supertypes, superobject, superdate, syncobjs, dorUtils;
+  dorDB, uibase, uiblib, supertypes, superobject, superdate, syncobjs, dorUtils,
+  Generics.Collections;
 
 type
-  TDBUIBConnectionPool = class(TSuperObject, IDBConnectionPool)
+  TDBUIBConnectionPool = class(TInterfacedObject, IDBConnectionPool)
   private
     FCriticalSection: TCriticalSection;
     FMax: Integer;
+    FDatabase: string;
+    FUserName: string;
+    FPassword: string;
+    FCharacterset: string;
+    FLib: string;
+    FPool: TList<IDBConnection>;
   protected
-    function GetConnection: IDBConnection;
-    function GetSize: Integer;
+    function Connection: IDBConnection;
+    function Size: Integer;
     procedure ClearPool;
     procedure Lock;
     procedure Unlock;
   public
-    constructor Create(const Options: ISuperObject; max: Integer); reintroduce; overload;
-    constructor Create(const Options: string; max: Integer); reintroduce; overload;
+    constructor Create(Max: Integer; const Database, Username, Password: string;
+      const Characterset: string = 'UTF8'; const Lib: string = ''); reintroduce;
     destructor Destroy; override;
   end;
 
@@ -34,18 +41,19 @@ type
     function Transaction(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBTransaction; overload; override;
     function Transaction(const Options: ISuperObject = nil): IDBTransaction; overload; override;
   public
-    constructor Create(const Options: ISuperObject); reintroduce; overload;
-    constructor Create(const Options: string); reintroduce; overload;
+    constructor Create(const Database, Username, Password: string;
+      const Characterset: string = 'UTF8'; const Lib: string = ''); virtual;
     destructor Destroy; override;
   end;
 
   TDBUIBTransaction = class(TDBTransaction)
   private
+    FRollback: Boolean;
     FTrHandle: IscTrHandle;
-    FConnection: TDBUIBConnection;
+    FConnection: IDBConnection;
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
-    function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; override;
+    function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery; override;
   public
     constructor Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject); reintroduce;
     destructor Destroy; override;
@@ -54,23 +62,23 @@ type
   TDBUIBQuery = class(TDBQuery)
   private
     FStHandle: IscStmtHandle;
-    FConnection: TDBUIBConnection;
+    FConnection: IDBConnection;
     FSQLResult: TSQLResult;
     FSQLParams: TSQLParams;
     FStatementType: TUIBStatementType;
   protected
-    function Execute(const params: ISuperObject = nil; const transaction: IDBTransaction = nil): ISuperObject; override;
+    function Execute(const Params: ISuperObject; Options: TQueryOptions; const Transaction: IDBTransaction): ISuperObject; override;
     function GetInputMeta: ISuperObject; override;
-    function GetOutputMeta: ISuperObject; override;
+    function GetOutputMeta(byindex: Boolean): ISuperObject; override;
   public
-    constructor Create(const Connection: TDBUIBConnection; const Trans: TDBUIBTransaction; const Options: ISuperObject); reintroduce;
+    constructor Create(const Connection: IDBConnection; const Trans: TDBUIBTransaction; const Sql: string); reintroduce;
     destructor Destroy; override;
   end;
 
   function GetUIBConnections: Integer;
 
 implementation
-uses sysutils, Generics.Collections;
+uses sysutils;
 
 var
   UIBConnections: Integer = 0;
@@ -82,50 +90,36 @@ end;
 
 { TDBUIBConnection }
 
-constructor TDBUIBConnection.Create(const Options: ISuperObject);
+constructor TDBUIBConnection.Create(const Database, Username, Password,
+  Characterset, Lib: string);
 var
-  param: ISuperObject;
   option: string;
 begin
-  inherited Create(stObject);
+  inherited Create;
   InterlockedIncrement(UIBConnections);
   FDbHandle := nil;
-
-  DataPtr := Self;
-  Merge(Options, true);
-
   FLibrary := TUIBLibrary.Create;
 
-  param := O['library'];
-  if param <> nil then
-    FLibrary.Load(string(param.AsString)) else
+  if lib <> '' then
+    FLibrary.Load(lib) else
     FLibrary.Load(GetClientLibrary);
 
   option := 'sql_dialect=3';
 
-  param := O['username'];
-  if param <> nil then
-    option := option + ';user_name=' + param.AsString;
+  if username <> '' then
+    option := option + ';user_name=' + username;
 
-  param := O['password'];
-  if param <> nil then
-    option := option + ';password=' + param.AsString;
+  if password <> '' then
+    option := option + ';password=' + password;
 
-  param := O['characterset'];
-  if param <> nil then
-    FCharacterSet := StrToCharacterSet(AnsiString(param.AsString)) else
+  if characterset <> '' then
+    FCharacterSet := StrToCharacterSet(AnsiString(characterset)) else
     FCharacterSet := GetSystemCharacterset;
   option := option + ';lc_ctype=' + string(CharacterSetStr[FCharacterSet]);
 
-  param := O['databasename'];
-  if param <> nil then
-    FLibrary.AttachDatabase(AnsiString(param.AsString), FDbHandle, AnsiString(option)) else
+  if database <> '' then
+    FLibrary.AttachDatabase(AnsiString(database), FDbHandle, AnsiString(option)) else
     FDbHandle := nil;
-end;
-
-constructor TDBUIBConnection.Create(const Options: string);
-begin
-  Create(SO(Options));
 end;
 
 destructor TDBUIBConnection.Destroy;
@@ -180,11 +174,10 @@ var
   i: Integer;
 begin
   Assert(Length(Connections) > 0);
-  inherited Create(stObject);
-  DataPtr := Self;
-  Merge(Options, true);
+  inherited Create;
+//  Merge(Options, true);
   FConnection := Connections[0];
-  AsObject['connection'] := Connections[0];
+  //AsObject['connection'] := Connections[0];
   FTrHandle := nil;
   if ObjectIsType(Options, stObject) then
   begin
@@ -255,7 +248,7 @@ begin
 
   if Length(Connections) = 1 then
   begin
-    with FConnection, FLibrary do
+    with Connections[0], FLibrary do
       TransactionStart(FTrHandle, FDbHandle, params);
   end
   else
@@ -271,7 +264,7 @@ begin
           Address := PAnsiChar(params);
         end;
     {$POINTERMATH OFF}
-      with FConnection, FLibrary do
+      with Connections[0], FLibrary do
         TransactionStartMultiple(FTrHandle, Length(Connections), Buffer);
     finally
       FreeMem(Buffer);
@@ -280,64 +273,55 @@ begin
 end;
 
 destructor TDBUIBTransaction.Destroy;
-var
-  obj: ISuperObject;
 begin
-  obj := AsObject['rollback'];
-  if ObjectIsType(obj, stBoolean) and obj.AsBoolean then
+  with TDBUIBConnection(FConnection).FLibrary do
+  if FRollback then
   begin
     TriggerRollbackEvent;
-    FConnection.FLibrary.TransactionRollback(FTrHandle);
-  end
-  else
-    begin
-      FConnection.FLibrary.TransactionCommit(FTrHandle);
-      TriggerCommitEvent;
-    end;
+    TransactionRollback(FTrHandle);
+  end else
+  begin
+    TransactionCommit(FTrHandle);
+    TriggerCommitEvent;
+  end;
   inherited Destroy;
 end;
 
 procedure TDBUIBTransaction.ExecuteImmediate(const Options: SOString);
 begin
-  with FConnection, FLibrary do
+  with TDBUIBConnection(FConnection), FLibrary do
     DSQLExecuteImmediate(FDbHandle, FTrHandle, MBUEncode(Options, CharacterSetCP[FCharacterSet]), 3);
 end;
 
-function TDBUIBTransaction.Query(const Options: ISuperObject; const Connection: IDBConnection): IDBQuery;
+function TDBUIBTransaction.Query(const Sql: string; const Connection: IDBConnection): IDBQuery;
 begin
-  if (Connection = nil) or (not (Connection is TDBUIBConnection)) then
-    Result := TDBUIBQuery.Create(FConnection, Self, Options)
+  if Connection = nil then
+    Result := TDBUIBQuery.Create(FConnection, Self, Sql)
   else
-    Result := TDBUIBQuery.Create(TDBUIBConnection(Connection), Self, Options)
+    Result := TDBUIBQuery.Create(Connection, Self, Sql)
 end;
 
 { TDBUIBQuery }
 
-constructor TDBUIBQuery.Create(const Connection: TDBUIBConnection;
-  const Trans: TDBUIBTransaction; const Options: ISuperObject);
+constructor TDBUIBQuery.Create(const Connection: IDBConnection;
+  const Trans: TDBUIBTransaction; const Sql: string);
 begin
-  inherited Create(stObject);
-  DataPtr := Self;
-  if ObjectIsType(Options, stString) then
-    O['sql'] := Options else
-    Merge(Options, true);
+  inherited Create;
   FConnection := Connection;
-  AsObject['connection'] := Connection;
-
-  FSQLResult := TSQLResult.Create(Connection.FCharacterSet, 0, false, true);
-  FSQLParams := TSQLParams.Create(Connection.FCharacterSet);
-
   FStHandle := nil;
-  with FConnection, FLibrary do
+  with TDBUIBConnection(Connection), FLibrary do
   begin
+    FSQLResult := TSQLResult.Create(FCharacterSet, 0, False, True);
+    FSQLParams := TSQLParams.Create(FCharacterSet);
+
     DSQLAllocateStatement(FDbHandle, FStHandle);
     try
       FStatementType := DSQLPrepare(FDbHandle, Trans.FTrHandle, FStHandle,
-        MBUEncode(FSQLParams.Parse(PSOChar(self.S['sql'])), CharacterSetCP[FCharacterSet]), 3, FSQLResult);
+        MBUEncode(FSQLParams.Parse(PSOChar(Sql)), CharacterSetCP[FCharacterSet]), 3, FSQLResult);
     except
       on E: Exception do
       begin
-        Trans.B['rollback'] := true;
+        Trans.FRollback := True;
         raise;
       end;
     end;
@@ -350,13 +334,15 @@ destructor TDBUIBQuery.Destroy;
 begin
   FSQLResult.Free;
   FSQLParams.Free;
-  FConnection.FLibrary.DSQLFreeStatement(FStHandle, DSQL_drop);
+  TDBUIBConnection(FConnection).FLibrary.DSQLFreeStatement(FStHandle, DSQL_drop);
   inherited;
 end;
 
-function TDBUIBQuery.Execute(const params: ISuperObject; const transaction: IDBTransaction): ISuperObject;
+function TDBUIBQuery.Execute(const Params: ISuperObject; Options: TQueryOptions;
+  const Transaction: IDBTransaction): ISuperObject;
 var
-  dfArray, dfSingleton, dfValue, dfNoCursor: boolean;
+  //dfArray, dfSingleton, dfValue,
+  NoCursor: boolean;
   str: string;
   ctx: IDBTransaction;
 
@@ -423,13 +409,13 @@ var
   var
     i: integer;
   begin
-    if dfValue then
+    if qoValue in Options then
     begin
       if FSQLResult.FieldCount > 0 then
         Result := GetValue(0) else
         Result := nil;
     end else
-    if dfArray then
+    if qoArray in Options then
     begin
       Result := TSuperObject.Create(stArray);
       for i := 0 to FSQLResult.FieldCount - 1 do
@@ -479,7 +465,7 @@ var
           end;
         uftInt64: FSQLParams.AsInt64[index] := value.AsInteger;
         uftBlob, uftBlobId:
-          with FConnection, FLibrary, TDBUIBTransaction((ctx as ISuperObject).DataPtr) do
+          with TDBUIBConnection(FConnection), FLibrary, TDBUIBTransaction(ctx) do
           begin
             BlobHandle := nil;
             FSQLParams.AsQuad[Index] := BlobCreate(FDbHandle, FTrHandle, BlobHandle);
@@ -495,22 +481,22 @@ var
 
   procedure Process;
   begin
-    with FConnection, FLibrary, TDBUIBTransaction((ctx as ISuperObject).DataPtr) do
+    with TDBUIBConnection(FConnection), FLibrary, TDBUIBTransaction(ctx) do
       if FSQLResult.FieldCount > 0 then
       begin
-        if not dfNoCursor then
+        if not NoCursor then
           DSQLSetCursorName(FStHandle, AnsiChar('C') + AnsiString(IntToStr(PtrInt(FStHandle))));
         try
           if (FStatementType = stExecProcedure) then
           begin
             DSQLExecute2(FTrHandle, FStHandle, 3, FSQLParams, FSQLResult);
-            dfSingleton := True;
+            Include(Options, qoSingleton);
           end else
             DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
 
-          if dfNoCursor then
+          if NoCursor then
             Result := getone else
-          if not dfSingleton then
+          if not (qoSingleton in Options) then
           begin
             Result := TSuperObject.Create(stArray);
             while DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) do
@@ -520,7 +506,7 @@ var
               Result := getone else
               Result := nil;
         finally
-          if not dfNoCursor then
+          if not NoCursor then
             DSQLFreeStatement(FStHandle, DSQL_close);
         end;
       end else
@@ -534,10 +520,8 @@ var
   f: TSuperObjectIter;
 begin
   ctx := transaction;
-  dfSingleton := B['singleton'];
-  dfArray := B['array'];
-  dfValue := B['value'];
-  dfNoCursor := dfSingleton and (FStatementType = stExecProcedure);
+
+  NoCursor := (qoSingleton in Options) and (FStatementType = stExecProcedure);
 
   if ctx = nil then
     ctx := FConnection.Transaction;
@@ -561,12 +545,12 @@ begin
             begin
               Result := TSuperObject.Create(stArray);
               for j := 0 to Length - 1 do
-                Result.AsArray.Add(Execute(O[j], ctx));
+                Result.AsArray.Add(Execute(O[j], Options, ctx));
             end else
             begin
               affected := 0;
               for j := 0 to Length - 1 do
-                inc(affected, Execute(O[j], ctx).AsInteger);
+                inc(affected, Execute(O[j], Options, ctx).AsInteger);
               Result := TSuperObject.Create(affected);
             end;
         end;
@@ -587,7 +571,7 @@ begin
     end else
       Process;
   except
-    (ctx as ISuperObject).B['rollback'] := true;
+    TDBUIBTransaction(ctx).FRollback := True;
     raise;
   end;
 end;
@@ -660,23 +644,21 @@ begin
     Result := nil;
 end;
 
-function TDBUIBQuery.GetOutputMeta: ISuperObject;
+function TDBUIBQuery.GetOutputMeta(byindex: Boolean): ISuperObject;
 var
   j: Integer;
   rec: ISuperObject;
-  dfArray: Boolean;
 begin
   if FSQLResult.FieldCount > 0 then
   begin
-    dfArray := B['array'];
-    if dfArray then
+    if byindex then
       Result := TSuperObject.Create(stArray) else
       Result := TSuperObject.Create(stObject);
 
       for j := 0 to FSQLResult.FieldCount - 1 do
       begin
         rec := TSuperObject.Create(stObject);
-        if dfArray then
+        if byindex then
         begin
           rec.S['name'] := LowerCase(FSQLResult.AliasName[j]);
           Result.asArray.add(rec);
@@ -735,12 +717,16 @@ end;
 
 { TDBUIBConnectionPool }
 
-constructor TDBUIBConnectionPool.Create(const Options: ISuperObject; max: Integer);
+constructor TDBUIBConnectionPool.Create(max: Integer; const Database, Username,
+  Password: string; const Characterset: string = 'UTF8'; const Lib: string = '');
 begin
-  inherited Create(stObject);
-  DataPtr := Self;
-  AsObject['options'] := Options;
-  AsObject['pool'] := TSuperObject.Create(stArray);
+  inherited Create;
+  FDatabase := Database;
+  FUserName := Username;
+  FPassword := Password;
+  FCharacterset := Characterset;
+  FLib := Lib;
+  FPool := TList<IDBConnection>.Create;
   FCriticalSection := TCriticalSection.Create;
   FMax := max;
 end;
@@ -749,44 +735,38 @@ procedure TDBUIBConnectionPool.ClearPool;
 begin
   Lock;
   try
-    AsObject['pool'].AsArray.Clear;
+    FPool.Clear;
   finally
     Unlock;
   end;
 end;
 
-constructor TDBUIBConnectionPool.Create(const Options: string; max: Integer);
-begin
-  Create(SO(Options), max);
-end;
-
 destructor TDBUIBConnectionPool.Destroy;
 begin
   FCriticalSection.Free;
+  FPool.Free;
   inherited;
 end;
 
-function TDBUIBConnectionPool.GetConnection: IDBConnection;
+function TDBUIBConnectionPool.Connection: IDBConnection;
 var
-  ar: TSuperArray;
-  cnx: ISuperObject;
+  cnx: IDBConnection;
   j, k: Integer;
 begin
   Result := nil;
 
   Lock;
   try
-    ar := AsObject['pool'].AsArray;
     while Result = nil do
     begin
-      for j := 0 to ar.Length - 1 do
+      for j := 0 to FPool.Count - 1 do
       begin
-        cnx := ar.O[j];
+        cnx :=  FPool[j];
         k := cnx._AddRef;
         try
           if k = 3 then
           begin
-            Result := cnx as IDBConnection;
+            Result := cnx;
             Exit;
           end;
         finally
@@ -794,27 +774,27 @@ begin
           cnx := nil;
         end;
       end;
-      if (Result = nil) and ((FMax < 1) or (ar.Length < FMax)) then
+      if (Result = nil) and ((FMax < 1) or (FPool.Count < FMax)) then
       begin
-        Result := TDBUIBConnection.Create(AsObject['options']);
-        ar.Add(Result as ISuperObject);
+        Result := TDBUIBConnection.Create(FDatabase, FUserName, FPassword, FCharacterset, FLib);
+        FPool.Add(Result);
         Exit;
       end;
   {$IFDEF SWITCHTOTHREAD}
       if not SwitchToThread then
   {$ENDIF}
-        sleep(1);
+        Sleep(1);
     end;
   finally
     Unlock;
   end;
 end;
 
-function TDBUIBConnectionPool.GetSize: Integer;
+function TDBUIBConnectionPool.Size: Integer;
 begin
   Lock;
   try
-    Result := AsObject['pool'].AsArray.Length;
+    Result := FPool.Count;
   finally
     Unlock;
   end;
