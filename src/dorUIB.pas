@@ -175,9 +175,7 @@ var
 begin
   Assert(Length(Connections) > 0);
   inherited Create;
-//  Merge(Options, true);
   FConnection := Connections[0];
-  //AsObject['connection'] := Connections[0];
   FTrHandle := nil;
   if ObjectIsType(Options, stObject) then
   begin
@@ -341,7 +339,6 @@ end;
 function TDBUIBQuery.Execute(const Params: ISuperObject; Options: TQueryOptions;
   const Transaction: IDBTransaction): ISuperObject;
 var
-  //dfArray, dfSingleton, dfValue,
   NoCursor: boolean;
   str: string;
   ctx: IDBTransaction;
@@ -516,7 +513,7 @@ var
       end;
   end;
 var
-  j, affected: integer;
+  j: integer;
   f: TSuperObjectIter;
 begin
   ctx := transaction;
@@ -526,49 +523,35 @@ begin
   if ctx = nil then
     ctx := FConnection.Transaction;
 
-  for j := 0 to FSQLParams.FieldCount - 1 do
-    FSQLParams.IsNull[j] := true;
   try
     if FSQLParams.FieldCount > 0 then
-    begin
-      if ObjectIsType(params, stArray) then
-      begin
-        with params.AsArray do
-        begin
-          if (Length = FSQLParams.FieldCount) and not(ObjectGetType(O[0]) in [stObject, stArray]) then
+      case ObjectGetType(params) of
+        stArray:
+          with params.AsArray do
           begin
+            if (Length <> FSQLParams.FieldCount) then
+              raise Exception.Create('Missing parametters.');
+
             for j := 0 to Length - 1 do
               SetParam(j, O[j]);
             Process;
-          end else
-            if FSQLResult.FieldCount > 0 then
-            begin
-              Result := TSuperObject.Create(stArray);
-              for j := 0 to Length - 1 do
-                Result.AsArray.Add(Execute(O[j], Options, ctx));
-            end else
-            begin
-              affected := 0;
-              for j := 0 to Length - 1 do
-                inc(affected, Execute(O[j], Options, ctx).AsInteger);
-              Result := TSuperObject.Create(affected);
-            end;
-        end;
-      end else
-      if ObjectIsType(params, stObject) then
-      begin
-        if ObjectFindFirst(params, f) then
-        repeat
-          SetParam(FSQLParams.GetFieldIndex(AnsiString(f.key)), f.val);
-        until not ObjectFindNext(f);
-        ObjectFindClose(f);
-        Process;
-      end else
-      begin
-        SetParam(0, params);
-        Process;
-      end;
-    end else
+          end;
+        stObject:
+          begin
+            if (params.AsObject.count <> FSQLParams.ParamCount) then
+              raise Exception.Create('Missing parametters.');
+
+            if ObjectFindFirst(params, f) then
+            repeat
+              SetParam(FSQLParams.GetFieldIndex(AnsiString(f.key)), f.val);
+            until not ObjectFindNext(f);
+            ObjectFindClose(f);
+            Process;
+          end;
+      else
+        raise Exception.Create('Unexpected parametter');
+      end
+    else
       Process;
   except
     TDBUIBTransaction(ctx).FRollback := True;
