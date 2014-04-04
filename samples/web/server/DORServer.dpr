@@ -8,10 +8,6 @@ program DORServer;
 
 uses
   madExcept,
-  madLinkDisAsm,
-  madListHardware,
-  madListProcesses,
-  madListModules,
   dorService,
   mypool in 'mypool.pas',
   WebServer in 'WebServer.pas',

@@ -21,9 +21,9 @@ var
   start: Integer;
   lines, line: ISuperObject;
 begin
-  with pool.GetConnection.Transaction do
+  with pool.Connection.Transaction do
   begin
-    records := Execute(Singleton('select COUNT(*) as "count" from blog')).I['count'];
+    records := Cell('select COUNT(*) as "count" from blog').AsInteger;
     if records > 0 then
       total := Ceil(records / rows) else
       total := 0;
@@ -31,8 +31,8 @@ begin
     start := Max(0, rows * page - rows);
 
     lines := TSuperObject.Create(stArray);
-    for line in Execute(Query(Format('SELECT FIRST %d SKIP %d id, title, post_date FROM blog ORDER BY %s %s',
-      [rows, start, sidx, sord]), [qoArray])) do
+    for line in Table(Format('SELECT FIRST %d SKIP %d id, title, post_date FROM blog ORDER BY %s %s',
+      [rows, start, sidx, sord])) do
       lines.AsArray.Add(so(['id', line['0'], 'cell', line]));
 
     Return['rows'] := lines;

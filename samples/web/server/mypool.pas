@@ -23,7 +23,10 @@ var
   obj: ISuperObject;
 begin
   obj := TSuperObject.ParseFile(ExtractFilePath(ParamStr(0)) + 'conf.json', false);
-  pool := TDBUIBConnectionPool.Create(obj['database'], 0);
+  pool := TDBUIBConnectionPool.Create(0,
+    obj.S['database.databasename'],
+    obj.S['database.username'],
+    obj.S['database.password']);
 end;
 
 { TBlog }
