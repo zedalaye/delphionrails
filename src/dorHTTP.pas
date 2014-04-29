@@ -22,6 +22,8 @@ function HTTPParseURL(const uri: PChar; out protocol: string;
 function HTTPParseHeader(const header: RawByteString; subkeys: Boolean; const onfield: TOnHTTPHeaderField): Boolean;
 function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
 
+function HTMLEncode(const AStr: string): string;
+
 implementation
 uses SysUtils, dorPunyCode;
 
@@ -623,5 +625,20 @@ begin
   end;
 end;
 
+function HTMLEncode(const AStr: string): string;
+var
+  I: Integer;
+begin
+  Result := '';
+  for I := 1 to Length(AStr) do
+    case AStr[I] of
+      '<': Result := Result + '&lt;';
+      '>': Result := Result + '&gt;';
+      '&': Result := Result + '&amp;';
+      '"': Result := Result + '&quot;';
+    else
+      Result := Result + AStr[I];
+    end;
+end;
 
 end.
