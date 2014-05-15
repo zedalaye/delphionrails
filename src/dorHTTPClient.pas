@@ -622,6 +622,15 @@ begin
         strm.Write(buff, rcv);
         Dec(len, rcv);
       end;
+    end else
+    if FResponseHeader.TryGetValue('connection', str) and (string(str.value) = 'close') then
+    begin
+      repeat
+        SetReadyState(rsReceiving);
+        wait(SizeOf(buff));
+        rcv := SockRecv(buff, SizeOf(buff));
+        strm.Write(buff, rcv);
+      until rcv = 0;
     end;
 
     if (strm <> nil) then
