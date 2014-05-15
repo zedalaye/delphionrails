@@ -512,7 +512,7 @@ var
   wait: TProc<Integer>;
 begin
 
-  Wait := procedure(l: Integer)
+  wait := procedure(l: Integer)
   begin
     if DownloadRate > 0 then
     begin
@@ -523,133 +523,137 @@ begin
         Rate := Round((Total / 1024) / ((Curr - Start) / Freq));
         if Rate < DownloadRate then
           Break else
-          Sleep(1000);
+          SleepEx(1000, True);
       end;
     end;
   end;
 
-  FReadError := False;
-  strm := nil;
-  if FResponseData = nil then
-  begin
-    FResponseData := TPooledMemoryStream.Create;
-    FResponseDataOwned := True;
-  end else
-    FResponseData.Size := 0;
-  FResponseHeader.Clear;
-
-  t.tv_sec := TimeOut;
-  t.tv_usec := 0;
-  setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @t, SizeOf(t));
-
-  if not HTTPParse(
-    function (var buf; len: Integer): Integer
+  try
+    FReadError := False;
+    strm := nil;
+    if FResponseData = nil then
     begin
-      Result := SockRecv(buf, len);
-    end,
-    function (code: Integer; const mesg: RawByteString): Boolean
-    begin
-      FStatus := code;
-      FStatusText := mesg;
-      Result := True;
-    end,
-    function (const key: RawByteString; const value: RawByteString): Boolean
-    begin
-      SetResponseHeader(key, value);
-      Result := True;
-    end) then
-      Exit(False);
-
-  if FResponseHeader.TryGetValue('content-encoding', str) then
-  begin
-    if AnsiStrings.SameText(str.value, 'deflate') then
-    begin
-      encoding := encDeflate;
+      FResponseData := TPooledMemoryStream.Create;
+      FResponseDataOwned := True;
     end else
-    if AnsiStrings.SameText(str.value, 'gzip') then
-      encoding := encGZIP else
-      encoding := encUnknown;
-  end else
-    encoding := encUnknown;
+      FResponseData.Size := 0;
+    FResponseHeader.Clear;
 
-  if encoding = encUnknown then
-    strm := FResponseData else
-    strm := TPooledMemoryStream.Create;
+    t.tv_sec := TimeOut;
+    t.tv_usec := 0;
+    setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @t, SizeOf(t));
 
-
-  Total := 0;
-  if DownloadRate > 0 then
-  begin
-    QueryPerformanceFrequency(Freq);
-    QueryPerformanceCounter(Start);
-  end;
-
-  if FResponseHeader.TryGetValue('transfer-encoding', str) and AnsiStrings.SameText(str.value, 'chunked') then
-  begin
-    if not HTTPReadChunked(
+    if not HTTPParse(
       function (var buf; len: Integer): Integer
       begin
-        Wait(len);
         Result := SockRecv(buf, len);
       end,
-      function (var buf; len: Integer): Integer
+      function (code: Integer; const mesg: RawByteString): Boolean
       begin
-        SetReadyState(rsReceiving);
-        Result := strm.Write(buf, len);
+        FStatus := code;
+        FStatusText := mesg;
+        Result := True;
+      end,
+      function (const key: RawByteString; const value: RawByteString): Boolean
+      begin
+        SetResponseHeader(key, value);
+        Result := True;
       end) then
         Exit(False);
-  end else
-  if FResponseHeader.TryGetValue('content-length', str) and
-    TryStrToInt(string(str.value), len) and (len > 0) then
-  begin
-    while len > 0 do
-    begin
-      SetReadyState(rsReceiving);
-      if len >= SizeOf(buff) then
-      begin
-        Wait(SizeOf(buff));
-        rcv := SockRecv(buff, SizeOf(buff));
-        if rcv <> SizeOf(buff) then
-          Exit(False);
-      end else
-      begin
-        Wait(len);
-        rcv := SockRecv(buff, len);
-        if rcv <> len then
-          Exit(False);
-      end;
-      strm.Write(buff, rcv);
-      Dec(len, rcv);
-    end;
-  end;
 
-  if (strm <> nil) then
-    case encoding of
-      encDeflate:
-        begin
-          strm.Seek(0, soFromBeginning);
-          try
-            if (strm.Size > 0) then
-              if not DecompressStream(strm, FResponseData, True) then
-                Exit(False);
-          finally
-            strm.Free;
-          end;
-        end;
-      encGZIP:
-        begin
-          strm.Seek(0, soFromBeginning);
-          try
-            if (strm.Size > 0) then
-              if not DecompressGZipStream(strm, FResponseData) then
-                Exit(False);
-          finally
-            strm.Free;
-          end;
-        end;
+    if FResponseHeader.TryGetValue('content-encoding', str) then
+    begin
+      if AnsiStrings.SameText(str.value, 'deflate') then
+      begin
+        encoding := encDeflate;
+      end else
+      if AnsiStrings.SameText(str.value, 'gzip') then
+        encoding := encGZIP else
+        encoding := encUnknown;
+    end else
+      encoding := encUnknown;
+
+    if encoding = encUnknown then
+      strm := FResponseData else
+      strm := TPooledMemoryStream.Create;
+
+
+    Total := 0;
+    if DownloadRate > 0 then
+    begin
+      QueryPerformanceFrequency(Freq);
+      QueryPerformanceCounter(Start);
     end;
-  FResponseData.Seek(0, soFromBeginning);
-  Result := True;
+
+    if FResponseHeader.TryGetValue('transfer-encoding', str) and AnsiStrings.SameText(str.value, 'chunked') then
+    begin
+      if not HTTPReadChunked(
+        function (var buf; len: Integer): Integer
+        begin
+          wait(len);
+          Result := SockRecv(buf, len);
+        end,
+        function (var buf; len: Integer): Integer
+        begin
+          SetReadyState(rsReceiving);
+          Result := strm.Write(buf, len);
+        end) then
+          Exit(False);
+    end else
+    if FResponseHeader.TryGetValue('content-length', str) and
+      TryStrToInt(string(str.value), len) and (len > 0) then
+    begin
+      while len > 0 do
+      begin
+        SetReadyState(rsReceiving);
+        if len >= SizeOf(buff) then
+        begin
+          wait(SizeOf(buff));
+          rcv := SockRecv(buff, SizeOf(buff));
+          if rcv <> SizeOf(buff) then
+            Exit(False);
+        end else
+        begin
+          wait(len);
+          rcv := SockRecv(buff, len);
+          if rcv <> len then
+            Exit(False);
+        end;
+        strm.Write(buff, rcv);
+        Dec(len, rcv);
+      end;
+    end;
+
+    if (strm <> nil) then
+      case encoding of
+        encDeflate:
+          begin
+            strm.Seek(0, soFromBeginning);
+            try
+              if (strm.Size > 0) then
+                if not DecompressStream(strm, FResponseData, True) then
+                  Exit(False);
+            finally
+              strm.Free;
+            end;
+          end;
+        encGZIP:
+          begin
+            strm.Seek(0, soFromBeginning);
+            try
+              if (strm.Size > 0) then
+                if not DecompressGZipStream(strm, FResponseData) then
+                  Exit(False);
+            finally
+              strm.Free;
+            end;
+          end;
+      end;
+    FResponseData.Seek(0, soFromBeginning);
+    Result := True;
+  finally
+    wait := nil;
+  end;
 end;
 
 function THTTPRequest.Send(data: TStream): Boolean;
