@@ -103,9 +103,9 @@ type
   protected
     function Transaction(const Options: ISuperObject = nil): IDBTransaction; overload; virtual; abstract;
     function Transaction(const OtherConnections: array of IDBConnection; const Options: ISuperObject = nil): IDBTransaction; overload; virtual; abstract;
-    function Transaction(const Options: string): IDBTransaction; overload;
-    function Query(const Sql: string): IDBQuery; overload;
-    procedure ExecuteImmediate(const Sql: string); overload;
+    function Transaction(const Options: string): IDBTransaction; overload; virtual;
+    function Query(const Sql: string): IDBQuery; virtual;
+    procedure ExecuteImmediate(const Sql: string); virtual;
   end;
 
   TDBTransaction = class(TInterfacedObject, IDBTransaction)
@@ -115,7 +115,7 @@ type
   protected
     procedure TriggerCommitEvent;
     procedure TriggerRollbackEvent;
-    function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery; virtual;
+    function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery; virtual; abstract;
     procedure ExecuteImmediate(const Sql: string); virtual; abstract;
 
     function Execute(const Query: IDBQuery; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload; virtual;
@@ -257,12 +257,6 @@ function TDBTransaction.Cell(const Query: IDBQuery;
   const Params: array of const): ISuperObject;
 begin
   Result := Query.Cell(Params, Self);
-end;
-
-function TDBTransaction.Query(const Sql: string;
-  const Connection: IDBConnection): IDBQuery;
-begin
-  Result := Query(Sql, Connection);
 end;
 
 function TDBTransaction.Row(const Sql: string;
