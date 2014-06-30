@@ -8,24 +8,21 @@ type
   private
     FDbHandle: Pointer;
   protected
-    procedure ExecuteImmediate(const Options: SOString); override;
+    procedure ExecuteImmediate(const Sql: string); override;
     function Transaction(const Options: ISuperObject = nil): IDBTransaction; override;
-    function Query(const Options: ISuperObject): IDBQuery; override;
-    function Query(const Options: string): IDBQuery; override;
-    function Select(const sql: SOString; firstone: boolean = False; asArray: Boolean = False): IDBQuery; override;
-    function newFunction(const sql: SOString): IDBQuery; override;
+    function Query(const Sql: string): IDBQuery; override;
   public
-    constructor Create(const Options: ISuperObject); reintroduce; overload;
-    constructor Create(const Options: string); reintroduce; overload;
+    constructor Create(const Database: string); virtual;
     destructor Destroy; override;
   end;
 
   TDBSQLiteTransaction = class(TDBTransaction)
   private
     FConnection: TDBSQLiteConnection;
+    FRollback: Boolean;
   protected
-    procedure ExecuteImmediate(const Options: SOString); override;
-    function Query(const Options: ISuperObject = nil; const Connection: IDBConnection = nil): IDBQuery; override;
+    procedure ExecuteImmediate(const Sql: string); override;
+    function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery; override;
   public
     constructor Create(Connection: TDBSQLiteConnection; Options: ISuperObject); reintroduce;
     destructor Destroy; override;
@@ -36,12 +33,14 @@ type
     FNeedReset: boolean;
     FStHandle: Pointer;
     FConnection: TDBSQLiteConnection;
+    FSql: string;
   protected
-    function Execute(const params: ISuperObject = nil; const transaction: IDBTransaction = nil): ISuperObject; override;
+    function Execute(const Params: ISuperObject = nil; Options: TQueryOptions = [];
+      const Transaction: IDBTransaction = nil): ISuperObject; override;
     function GetInputMeta: ISuperObject; override;
-    function GetOutputMeta: ISuperObject; override;
+    function GetOutputMeta(byindex: Boolean): ISuperObject; override;
   public
-    constructor Create(const Connection: TDBSQLiteConnection; const transaction: TDBSQLiteTransaction; Options: ISuperObject); reintroduce;
+    constructor Create(const Connection: TDBSQLiteConnection; const Sql: string); reintroduce;
     destructor Destroy; override;
   end;
 
@@ -209,25 +208,11 @@ const
 
 { TDBSQLiteConnection }
 
-constructor TDBSQLiteConnection.Create(const Options: ISuperObject);
-var
-  param: ISuperObject;
+constructor TDBSQLiteConnection.Create(const Database: string);
 begin
-  inherited Create(stObject);
+  inherited Create;
   FDbHandle := nil;
-
-  DataPtr := Self;
-  Merge(Options, true);
-
-  param := O['databasename'];
-  if param <> nil then
-    CheckError(sqlite3_open(PSOChar(param.AsString), FDbHandle), nil) else
-    FDbHandle := nil;
-end;
-
-constructor TDBSQLiteConnection.Create(const Options: string);
-begin
-  Create(SO(Options));
+  CheckError(sqlite3_open(PChar(Database), FDbHandle), nil);
 end;
 
 destructor TDBSQLiteConnection.Destroy;
@@ -237,36 +222,23 @@ begin
   inherited;
 end;
 
-procedure TDBSQLiteConnection.ExecuteImmediate(const Options: SOString);
+procedure TDBSQLiteConnection.ExecuteImmediate(const Sql: string);
 begin
-  CheckError(sqlite3_exec(FDbHandle, PAnsiChar(UTF8Encode(Options)), nil, nil, nil), FDbHandle);
+  CheckError(sqlite3_exec(FDbHandle, PAnsiChar(UTF8Encode(Sql)), nil, nil, nil), FDbHandle);
 end;
 
-function TDBSQLiteConnection.Query(
-  const Options: ISuperObject): IDBQuery;
+function TDBSQLiteConnection.Query(const Sql: string): IDBQuery;
+var
+  tmp: IDBQuery;
 begin
-  Result := TDBSQLiteQuery.Create(Self, nil, Options);
-end;
-
-function TDBSQLiteConnection.Query(const Options: string): IDBQuery;
-begin
-  Result := TDBSQLiteQuery.Create(Self, nil, TSuperObject.Create(Options));
+  tmp := TDBSQLiteQuery.Create(Self, Sql);
+  Result := tmp;
+  tmp := nil
 end;
 
 function TDBSQLiteConnection.Transaction(const Options: ISuperObject): IDBTransaction;
 begin
   Result := TDBSQLiteTransaction.Create(Self, Options);
-end;
-
-function TDBSQLiteConnection.newFunction(const sql: SOString): IDBQuery;
-begin
-  Result := TDBSQLiteQuery.Create(Self, nil, SO(['sql', sql, 'function', true]));
-end;
-
-function TDBSQLiteConnection.Select(const sql: SOString; firstone,
-  asArray: Boolean): IDBQuery;
-begin
-  Result := TDBSQLiteQuery.Create(Self, nil, SO(['sql', sql, 'firstone', firstone, 'array', asArray]));
 end;
 
 { TDBSQLiteContext }
@@ -276,11 +248,9 @@ constructor TDBSQLiteTransaction.Create(Connection: TDBSQLiteConnection;
 var
   sql: string;
 begin
-  inherited Create(stObject);
-  DataPtr := Self;
-  Merge(Options, true);
+  inherited Create;
+  FRollback := False;
   FConnection := Connection;
-  AsObject['connection'] := Connection;
   if ObjectIsType(Options, stString) then
     sql := SysUtils.format('BEGIN %s TRANSACTION', [Options.AsString]) else
     sql := 'BEGIN TRANSACTION';
@@ -289,41 +259,32 @@ begin
 end;
 
 destructor TDBSQLiteTransaction.Destroy;
-var
-  obj: ISuperObject;
 begin
-  obj := AsObject['rollback'];
-  if ObjectIsType(obj, stBoolean) and obj.AsBoolean then
+  if FRollback then
     CheckError(sqlite3_exec(FConnection.FDbHandle, 'ROLLBACK', nil, nil, nil), FConnection.FDbHandle) else
     CheckError(sqlite3_exec(FConnection.FDbHandle, 'COMMIT', nil, nil, nil), FConnection.FDbHandle);
   inherited;
 end;
 
-procedure TDBSQLiteTransaction.ExecuteImmediate(const Options: SOString);
+procedure TDBSQLiteTransaction.ExecuteImmediate(const Sql: string);
 begin
-  CheckError(sqlite3_exec(FConnection.FDbHandle, PAnsiChar(UTF8Encode(Options)), nil, nil, nil), FConnection.FDbHandle);
+  CheckError(sqlite3_exec(FConnection.FDbHandle, PAnsiChar(UTF8Encode(Sql)), nil, nil, nil), FConnection.FDbHandle);
 end;
 
-function TDBSQLiteTransaction.Query(const Options: ISuperObject; const Connection: IDBConnection): IDBQuery;
+function TDBSQLiteTransaction.Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery;
 begin
-  Result := TDBSQLiteQuery.Create(FConnection, Self, Options);
+  Result := TDBSQLiteQuery.Create(FConnection, Sql);
 end;
 
 { TDBSQLiteQuery }
 
-constructor TDBSQLiteQuery.Create(const Connection: TDBSQLiteConnection;
-  const transaction: TDBSQLiteTransaction; Options: ISuperObject);
+constructor TDBSQLiteQuery.Create(const Connection: TDBSQLiteConnection; const Sql: string);
 begin
-  inherited Create(stObject);
   FNeedReset := false;
   FStHandle := nil;
-  DataPtr := Self;
-  if ObjectIsType(Options, stString) then
-    O['sql'] := Options else
-    Merge(Options, true);
+  FSql := Sql;
   FConnection := Connection;
-  AsObject['connection'] := Connection;
-  CheckError(sqlite3_prepare_v2(FConnection.FDbHandle, PSOChar(S['sql']), -1, FStHandle, nil), FConnection.FDbHandle);
+  CheckError(sqlite3_prepare_v2(FConnection.FDbHandle, PChar(FSql), -1, FStHandle, nil), FConnection.FDbHandle);
 end;
 
 destructor TDBSQLiteQuery.Destroy;
@@ -333,53 +294,56 @@ begin
   inherited;
 end;
 
-function TDBSQLiteQuery.Execute(const params: ISuperObject;
-  const transaction: IDBTransaction): ISuperObject;
+function TDBSQLiteQuery.Execute(const Params: ISuperObject = nil;
+  Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject;
 var
-  dfArray, dfFirstOne: boolean;
   ctx: IDBTransaction;
 
   function getone: ISuperObject;
+
+    function GetValue(index: Integer): ISuperObject;
+    var
+      blob: IDBBlob;
+    begin
+      case sqlite3_column_type(FStHandle, index) of
+        SQLITE_TEXT: Result := TSuperObject.Create(sqlite3_column_text(FStHandle, index));
+        SQLITE_INTEGER: Result := TSuperObject.Create(sqlite3_column_int64(FStHandle, index));
+        SQLITE_FLOAT: Result := TSuperObject.Create(sqlite3_column_double(FStHandle, index));
+        SQLITE_BLOB:
+          begin
+            blob := TDBBinary.Create;
+            blob.getData.Write(sqlite3_column_blob(FStHandle, index)^, sqlite3_column_bytes(FStHandle, index));
+            Result := blob as ISuperObject;
+          end;
+       else
+         Result := nil;
+       end;
+    end;
+
+
   var
-    i: integer;
-    blob: IDBBlob;
-    count: Integer;
+    j: integer;
+    cols: Integer;
   begin
-    count := sqlite3_column_count(FStHandle);
-    if dfArray then
+    cols := sqlite3_column_count(FStHandle);
+    if qoValue in Options then
+    begin
+      if cols > 0 then
+        Result := GetValue(0) else
+        Result := nil;
+    end else
+    if qoArray in Options then
     begin
       Result := TSuperObject.Create(stArray);
-      for i := 0 to count - 1 do
-        case sqlite3_column_type(FStHandle, i) of
-          SQLITE_TEXT: Result.AsArray.Add(TSuperObject.Create(sqlite3_column_text(FStHandle, i)));
-          SQLITE_INTEGER: Result.AsArray.Add(TSuperObject.Create(sqlite3_column_int64(FStHandle, i)));
-          SQLITE_FLOAT: Result.AsArray.Add(TSuperObject.Create(sqlite3_column_double(FStHandle, i)));
-          SQLITE_BLOB:
-            begin
-              blob := TDBBinary.Create;
-              blob.getData.Write(sqlite3_column_blob(FStHandle, i)^, sqlite3_column_bytes(FStHandle, i));
-              Result.AsArray.Add(blob as ISuperObject);
-            end;
-         else
-           Result.AsArray.Add(nil);
-         end;
+      with Result.AsArray do
+        for j := 0 to cols - 1 do
+          Add(GetValue(j));
     end else
     begin
       Result := TSuperObject.Create(stObject);
-      for i := 0 to count - 1 do
-        case sqlite3_column_type(FStHandle, i) of
-          SQLITE_TEXT: Result[sqlite3_column_name(FStHandle, i)] := TSuperObject.Create(sqlite3_column_text(FStHandle, i));
-          SQLITE_INTEGER: Result[sqlite3_column_name(FStHandle, i)] := TSuperObject.Create(sqlite3_column_int64(FStHandle, i));
-          SQLITE_FLOAT: Result[sqlite3_column_name(FStHandle, i)] := TSuperObject.Create(sqlite3_column_double(FStHandle, i));
-          SQLITE_BLOB:
-            begin
-              blob := TDBBinary.Create;
-              blob.getData.Write(sqlite3_column_blob(FStHandle, i)^, sqlite3_column_bytes(FStHandle, i));
-              Result[sqlite3_column_name(FStHandle, i)] := blob as ISuperObject;
-            end;
-         else
-           Result[sqlite3_column_name(FStHandle, i)] := nil;
-         end;
+      with Result.AsObject do
+        for j := 0 to cols - 1 do
+          O[sqlite3_column_name(FStHandle, j)] := GetValue(j);
     end;
   end;
 
@@ -388,7 +352,7 @@ var
     blob: IDBBlob;
     p: Pointer;
     len: Integer;
-    str: SOString;
+    str: string;
   begin
     if index > 0 then
       if (Value <> nil) and (value.QueryInterface(IDBBlob, blob) = 0) then
@@ -423,7 +387,7 @@ var
     busy: Cardinal;
   begin
       count := sqlite3_column_count(FStHandle);
-      if (not dfFirstOne) and (count > 0) then
+      if (not (qoSingleton in Options)) and (count > 0) then
         Result := TSuperObject.Create(stArray) else
         Result := nil;
       busy := 0;
@@ -441,7 +405,7 @@ var
           SQLITE_DONE: Break;
           SQLITE_ROW:
             begin
-              if (not dfFirstOne) then
+              if (not (qoSingleton in Options)) then
                 Result.AsArray.Add(getone) else
                 begin
                   Result := getone;
@@ -462,13 +426,7 @@ begin
     sqlite3_reset(FStHandle) else
     FNeedReset := true;
 
-  ctx := transaction;
-  dfFirstOne := B['firstone'];
-  dfArray := B['array'];
-
-//  if ctx = nil then
-//    ctx := FConnection.Transaction;
-
+  ctx := Transaction;
   count := sqlite3_bind_parameter_count(FStHandle);
   for j := 1 to count do
      sqlite3_bind_null(FStHandle, j);
@@ -479,26 +437,19 @@ begin
       begin
         with params.AsArray do
         begin
-          if (Length = count) and not(ObjectGetType(O[0]) in [stObject, stArray]) then
-          begin
-            for j := 0 to Length - 1 do
-              SetParam(j+1, O[j]);
-            Process;
-          end else
-            if count > 0 then
-            begin
-              Result := TSuperObject.Create(stArray);
-              for j := 0 to Length - 1 do
-                Result.AsArray.Add(Execute(O[j], ctx));
-            end else
-            begin
-              for j := 0 to Length - 1 do
-                Execute(O[j], ctx);
-            end;
+          if Length <> count then
+            raise Exception.Create('Missing parametters.');
+          
+          for j := 0 to Length - 1 do
+            SetParam(j+1, O[j]);
+          Process;
         end;
       end else
       if ObjectIsType(params, stObject) then
       begin
+        if params.AsObject.count <> count then
+          raise Exception.Create('Missing parametters.');
+          
         if ObjectFindFirst(params, f) then
         repeat
           SetParam(sqlite3_bind_parameter_index(FStHandle, PAnsiChar(UTF8Encode(':' + f.key))), f.val);
@@ -506,10 +457,7 @@ begin
         ObjectFindClose(f);
         Process;
       end else
-      begin
-        SetParam(1, params);
-        Process;
-      end;
+        raise Exception.Create('Unexpected parametter');
     end else
       Process;
   except
@@ -548,26 +496,24 @@ begin
     Result := nil;
 end;
 
-function TDBSQLiteQuery.GetOutputMeta: ISuperObject;
+function TDBSQLiteQuery.GetOutputMeta(byindex: Boolean): ISuperObject;
 var
   j, count: Integer;
   rec: ISuperObject;
-  dfArray: Boolean;
-  sType: SOString;
+  sType: string;
   v: Integer;
 begin
   count := sqlite3_column_count(FStHandle);
   if count > 0 then
   begin
-    dfArray := B['array'];
-    if dfArray then
+    if byindex then
       Result := TSuperObject.Create(stArray) else
       Result := TSuperObject.Create(stObject);
 
       for j := 0 to count - 1 do
       begin
         rec := TSuperObject.Create(stObject);
-        if dfArray then
+        if byindex then
         begin
           rec.S['name'] := sqlite3_column_name(FStHandle, j);
           Result.asArray.add(rec);
