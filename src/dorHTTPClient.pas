@@ -807,11 +807,16 @@ end;
 procedure THTTPRequest.SetReadyState(ready: TReadyState);
 begin
   FReadyState := ready;
-  if Assigned(FOnReadyStateChange) then
-    if FAsync and FSynchronize then
-      TThread.Synchronize(nil, procedure
-        begin FOnReadyStateChange(Self) end) else
-      FOnReadyStateChange(Self)
+  if FAsync and FSynchronize then
+    TThread.Synchronize(nil,
+    procedure
+      begin
+        if Assigned(FOnReadyStateChange) then
+          FOnReadyStateChange(Self)
+      end
+    )
+  else if Assigned(FOnReadyStateChange) then
+    FOnReadyStateChange(Self)
 end;
 
 procedure THTTPRequest.SetRequestHeader(const header, value: RawByteString);
