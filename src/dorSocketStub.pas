@@ -106,7 +106,7 @@ type
     procedure doOnEvent(const Event: ISuperObject); virtual;
     procedure doOnInternalEvent(const Event: ISuperObject); virtual;
     function ExtractEvents: ISuperObject; virtual;
-    procedure ProcessEvents; virtual;
+    function ProcessEvents: Integer; virtual;
   public
     procedure RegisterEvent(const name: string; proc: TEventProc = nil); virtual;
     procedure UnregisterEvent(const name: string); virtual;
@@ -595,18 +595,23 @@ begin
 
 end;
 
-procedure TCustomObserver.ProcessEvents;
+function TCustomObserver.ProcessEvents: Integer;
 var
   Event: ISuperObject;
   proc: TEventProc;
 begin
+  Result := 0;
   for Event in ExtractEvents do
+  begin
+    Inc(Result);
     if ObjectIsType(Event, stObject) and ObjectIsType(Event.AsObject['event'], stString) then
     begin
       if FEventProc.TryGetValue(Event.S['event'], proc) then
         proc(Event);
-    end else
+    end
+    else
       doOnInternalEvent(Event);
+  end;
 end;
 
 procedure TCustomObserver.Intercept;
