@@ -16,13 +16,15 @@
 unit dorActionController;
 
 interface
-uses superobject, dorHTTPStub, Classes;
+uses SysUtils, Classes, superobject, dorHTTPStub;
 
 type
   TActionController = class
   private
     FEtag: Boolean;
     procedure CalcETag;
+  public
+    type TInvokeTrace = (itBefore, itAfter, itError);
   protected
     // This empty method is called to force RTTI
     // Could be used for somethingelse later
@@ -44,6 +46,7 @@ type
     class function SSLSubject(const key: AnsiString): AnsiString; virtual;
     class function SSLIssuer(const key: AnsiString): AnsiString; virtual;
     procedure ETag;
+    class procedure TraceInvoke(When: TInvokeTrace; Result: TSuperInvokeResult); virtual;
   public
     function Invoke: Boolean; virtual;
   end;
@@ -115,10 +118,24 @@ begin
     if obj <> nil then
       obj.DataPtr := Pointer(1);
 
+  TraceInvoke(itBefore, irSuccess);
+
   case TrySOInvoke(ctx, Self, Params.AsObject.S['action'] + '_' + Request.AsObject.S['method'], Params, obj) of
-    irParamError: SetErrorCode(400);
-    irError: SetErrorCode(500);
-    irMethothodError: Result := False;
+    irParamError:
+      begin
+        TraceInvoke(itError, irParamError);
+        SetErrorCode(400);
+      end;
+    irError:
+      begin
+        TraceInvoke(itError, irError);
+        SetErrorCode(500);
+      end;
+    irMethodError:
+      begin
+        TraceInvoke(itError, irMethodError);
+        Result := False;
+      end
   else
     Result := True;
     for ite in Params.AsObject do
@@ -128,9 +145,17 @@ begin
       Return.AsObject['result'] := obj;
     if ErrorCode = 0 then
       SetErrorCode(200);
+
+    TraceInvoke(itAfter, irSuccess);
   end;
+
   if FEtag then
     CalcETag;
+end;
+
+class procedure TActionController.TraceInvoke(When: TInvokeTrace; Result: TSuperInvokeResult);
+begin
+  { Just do nothing }
 end;
 
 class function TActionController.Params: ISuperObject;
