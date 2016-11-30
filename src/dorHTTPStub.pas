@@ -338,11 +338,38 @@ begin
   end;
 end;
 
-function maj(const s: string): string;
+function CamelCase(const s: string): string;
+var
+  P, C, R: PChar;
+  First: Boolean;
 begin
-  Result := s;
-  if Length(s) > 0 then
-    Result[1] := UpCase(Result[1]);
+  GetMem(C, Length(s) * SizeOf(Char));
+  try
+    R := C;
+    P := PChar(s);
+    First := True;
+    while P^ <> #0 do
+    begin
+      if P^ = '_' then
+      begin
+        Inc(P);
+        First := True;
+        Continue;
+      end;
+      if First then
+      begin
+        R^ := UpCase(P^);
+        First := False;
+      end
+      else
+        R^ := P^;
+      Inc(R);
+      Inc(P);
+    end;
+    SetString(Result, C, R - C);
+  finally
+    FreeMem(C);
+  end;
 end;
 
 { THTTPMessage }
@@ -564,7 +591,7 @@ var
 begin
   with params.AsObject do
   begin
-    clazz := Context.Context.FindType(format('%s_view.T%sView', [S['controller'], maj(S['controller'])]));
+    clazz := Context.Context.FindType(format('%s_view.T%sView', [S['controller'], CamelCase(S['controller'])]));
     if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
     begin
       with TRttiInstanceType(clazz) do
@@ -1082,7 +1109,7 @@ begin
     with FParams.AsObject do
     begin
       // controller
-      clazz := Context.Context.FindType(format('%s_controller.T%sController', [S['controller'], maj(S['controller'])]));
+      clazz := Context.Context.FindType(format('%s_controller.T%sController', [S['controller'], CamelCase(S['controller'])]));
       if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
       begin
         with TRttiInstanceType(clazz) do
@@ -1238,7 +1265,7 @@ begin
     with FParams.AsObject do
     begin
       // controller
-      t := Context.Context.FindType(format('%s_websocket.T%sWebsocket', [S['controller'], maj(S['controller'])]));
+      t := Context.Context.FindType(format('%s_websocket.T%sWebsocket', [S['controller'], CamelCase(S['controller'])]));
       if (t <> nil) and (t is  TRttiInstanceType)  then
       begin
         if TRttiInstanceType(t).MetaclassType.InheritsFrom(TActionWebsocket) then
