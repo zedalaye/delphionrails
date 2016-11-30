@@ -40,22 +40,39 @@ type
     function Execute(const Query: IDBQuery; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload;
     function Execute(const Sql: string; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload;
     function Execute(const Sql: string; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload;
+
+    // single object
+
     function Singleton(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
     function Singleton(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
     function Singleton(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
     function Singleton(const Sql: string; const Params: array of const): ISuperObject; overload;
-    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
-    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Table(const Sql: string; const Params: array of const): ISuperObject; overload;
-    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
-    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Row(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // list of objects
+
     function List(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
     function List(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
     function List(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
     function List(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // array of something with no property names
+
+    // table = array of array of values (array of rows)
+
+    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Table(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // row = array of values (array of cells)
+
+    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Row(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // cell = single value
+
     function Cell(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
     function Cell(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
     function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
@@ -66,30 +83,49 @@ type
   ['{51992399-2D1A-47EF-9DB1-C5654325F41B}']
     function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery;
     procedure ExecuteImmediate(const Sql: string); overload;
+
     function Execute(const Query: IDBQuery; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload;
     function Execute(const Query: IDBQuery; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload;
     function Execute(const Sql: string; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload;
     function Execute(const Sql: string; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload;
+
+    // single object
+
     function Singleton(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
     function Singleton(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
     function Singleton(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
     function Singleton(const Sql: string; const Params: array of const): ISuperObject; overload;
-    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
-    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Table(const Sql: string; const Params: array of const): ISuperObject; overload;
-    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
-    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
-    function Row(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // list of objects
+
     function List(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
     function List(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
     function List(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
     function List(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // array of something with no property names
+
+    // table = array of array of values (array of rows)
+
+    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Table(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // row = array of values (array of cells)
+
+    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
+    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
+    function Row(const Sql: string; const Params: array of const): ISuperObject; overload;
+
+    // cell = single value
+
     function Cell(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload;
     function Cell(const Query: IDBQuery; const Params: array of const): ISuperObject; overload;
     function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
     function Cell(const Sql: string; const Params: array of const): ISuperObject; overload;
+
     procedure OnCommit(const proc: TProc);
     procedure OnRollback(const proc: TProc);
   end;
@@ -98,16 +134,34 @@ type
   ['{A39B974A-96EA-4047-A57B-A2B3EBE7BABD}']
     function Execute(const Params: ISuperObject = nil; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload;
     function Execute(const Params: array of const; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+
+    // single object
+
     function Singleton(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
     function Singleton(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
-    function Table(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
-    function Table(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
-    function Row(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
-    function Row(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+
+    // list of objects
+
     function List(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
     function List(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+
+    // array of something with no property names
+
+    // table = array of array of values (array of rows)
+
+    function Table(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Table(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+
+    // row = array of values (array of cells)
+
+    function Row(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+    function Row(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+
+    // cell = single value
+
     function Cell(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload;
     function Cell(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+
     function GetInputMeta: ISuperObject;
     function GetOutputMeta(byindex: Boolean): ISuperObject;
   end;
@@ -136,22 +190,27 @@ type
     function Execute(const Query: IDBQuery; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload; virtual;
     function Execute(const Sql: string; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload; virtual;
     function Execute(const Sql: string; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload; virtual;
+
     function Singleton(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Singleton(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
     function Singleton(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Singleton(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
-    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
-    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Table(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
-    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
-    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Row(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
     function List(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function List(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
     function List(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function List(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
+    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Table(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
+    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Row(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
     function Cell(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Cell(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
     function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
@@ -172,22 +231,27 @@ type
     function Execute(const Query: IDBQuery; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload; virtual;
     function Execute(const Sql: string; const Params: ISuperObject = nil; Options: TQueryOptions = []): ISuperObject; overload; virtual;
     function Execute(const Sql: string; const Params: array of const; Options: TQueryOptions = []): ISuperObject; overload; virtual;
+
     function Singleton(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Singleton(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
     function Singleton(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Singleton(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
-    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
-    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Table(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
-    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
-    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
-    function Row(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
     function List(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function List(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
     function List(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function List(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
+    function Table(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Table(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Table(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Table(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
+    function Row(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Row(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
+    function Row(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
+    function Row(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
+
     function Cell(const Query: IDBQuery; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Cell(const Query: IDBQuery; const Params: array of const): ISuperObject; overload; virtual;
     function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
@@ -204,16 +268,22 @@ type
   protected
     function Execute(const Params: ISuperObject = nil; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual; abstract;
     function Execute(const Params: array of const; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+
     function Singleton(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
     function Singleton(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
-    function Table(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
-    function Table(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
-    function Row(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
-    function Row(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+
     function List(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
     function List(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+
+    function Table(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Table(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+
+    function Row(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+    function Row(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+
     function Cell(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
     function Cell(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+
     function GetInputMeta: ISuperObject; virtual; abstract;
     function GetOutputMeta(byindex: Boolean): ISuperObject; virtual; abstract;
   end;
