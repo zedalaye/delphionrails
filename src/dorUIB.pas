@@ -358,8 +358,9 @@ var
           a.AsArray.add(v);
           a.AsArray.add(value);
           Result[str] := a;
-        end else
-          Result[str] := value;
+        end
+      else
+        Result[str] := value;
     end;
 
     function GetValue(index: Integer): ISuperObject;
@@ -367,61 +368,74 @@ var
       blob: IDBBlob;
     begin
       if FSQLResult.IsNull[index] then
-        Result := nil else
-      case FSQLResult.FieldType[index] of
-        uftChar, uftVarchar, uftCstring:
-          if FSQLResult.Data.sqlvar[index].SqlSubType > 1 then
-            Result := TSuperObject.Create(FSQLResult.AsString[index]) else
-            Result := TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[index]));
-        uftSmallint, uftInteger, uftInt64: Result := TSuperObject.Create(FSQLResult.AsInt64[index]);
-        uftNumeric:
-          begin
+        Result := nil
+      else
+        case FSQLResult.FieldType[index] of
+
+          uftChar, uftVarchar, uftCstring:
+            if FSQLResult.Data.sqlvar[index].SqlSubType > 1 then
+              Result := TSuperObject.Create(FSQLResult.AsString[index])
+            else
+              Result := TSuperObject.Create(RbsToHex(FSQLResult.AsRawByteString[index]));
+
+          uftSmallint, uftInteger, uftInt64:
+            Result := TSuperObject.Create(FSQLResult.AsInt64[index]);
+
+          uftNumeric:
             if FSQLResult.SQLScale[index] >= -4 then
-              Result := TSuperObject.CreateCurrency(FSQLResult.AsCurrency[index]) else
+              Result := TSuperObject.CreateCurrency(FSQLResult.AsCurrency[index])
+            else
               Result := TSuperObject.Create(FSQLResult.AsDouble[index]);
-          end;
-        uftFloat, uftDoublePrecision: Result := TSuperObject.Create(FSQLResult.AsDouble[index]);
-        uftBlob, uftBlobId:
-          begin
+
+          uftFloat, uftDoublePrecision:
+            Result := TSuperObject.Create(FSQLResult.AsDouble[index]);
+
+          uftBlob, uftBlobId:
             if FSQLResult.Data^.sqlvar[index].SqlSubType = 1 then
             begin
               FSQLResult.ReadBlob(index, str);
               Result := TSuperObject.Create(str);
-            end else
+            end
+            else
             begin
               blob := TDBBinary.Create;
               FSQLResult.ReadBlob(index, blob.getData);
               Result := blob as ISuperObject;
             end;
-          end;
-        uftTimestamp, uftDate, uftTime: Result := TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[index]));
-      {$IFDEF IB7_UP}
-        uftBoolean: Result := TSuperObject.Create(PChar(FSQLResult.AsBoolean[index]));
-      {$ENDIF}
-       else
-         Result := nil;
-       end;
+
+          uftTimestamp, uftDate, uftTime:
+            Result := TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[index]));
+
+        {$IFDEF IB7_UP}
+          uftBoolean:
+            Result := TSuperObject.Create(PChar(FSQLResult.AsBoolean[index]));
+        {$ENDIF}
+         else
+           Result := nil;
+         end;
     end;
 
   var
-    i: integer;
+    I: integer;
   begin
     if qoValue in Options then
     begin
       if FSQLResult.FieldCount > 0 then
-        Result := GetValue(0) else
+        Result := GetValue(0)
+      else
         Result := nil;
-    end else
-    if qoArray in Options then
+    end
+    else if qoArray in Options then
     begin
       Result := TSuperObject.Create(stArray);
-      for i := 0 to FSQLResult.FieldCount - 1 do
-        Result.AsArray.Add(GetValue(i));
-    end else
+      for I := 0 to FSQLResult.FieldCount - 1 do
+        Result.AsArray.Add(GetValue(I));
+    end
+    else
     begin
       Result := TSuperObject.Create(stObject);
-      for i := 0 to FSQLResult.FieldCount - 1 do
-        SetValue(i, GetValue(i));
+      for I := 0 to FSQLResult.FieldCount - 1 do
+        SetValue(I, GetValue(I));
     end;
   end;
 
@@ -433,44 +447,61 @@ var
     i: Int64;
   begin
     if ObjectIsType(value, stNull) then
-      FSQLParams.IsNull[index] := true else
+      FSQLParams.IsNull[index] := true
+    else
       case FSQLParams.FieldType[index] of
         uftNumeric:
-          begin
-            if ObjectIsType(value, stCurrency) then
-              FSQLParams.AsCurrency[index] := value.AsCurrency else
-              FSQLParams.AsDouble[index] := value.AsDouble;
-          end;
+          if ObjectIsType(value, stCurrency) then
+            FSQLParams.AsCurrency[index] := value.AsCurrency
+          else
+            FSQLParams.AsDouble[index] := value.AsDouble;
+
         uftChar, uftVarchar, uftCstring:
           if FSQLParams.Data.sqlvar[index].SqlSubType > 1 then
-            FSQLParams.AsString[index] := value.AsString else
+            FSQLParams.AsString[index] := value.AsString
+          else
             FSQLParams.AsRawByteString[index] := HexToRbs(value.AsString);
 
-        uftSmallint: FSQLParams.AsSmallint[index] := value.AsInteger;
-        uftInteger: FSQLParams.AsInteger[index] := value.AsInteger;
-        uftFloat: FSQLParams.AsSingle[index] := value.AsDouble;
-        uftDoublePrecision: FSQLParams.AsDouble[index] := value.AsDouble;
+        uftSmallint:
+          FSQLParams.AsSmallint[index] := value.AsInteger;
+
+        uftInteger:
+          FSQLParams.AsInteger[index] := value.AsInteger;
+
+        uftFloat:
+          FSQLParams.AsSingle[index] := value.AsDouble;
+
+
+        uftDoublePrecision:
+          FSQLParams.AsDouble[index] := value.AsDouble;
+
         uftDate, uftTime, uftTimestamp:
           case ObjectGetType(value) of
             stInt: FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(value.AsInteger);
             stString:
               if ISO8601DateToJavaDateTime(value.AsString, i) then
-                FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(i) else
-                if TryStrToDateTime(value.AsString, dt) then
-                  FSQLParams.AsDateTime[index] := dt else
-                  FSQLParams.IsNull[index] := true;
+                FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(i)
+              else if TryStrToDateTime(value.AsString, dt) then
+                FSQLParams.AsDateTime[index] := dt
+              else
+                FSQLParams.IsNull[index] := true;
           end;
-        uftInt64: FSQLParams.AsInt64[index] := value.AsInteger;
+
+        uftInt64:
+          FSQLParams.AsInt64[index] := value.AsInteger;
+
         uftBlob, uftBlobId:
           with TDBUIBConnection(FConnection), FLibrary, TDBUIBTransaction(ctx) do
           begin
             BlobHandle := nil;
             FSQLParams.AsQuad[Index] := BlobCreate(FDbHandle, FTrHandle, BlobHandle);
             if value.QueryInterface(IDBBlob, blob) = 0 then
-              BlobWriteStream(BlobHandle, blob.getData) else
+              BlobWriteStream(BlobHandle, blob.getData)
+            else
               BlobWriteString(BlobHandle, MBUEncode(value.AsString, CharacterSetCP[FCharacterSet]));
             BlobClose(BlobHandle);
           end;
+
       else
         raise Exception.Create('not yet implemented');
       end;
@@ -488,25 +519,28 @@ var
           begin
             DSQLExecute2(FTrHandle, FStHandle, 3, FSQLParams, FSQLResult);
             Include(Options, qoSingleton);
-          end else
+          end
+          else
             DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
 
           if NoCursor then
-            Result := getone else
-          if not (qoSingleton in Options) then
+            Result := getone
+          else if not (qoSingleton in Options) then
           begin
             Result := TSuperObject.Create(stArray);
             while DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) do
               Result.AsArray.Add(getone);
-          end else
-            if DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) then
-              Result := getone else
-              Result := nil;
+          end
+          else if DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) then
+            Result := getone
+          else
+            Result := nil;
         finally
           if not NoCursor then
             DSQLFreeStatement(FStHandle, DSQL_close);
         end;
-      end else
+      end
+      else
       begin
         DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
         Result := TSuperObject.Create(DSQLInfoRowsAffected(FStHandle, FStatementType));

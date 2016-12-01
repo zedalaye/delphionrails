@@ -107,7 +107,7 @@ function DecompressGZipStream(inStream, outStream: TStream): boolean;
 function receive(s: longint; var Buf; len, flags: Integer): Integer;
 
 // Base64 functions from <dirk.claessens.dc@belgium.agfa.com> (modified)
-function StrTobase64(Buf: string): string;
+function StrToBase64(Buf: string): string;
 function Base64ToStr(const B64: string): string;
 
 procedure StreamToBase64(const StreamIn, StreamOut: TStream);
@@ -117,7 +117,6 @@ function BytesToBase64(bytes: PByte; len: Integer): string;
 
 function RbsToHex(const rb: RawByteString): string;
 function HexToRbs(const hex: string): RawByteString;
-
 
 function FileToString(const FileName: string): string;
 function StreamToStr(stream: TStream): string;

@@ -992,7 +992,7 @@ begin
   if pass <> '' then
   begin
     obj := Request.AsObject['cookies'].AsObject[COOKIE_NAME];
-   case ObjectGetType(obj) of
+    case ObjectGetType(obj) of
       stString: FSession := DecodeObject(obj.AsString, pass);
       stArray: FSession := DecodeObject(obj.AsArray.S[0], pass);
     else
