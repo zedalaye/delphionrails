@@ -130,10 +130,17 @@ type
     procedure OnRollback(const proc: TProc);
   end;
 
+  TExecuteCallback = reference to procedure(const item: ISuperObject; isResult: boolean; affected: Integer);
+
   IDBQuery = interface
   ['{A39B974A-96EA-4047-A57B-A2B3EBE7BABD}']
     function Execute(const Params: ISuperObject = nil; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload;
     function Execute(const Params: array of const; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload;
+
+    // execute with callback
+
+    procedure Execute(const Params: ISuperObject; const callback: TExecuteCallback; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil); overload;
+    procedure Execute(const Params: array of const; const callback: TExecuteCallback; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil); overload;
 
     // single object
 
@@ -268,6 +275,9 @@ type
   protected
     function Execute(const Params: ISuperObject = nil; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual; abstract;
     function Execute(const Params: array of const; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
+
+    procedure Execute(const Params: ISuperObject; const callback: TExecuteCallback; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil); overload; virtual; abstract;
+    procedure Execute(const Params: array of const; const callback: TExecuteCallback; Options: TQueryOptions = []; const Transaction: IDBTransaction = nil); overload; virtual;
 
     function Singleton(const Params: ISuperObject = nil; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
     function Singleton(const Params: array of const; const Transaction: IDBTransaction = nil): ISuperObject; overload; virtual;
@@ -812,6 +822,13 @@ function TDBQuery.Cell(const Params: array of const;
   const Transaction: IDBTransaction): ISuperObject;
 begin
   Result := Execute(Params, [qoSingleton, qoValue], Transaction);
+end;
+
+procedure TDBQuery.Execute(const Params: array of const;
+  const callback: TExecuteCallback; Options: TQueryOptions;
+  const Transaction: IDBTransaction);
+begin
+  Execute(SA(Params), callback, Options, Transaction);
 end;
 
 function TDBQuery.Execute(const Params: array of const; Options: TQueryOptions;

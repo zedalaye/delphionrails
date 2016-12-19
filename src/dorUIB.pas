@@ -67,11 +67,17 @@ type
     FSQLParams: TSQLParams;
     FStatementType: TUIBStatementType;
   protected
-    function Execute(const Params: ISuperObject; Options: TQueryOptions; const Transaction: IDBTransaction): ISuperObject; override;
+    function Execute(const Params: ISuperObject; Options: TQueryOptions;
+      const Transaction: IDBTransaction): ISuperObject; overload; override;
+
+    procedure Execute(const Params: ISuperObject; const callback: TExecuteCallback;
+      Options: TQueryOptions; const Transaction: IDBTransaction); overload; override;
+
     function GetInputMeta: ISuperObject; override;
     function GetOutputMeta(byindex: Boolean): ISuperObject; override;
   public
-    constructor Create(const Connection: IDBConnection; const Trans: TDBUIBTransaction; const Sql: string); reintroduce;
+    constructor Create(const Connection: IDBConnection;
+      const Trans: TDBUIBTransaction; const Sql: string); reintroduce;
     destructor Destroy; override;
   end;
 
@@ -273,15 +279,16 @@ end;
 destructor TDBUIBTransaction.Destroy;
 begin
   with TDBUIBConnection(FConnection).FLibrary do
-  if FRollback then
-  begin
-    TriggerRollbackEvent;
-    TransactionRollback(FTrHandle);
-  end else
-  begin
-    TransactionCommit(FTrHandle);
-    TriggerCommitEvent;
-  end;
+    if FRollback then
+    begin
+      TriggerRollbackEvent;
+      TransactionRollback(FTrHandle);
+    end
+    else
+    begin
+      TransactionCommit(FTrHandle);
+      TriggerCommitEvent;
+    end;
   inherited Destroy;
 end;
 
@@ -338,6 +345,32 @@ end;
 
 function TDBUIBQuery.Execute(const Params: ISuperObject; Options: TQueryOptions;
   const Transaction: IDBTransaction): ISuperObject;
+var
+  ret: ISuperObject;
+begin
+  Execute(Params,
+    procedure(const item: ISuperObject; isResult: boolean; affected: Integer)
+    begin
+      if isResult then
+        ret := item
+      else if affected >= 0 then
+        ret := TSuperObject.Create(affected)
+      else
+      begin
+        if ret = nil then
+          ret := TSuperObject.Create(stArray);
+        if item <> nil then
+          ret.AsArray.Add(item);
+      end;
+    end,
+    Options, Transaction
+  );
+
+  Result := ret;
+end;
+
+procedure TDBUIBQuery.Execute(const Params: ISuperObject; const callback: TExecuteCallback;
+  Options: TQueryOptions; const Transaction: IDBTransaction);
 var
   NoCursor: boolean;
   str: string;
@@ -406,9 +439,9 @@ var
           uftTimestamp, uftDate, uftTime:
             Result := TDBDateTime.Create(DelphiToJavaDateTime(FSQLResult.AsDateTime[index]));
 
-        {$IFDEF IB7_UP}
+        {$IFDEF UIB_HAVE_BOOLEAN}
           uftBoolean:
-            Result := TSuperObject.Create(PChar(FSQLResult.AsBoolean[index]));
+            Result := TSuperObject.Create(FSQLResult.AsBoolean[index]);
         {$ENDIF}
          else
            Result := nil;
@@ -502,6 +535,11 @@ var
             BlobClose(BlobHandle);
           end;
 
+      {$IFDEF UIB_HAVE_BOOLEAN}
+        uftBoolean:
+          FSQLParams.AsBoolean[index] := value.AsBoolean;
+      {$ENDIF}
+
       else
         raise Exception.Create('not yet implemented');
       end;
@@ -524,17 +562,17 @@ var
             DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
 
           if NoCursor then
-            Result := getone
+            callback(getone, True, -1)
           else if not (qoSingleton in Options) then
           begin
-            Result := TSuperObject.Create(stArray);
+            callback(nil, false, -1); { prepare an empty result object, even if we fetch no data }
             while DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) do
-              Result.AsArray.Add(getone);
+              callback(getone, False, -1);
           end
           else if DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) then
-            Result := getone
+            callback(getone, True, -1)
           else
-            Result := nil;
+            callback(nil, True, -1);
         finally
           if not NoCursor then
             DSQLFreeStatement(FStHandle, DSQL_close);
@@ -543,7 +581,7 @@ var
       else
       begin
         DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
-        Result := TSuperObject.Create(DSQLInfoRowsAffected(FStHandle, FStatementType));
+        callback(nil, True, DSQLInfoRowsAffected(FStHandle, FStatementType));
       end;
   end;
 var
@@ -650,9 +688,9 @@ begin
           uftTimestamp: rec.S['type'] := 'timestamp';
           uftDate: rec.S['type'] := 'date';
           uftTime: rec.S['type'] := 'time';
-          {$IFDEF IB7_UP}
+        {$IFDEF UIB_HAVE_BOOLEAN}
           uftBoolean: rec.S['type'] := 'bool';
-          {$ENDIF}
+        {$ENDIF}
         end;
         if not FSQLParams.IsNullable[j] then
           rec.B['notnull'] := true;
@@ -721,9 +759,9 @@ begin
           uftTimestamp: rec.S['type'] := 'timestamp';
           uftDate: rec.S['type'] := 'date';
           uftTime: rec.S['type'] := 'time';
-          {$IFDEF IB7_UP}
+        {$IFDEF UIB_HAVE_BOOLEAN}
           uftBoolean: rec.S['type'] := 'bool';
-          {$ENDIF}
+        {$ENDIF}
         end;
         if not FSQLResult.IsNullable[j] then
           rec.B['notnull'] := true;
