@@ -352,13 +352,17 @@ begin
     procedure(const item: ISuperObject; isResult: boolean; affected: Integer)
     begin
       if isResult then
-        ret := item
-      else if affected >= 0 then
-        ret := TSuperObject.Create(affected)
+      begin
+        if affected >= 0 then
+          ret := TSuperObject.Create(affected)
+        else
+          ret := item;
+      end
       else
       begin
         if ret = nil then
           ret := TSuperObject.Create(stArray);
+
         if item <> nil then
           ret.AsArray.Add(item);
       end;
