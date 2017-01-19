@@ -664,19 +664,22 @@ begin
           uftNumeric:
             begin
               rec.S['type'] := 'numeric';
-              rec.I['scale'] := -FSQLResult.SQLScale[j];
-              case FSQLResult.SqlType[j] of
+              rec.I['scale'] := -FSQLParams.SQLScale[j];
+              case FSQLParams.SqlType[j] of
                 SQL_SHORT:
-                  if FSQLResult.SQLScale[j] = -4 then
-                    rec.I['precision'] := 5 else
+                  if FSQLParams.SQLScale[j] = -4 then
+                    rec.I['precision'] := 5
+                  else
                     rec.I['precision'] := 4;
                 SQL_LONG:
-                  if FSQLResult.SQLScale[j] = -9 then
-                    rec.I['precision'] := 10 else
+                  if FSQLParams.SQLScale[j] = -9 then
+                    rec.I['precision'] := 10
+                  else
                     rec.I['precision'] := 9;
                 SQL_INT64:
-                  if FSQLResult.SQLScale[j] = -18 then
-                    rec.I['precision'] := 19 else
+                  if FSQLParams.SQLScale[j] = -18 then
+                    rec.I['precision'] := 19
+                  else
                     rec.I['precision'] := 18;
               end;
             end;
