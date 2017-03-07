@@ -82,6 +82,7 @@ type
     function Upgrade: Cardinal; virtual;
     function WebSocket: Cardinal; virtual;
     function GetPassPhrase: AnsiString; virtual;
+    function GetRootPath: string; virtual;
   public
     constructor CreateStub(AOwner: TSocketServer; const ASocket: IReadWrite); override;
     destructor Destroy; override;
@@ -668,8 +669,7 @@ begin
   Result := False;
   with Params.AsObject do
   begin
-
-    path := ExtractFilePath(ParamStr(0));
+    path := GetRootPath;
     rel := 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
     str := path + rel;
     if FileExists(str) then
@@ -1068,6 +1068,11 @@ begin
   Result := '';
 end;
 
+function THTTPStub.GetRootPath: string;
+begin
+  Result := ExtractFilePath(ParamStr(0));
+end;
+
 procedure THTTPStub.Render(const obj: ISuperObject; format: boolean);
 begin
   obj.SaveTo(Response.Content, format);
@@ -1093,7 +1098,7 @@ end;
 
 function THTTPStub.ProcessRequest: Boolean;
 var
-  str, path, ext: string;
+  path, str, ext: string;
   rec: TSearchRec;
   clazz: TRttiType;
   inst: TObject;
@@ -1104,7 +1109,6 @@ begin
       FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
       FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'];
 
-  path := ExtractFilePath(ParamStr(0));
   if FParams.AsObject['controller'] <> nil then
     with FParams.AsObject do
     begin
@@ -1168,7 +1172,7 @@ begin
 
   // static ?
   str := Request.S['uri'];
-  path := path + 'static';
+  path := GetRootPath + 'static';
 
   if (AnsiChar(str[Length(str)]) in ['/','\']) then
     str := str + 'index.' + FParams.AsObject.S['format'];
