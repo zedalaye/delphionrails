@@ -54,7 +54,7 @@ constructor TRSVGObject.Create(const filename: string);
 var
   stream: TFileStream;
 begin
-  stream := TFileStream.Create(filename, fmOpenRead, fmShareDenyWrite);
+  stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyWrite);
   try
     Create(stream);
   finally

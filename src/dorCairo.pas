@@ -1149,7 +1149,7 @@ procedure TCairoSurface.WriteToPNG(const filename: string);
 var
   stream: TFileStream;
 begin
-  stream := TFileStream.Create(filename, fmCreate, fmShareExclusive);
+  stream := TFileStream.Create(filename, fmCreate or fmShareExclusive);
   try
     WriteToPNGStream(stream);
   finally
@@ -1184,7 +1184,7 @@ constructor TImageSurface.CreateFromPNG(const filename: string);
 var
   stream: TFileStream;
 begin
-  stream := TFileStream.Create(filename, fmOpenRead, fmShareDenyWrite);
+  stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyWrite);
   try
     CreateFromPNG(stream);
   finally
@@ -1205,7 +1205,7 @@ constructor TImageSurface.CreateFromSVG(const filename: string; format: TCairoFo
 var
   stream: TFileStream;
 begin
-  stream := TFileStream.Create(filename, fmOpenRead, fmShareDenyWrite);
+  stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyWrite);
   try
     CreateFromSVG(stream, format, scale);
   finally
@@ -1288,7 +1288,7 @@ end;
 {$ifdef CAIRO_HAS_SVG_SURFACE}
 constructor TSVGSurface.Create(const filename: TFileName; widthInPoints, heightInPoints: Double);
 begin
-  Create(TFileStream.Create(filename, fmCreate, fmShareExclusive), widthInPoints, heightInPoints, True);
+  Create(TFileStream.Create(filename, fmCreate or fmShareExclusive), widthInPoints, heightInPoints, True);
 end;
 {$endif}
 
@@ -1325,7 +1325,7 @@ end;
 constructor TPDFSurface.Create(const filename: TFileName; widthInPoints,
   heightInPoints: Double);
 begin
-  Create(TFileStream.Create(filename, fmCreate, fmShareExclusive), widthInPoints, heightInPoints, True);
+  Create(TFileStream.Create(filename, fmCreate or fmShareExclusive), widthInPoints, heightInPoints, True);
 end;
 {$endif}
 
@@ -1362,7 +1362,7 @@ end;
 constructor TPostScriptSurface.Create(const filename: string; widthInPoints,
   heightInPoints: Double);
 begin
-  Create(TFileStream.Create(filename, fmCreate, fmShareExclusive), widthInPoints, heightInPoints, True);
+  Create(TFileStream.Create(filename, fmCreate or fmShareExclusive), widthInPoints, heightInPoints, True);
 end;
 {$endif}
 
