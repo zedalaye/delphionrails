@@ -487,6 +487,11 @@ var
       FSQLParams.IsNull[index] := true
     else
       case FSQLParams.FieldType[index] of
+      {$IFDEF FB25_UP}
+        uftNull:
+         FSQLParams.IsNull[index] := ObjectIsType(value, stNull);
+      {$ENDIF}
+
         uftNumeric:
           if ObjectIsType(value, stCurrency) then
             FSQLParams.AsCurrency[index] := value.AsCurrency
@@ -545,7 +550,7 @@ var
       {$ENDIF}
 
       else
-        raise Exception.Create('not yet implemented');
+        raise Exception.CreateFmt('FieldType %d not supported', [Ord(FSQLParams.FieldType[index])]);
       end;
   end;
 
