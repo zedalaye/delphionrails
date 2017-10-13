@@ -248,6 +248,10 @@ end;
 
 procedure TThreadRun.Execute;
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
   CurrentDorThread := FOwner;
   InterlockedIncrement(CurrentDorThread.FThreadRefCount);
   try
@@ -718,6 +722,10 @@ function TCustomObserver.TEventProcessor.Run: Cardinal;
 var
   events, event, box: ISuperObject;
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
   while not Stopped do
   begin
     events := EventStorage.Empty;
@@ -868,6 +876,10 @@ var
   Stub: TDORThread;
   SO_True: Integer;
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
   SO_True := -1;
   Result := 0;
   FSocketHandle := socket(AF_INET, SOCK_STREAM, 0);
@@ -923,6 +935,10 @@ end;
 
 function TUDPServer.Run: Cardinal;
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
   Result := 0;
   FSocketHandle := socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   FAddress.sin_addr.s_addr := FBind;

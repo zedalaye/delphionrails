@@ -751,6 +751,10 @@ var
   r: integer;
 {$ENDIF}
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
   result := 0;
   cursor := 0;
   len := 0;

@@ -1,7 +1,10 @@
 unit dorObserver;
 
 interface
-uses dorSocketStub, superobject, dorUtils;
+
+uses
+{$if defined(DEBUG)}Classes,{$ifend}
+  dorSocketStub, superobject, dorUtils;
 
 type
 
@@ -86,6 +89,10 @@ end;
 
 function TDorObserver.Run: Cardinal;
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
   while not Stopped do
   begin
     try

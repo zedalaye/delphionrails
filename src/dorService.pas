@@ -339,6 +339,10 @@ var
 label tryagain;
 {$ENDIF}
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
 {$IFDEF CONSOLEAPP}
   Start;
   writeln('---------------------------------------');

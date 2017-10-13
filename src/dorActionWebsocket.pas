@@ -233,6 +233,10 @@ end;
 
 function TActionWebsocket.Run: Cardinal;
 begin
+{$if defined(DEBUG)}
+  TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+{$ifend}
+
   Result := 0;
   while not Stopped do
   begin
