@@ -199,10 +199,12 @@ type
   function XMLParseString(const str: AnsiString; const root: IXMLNode = nil; stripNS: Boolean = False): IXMLNode; overload;
   function XMLParseString(const str: string; const root: IXMLNode = nil; stripNS: Boolean = False): IXMLNode; overload;
 
+  function XMLParseCP(const cp: PAnsiChar): Integer;
+
 implementation
 uses Math;
 
-function ParseCP(const cp: PAnsiChar): Integer;
+function XMLParseCP(const cp: PAnsiChar): Integer;
 var
   len: Integer;
 begin
@@ -267,16 +269,21 @@ type
     FBuf: PAnsiChar;
     FBPos: integer;
     FSize: integer;
+    FDecoded: string;
   public
     function Append(buf: PAnsiChar; Size: Integer): Integer; overload;
     function Append(buf: PAnsiChar): Integer; overload;
+    procedure Append(cp: Cardinal; c: Char); overload;
     procedure Reset;
     procedure TrimRight;
+    function Push(cp: Cardinal): string;
+
     constructor Create; virtual;
     destructor Destroy; override;
     property Data: PAnsiChar read FBuf;
     property Size: Integer read FSize;
     property Position: integer read FBPos;
+
   end;
 
   function TWriterString.Append(buf: PAnsiChar; Size: Integer): Integer;
@@ -312,6 +319,7 @@ type
   begin
     FBuf[0] := #0;
     FBPos := 0;
+    FDecoded := '';
   end;
 
   procedure TWriterString.TrimRight;
@@ -321,6 +329,12 @@ type
       Dec(FBPos);
       FBuf[FBPos] := #0;
     end;
+  end;
+
+  procedure TWriterString.Append(cp: Cardinal; c: Char);
+  begin
+    Push(cp);
+    FDecoded := FDecoded + c;
   end;
 
   constructor TWriterString.Create;
@@ -337,8 +351,27 @@ type
       FreeMem(FBuf)
   end;
 
+  function TWriterString.Push(cp: Cardinal): string;
+  var
+    s: string;
+  begin
+    if FBPos > 0 then
+    begin
+      if cp > 0 then
+      begin
+        SetLength(s, MultiByteToWideChar(cp, 0, FBuf, FBPos, nil, 0));
+        MultiByteToWideChar(cp, 0, FBuf, FBPos, PWideChar(s), Length(s));
+      end else
+        s := string(FBuf);
+      FBuf[0] := #0;
+      FBPos := 0;
+      FDecoded := FDecoded + s;
+    end;
+    Result := FDecoded;
+  end;
+
 (******************************************************************************)
-(* XMLParseSAX                                                              *)
+(* XMLParseSAX                                                                *)
 (******************************************************************************)
 
 function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal): Boolean;
@@ -422,16 +455,6 @@ var
     if x <= '9' then
       Result := byte(x) - byte('0') else
       Result := (byte(x) and 7) + 9;
-  end;
-
-  function MBUDecode(const str: PAnsiChar): string;
-  begin
-    if cp > 0 then
-    begin
-      SetLength(Result, MultiByteToWideChar(cp, 0, str, StrLen(str), nil, 0));
-      MultiByteToWideChar(cp, 0, str, StrLen(str), PWideChar(Result), Length(Result));
-    end else
-      Result := string(str);
   end;
 
 var
@@ -660,9 +683,9 @@ redo:
                   if Stack.clazz = xcProcessInst then
                   begin
                     if Str.Data = 'encoding' then
-                      cp := ParseCP(Value.Data);
+                      cp := XMLParseCP(Value.Data);
                   end else
-                    if not event(xtAttribute, Str.Data, MBUDecode(Value.Data)) then Exit(False);
+                    if not event(xtAttribute, Str.Data, Value.Push(cp)) then Exit(False);
                   Stack^.savedstate := xsAttributes;
                   Stack^.state := xsEatSpaces;
                 end else
@@ -697,7 +720,7 @@ redo:
             case c of
               '<': begin
                      Value.TrimRight;
-                     if not event(xtText, '', MBUDecode(Value.Data)) then Exit(False);
+                     if not event(xtText, '', Value.Push(cp)) then Exit(False);
                      Stack^.state := xsTryCloseElement;
                    end;
               #13, #10:
@@ -810,7 +833,7 @@ redo:
               1: case c of
                  '>':
                    begin
-                     if not event(xtCData, '', MBUDecode(Value.Data)) then Exit(False);
+                     if not event(xtCData, '', Value.Push(cp)) then Exit(False);
                      Stack^.state := xsEatSpaces;
                      Stack^.savedstate := xsChildNodes;
                    end;
@@ -977,7 +1000,10 @@ redo:
             end else
             if c = ';' then
             begin
-              Value.Append(@Position, 1);
+              if Position < 256 then
+                Value.Append(@Position, 1)
+              else
+                Value.Append(cp, Char(Position));
               Stack^.state := Stack^.savedstate;
             end else
               Exit(False);
