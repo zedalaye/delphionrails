@@ -56,7 +56,7 @@ type
     class function rand_raw(num_bytes: Integer): RawByteString;
   end;
 
-  TAes = class
+  TAES = class
   private
     FCipher: TCipher;
   public
@@ -112,21 +112,21 @@ begin
   end;
 end;
 
-{ TAes }
+{ TAES }
 
-constructor TAes.Create(Size: Integer);
+constructor TAES.Create(Size: Integer);
 begin
   inherited Create;
   FCipher := TCipher.Create('aes-' + IntToStr(Size) + '-cbc');
 end;
 
-destructor TAes.Destroy;
+destructor TAES.Destroy;
 begin
   FCipher.Free;
   inherited;
 end;
 
-function TAes.Encrypt(const Password, Data: RawByteString;
+function TAES.Encrypt(const Password, Data: RawByteString;
   Binary: Boolean = False): RawByteString;
 var
   S: RawByteString;
@@ -142,7 +142,7 @@ begin
     Result := EncodeBase64(R, False);
 end;
 
-function TAes.Decrypt(const Password, Data: RawByteString;
+function TAES.Decrypt(const Password, Data: RawByteString;
   Binary: Boolean = False): RawByteString;
 var
   R, S: RawByteString;
@@ -277,7 +277,7 @@ begin
     EVP_CipherUpdate(
       @FCipherContext,
       Pointer(Result),
-      @out_len,
+      out_len,
       Pointer(Data),
       in_len
     )
@@ -296,7 +296,7 @@ begin
     EVP_CipherFinal_ex(
       @FCipherContext,
       Pointer(Result),
-      @out_len
+      out_len
     )
   );
   SetLength(Result, out_len);
