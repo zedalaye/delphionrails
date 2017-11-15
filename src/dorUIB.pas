@@ -13,6 +13,7 @@ type
   TDBUIBConnectionPool = class(TInterfacedObject, IDBConnectionPool)
   private
     FCriticalSection: TCriticalSection;
+    FPoolName: string;
     FMax: Integer;
     FDatabase: string;
     FUserName: string;
@@ -27,7 +28,7 @@ type
     procedure Lock;
     procedure Unlock;
   public
-    constructor Create(Max: Integer; const Database, Username, Password: string;
+    constructor Create(const PoolName: string; Max: Integer; const Database, Username, Password: string;
       const Characterset: string = 'UTF8'; const Lib: string = ''); reintroduce;
     destructor Destroy; override;
   end;
@@ -126,10 +127,13 @@ begin
   if database <> '' then
     FLibrary.AttachDatabase(AnsiString(database), FDbHandle, AnsiString(option)) else
     FDbHandle := nil;
+
+  OutputDebugString(PChar(Format('TDBUIBConnection.Create(Database=%s): DbHandle=%p', [Database, FDBHandle])));
 end;
 
 destructor TDBUIBConnection.Destroy;
 begin
+  OutputDebugString(PChar(Format('TDBUIBConnection.Destroy DbHandle=%p', [FDBHandle])));
   if FDbHandle <> nil then
     FLibrary.DetachDatabase(FDbHandle);
   FLibrary.Free;
@@ -784,10 +788,13 @@ end;
 
 { TDBUIBConnectionPool }
 
-constructor TDBUIBConnectionPool.Create(max: Integer; const Database, Username,
-  Password: string; const Characterset: string = 'UTF8'; const Lib: string = '');
+constructor TDBUIBConnectionPool.Create(const PoolName: string; max: Integer;
+  const Database, Username, Password: string;
+  const Characterset: string = 'UTF8'; const Lib: string = '');
 begin
   inherited Create;
+  OutputDebugString(PChar(Format('TDBUIBConnectionPool.Create(PoolName=%s)', [PoolName])));
+  FPoolName := PoolName;
   FDatabase := Database;
   FUserName := Username;
   FPassword := Password;
@@ -802,6 +809,7 @@ procedure TDBUIBConnectionPool.ClearPool;
 begin
   Lock;
   try
+    OutputDebugString(PChar(Format('%s.ClearPool (FPool.Count=%d)', [FPoolName, FPool.Count])));
     FPool.Clear;
   finally
     Unlock;
@@ -810,8 +818,15 @@ end;
 
 destructor TDBUIBConnectionPool.Destroy;
 begin
+  Lock;
+  try
+    ClearPool;
+    FPool.Free;
+    OutputDebugString(PChar(Format('%s.Destroy', [FPoolName])));
+  finally
+    Unlock;
+  end;
   FCriticalSection.Free;
-  FPool.Free;
   inherited;
 end;
 
@@ -834,6 +849,7 @@ begin
           if k = 3 then
           begin
             Result := cnx;
+            OutputDebugString(PChar(Format('%s.Connection: DbHandle=%p', [FPoolName, TDBUIBConnection(Result).FDbHandle])));
             Exit;
           end;
         finally
