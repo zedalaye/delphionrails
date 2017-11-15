@@ -303,6 +303,7 @@ type
     FStream: TPooledMemoryStream;
   public
     constructor Create(stream: TStream = nil); reintroduce; overload;
+    constructor Create(const stream: IStreamPersist); reintroduce; overload;
     constructor Create(const filename: string); reintroduce; overload;
     constructor Create(buffer: Pointer; len: Integer); reintroduce; overload;
     constructor CreateFromBase64(const base64: string);
@@ -750,6 +751,14 @@ begin
   FStream := TPooledMemoryStream.Create;
   if (buffer <> nil) and (len > 0) then
     FStream.Write(buffer^, len);
+end;
+
+constructor TDBBinary.Create(const stream: IStreamPersist);
+begin
+  inherited Create('[BINARY]');
+  FStream := TPooledMemoryStream.Create;
+  if Stream <> nil then
+    stream.SaveToStream(FStream);
 end;
 
 constructor TDBBinary.CreateFromBase64(const base64: string);
