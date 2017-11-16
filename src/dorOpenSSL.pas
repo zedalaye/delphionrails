@@ -179,6 +179,108 @@ const
   SSL_FILETYPE_ASN1 = X509_FILETYPE_ASN1;
   SSL_FILETYPE_PEM  = X509_FILETYPE_PEM;
 
+  SSL_CTRL_OPTIONS = 32;
+  SSL_CTRL_CLEAR_OPTIONS      = 77;
+
+const
+  SSL_OP_MICROSOFT_SESS_ID_BUG            = $00000001;
+  SSL_OP_NETSCAPE_CHALLENGE_BUG           = $00000002;
+  {* Allow initial connection to servers that don't support RI *}
+  SSL_OP_LEGACY_SERVER_CONNECT            = $00000004;
+  SSL_OP_NETSCAPE_REUSE_CIPHER_CHANGE_BUG = $00000008;
+  SSL_OP_TLSEXT_PADDING                   = $00000010;
+  SSL_OP_MICROSOFT_BIG_SSLV3_BUFFER       = $00000020;
+  SSL_OP_SAFARI_ECDHE_ECDSA_BUG           = $00000040;
+  SSL_OP_SSLEAY_080_CLIENT_DH_BUG         = $00000080;
+  SSL_OP_TLS_D5_BUG                       = $00000100;
+  SSL_OP_TLS_BLOCK_PADDING_BUG            = $00000200;
+
+  { * Hasn't done anything since OpenSSL 0.9.7h, retained for compatibility * }
+  SSL_OP_MSIE_SSLV2_RSA_PADDING           = $0;
+  { * Refers to ancient SSLREF and SSLv2, retained for compatibility * }
+  SSL_OP_SSLREF2_REUSE_CERT_TYPE_BUG      = $0;
+
+{*
+ * Disable SSL 3.0/TLS 1.0 CBC vulnerability workaround that was added in
+ * OpenSSL 0.9.6d.  Usually (depending on the application protocol) the
+ * workaround is not needed.  Unfortunately some broken SSL/TLS
+ * implementations cannot handle it at all, which is why we include it in
+ * SSL_OP_ALL.
+ *}
+{* added in 0.9.6e *}
+  SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS      = $00000800;
+
+{*
+ * SSL_OP_ALL: various bug workarounds that should be rather harmless.  This
+ * used to be 0x000FFFFFL before 0.9.7.
+ *}
+  SSL_OP_ALL                              = $80000BFF;
+
+{* DTLS options *}
+  SSL_OP_NO_QUERY_MTU                     = $00001000;
+{* Turn on Cookie Exchange (on relevant for servers) *}
+  SSL_OP_COOKIE_EXCHANGE                  = $00002000;
+{* Don't use RFC4507 ticket extension *}
+  SSL_OP_NO_TICKET                        = $00004000;
+{* Use Cisco's "speshul" version of DTLS_BAD_VER (as client)  *}
+  SSL_OP_CISCO_ANYCONNECT                 = $00008000;
+
+{* As server, disallow session resumption on renegotiation *}
+  SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION   = $00010000;
+{* Don't use compression even if supported *}
+  SSL_OP_NO_COMPRESSION                           = $00020000;
+{* Permit unsafe legacy renegotiation *}
+  SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION        = $00040000;
+{* If set, always create a new key when using tmp_ecdh parameters *}
+  SSL_OP_SINGLE_ECDH_USE                          = $00080000;
+{ * Does nothing: retained for compatibility *}
+  SSL_OP_SINGLE_DH_USE                            = $00100000;
+{ * Does nothing: retained for compatibiity *}
+  SSL_OP_EPHEMERAL_RSA                            = $0;
+{*
+ * Set on servers to choose the cipher according to the server's preferences
+ *}
+  SSL_OP_CIPHER_SERVER_PREFERENCE                 = $00400000;
+{*
+ * If set, a server will allow a client to issue a SSLv3.0 version number as
+ * latest version supported in the premaster secret, even when TLSv1.0
+ * (version 3.1) was announced in the client hello. Normally this is
+ * forbidden to prevent version rollback attacks.
+ *}
+  SSL_OP_TLS_ROLLBACK_BUG                         = $00800000;
+
+  SSL_OP_NO_SSLv2                                 = $01000000;
+  SSL_OP_NO_SSLv3                                 = $02000000;
+  SSL_OP_NO_TLSv1                                 = $04000000;
+  SSL_OP_NO_TLSv1_2                               = $08000000;
+  SSL_OP_NO_TLSv1_1                               = $10000000;
+
+  SSL_OP_NO_DTLSv1                                = $04000000;
+  SSL_OP_NO_DTLSv1_2                              = $08000000;
+
+  SSL_OP_NO_SSL_MASK = SSL_OP_NO_SSLv2 + SSL_OP_NO_SSLv3
+                     + SSL_OP_NO_TLSv1 + SSL_OP_NO_TLSv1_1 + SSL_OP_NO_TLSv1_2;
+
+{*
+ * These next two were never actually used for anything since SSLeay zap so
+ * we have some more flags.
+ *}
+{*
+ * The next flag deliberately changes the ciphertest, this is a check for the
+ * PKCS#1 attack
+ *}
+  SSL_OP_PKCS1_CHECK_1                            = $0;
+  SSL_OP_PKCS1_CHECK_2                            = $0;
+
+  SSL_OP_NETSCAPE_CA_DN_BUG                       = $20000000;
+  SSL_OP_NETSCAPE_DEMO_CIPHER_CHANGE_BUG          = $40000000;
+{*
+ * Make server add server-hello extension from early version of cryptopro
+ * draft, when GOST ciphersuite is negotiated. Required for interoperability
+ * with CryptoPro CSP 3.x
+ *}
+  SSL_OP_CRYPTOPRO_TLSEXT_BUG                     = $80000000;
+
 type
   PSSL = Pointer;
   PSSL_CTX = Pointer;
@@ -203,10 +305,15 @@ const
   function SSL_CTX_new(meth: PSSL_METHOD): PSSL_CTX; cdecl; external SSLEAY;
   procedure SSL_CTX_free(arg0: PSSL_CTX); cdecl; external SSLEAY;
   function SSL_set_fd(s: PSSL; fd: Longint): Integer; cdecl; external SSLEAY;
-  function SSLv2_method: PSSL_METHOD; cdecl; external SSLEAY;
-  function SSLv3_method: PSSL_METHOD; cdecl; external SSLEAY;
-  function TLSv1_method: PSSL_METHOD; cdecl; external SSLEAY;
+
+  { General-purpose version-flexible SSL/TLS methods for OpenSSL 1.0.x }
   function SSLv23_method: PSSL_METHOD; cdecl; external SSLEAY;
+
+  { General-purpose version-flexible SSL/TLS methods for OpenSSL 1.1.x }
+//  function TLS_method: PSSL_METHOD; cdecl; external SSLEAY;
+
+  function SSL_CTX_ctrl(ctx: PSSL_CTX; cmd: Integer; larg: LongInt; parg: Pointer): LongInt; cdecl; external SSLEAY;
+
   function SSL_CTX_use_RSAPrivateKey_file(ctx: PSSL_CTX; const filename: PAnsiChar; typ: Integer):Integer; cdecl; external SSLEAY;
   function SSL_CTX_use_certificate_file(ctx: PSSL_CTX; const filename: PAnsiChar; typ: Integer):Integer; cdecl; external SSLEAY;
   function SSL_CTX_use_certificate_chain_file(ctx: PSSL_CTX; const _file: PAnsiChar):Integer; cdecl; external SSLEAY;
@@ -227,6 +334,10 @@ const
   function X509_NAME_oneline(name: PX509_NAME; buf: PAnsiChar; size: Integer): PAnsiChar; cdecl; external LIBEAY;
   function X509_get_subject_name(x509: PX509): PX509_NAME; cdecl; external LIBEAY;
   function X509_get_issuer_name(x509: PX509): PX509_NAME; cdecl; external LIBEAY;
+
+  function SSL_CTX_set_options(ctx: PSSL_CTX; op: LongInt): LongInt;
+  function SSL_CTX_clear_options(ctx: PSSL_CTX; op: LongInt): LongInt;
+  function SSL_CTX_get_options(ctx: PSSL_CTX): LongInt;
 
 type
   TOnX509KeyValue = reference to function(const key, value: AnsiString): Boolean;
@@ -1070,6 +1181,21 @@ function ERR_func_error_string(e: LongWord): PAnsiChar; cdecl; external LIBEAY;
 function ERR_reason_error_string(e: LongWord): PAnsiChar; cdecl; external LIBEAY;
 
 implementation
+
+function SSL_CTX_set_options(ctx: PSSL_CTX; op: LongInt): LongInt;
+begin
+  Result := SSL_CTX_ctrl(ctx, SSL_CTRL_OPTIONS, op, nil);
+end;
+
+function SSL_CTX_clear_options(ctx: PSSL_CTX; op: LongInt): LongInt;
+begin
+  Result := SSL_CTX_ctrl(ctx, SSL_CTRL_CLEAR_OPTIONS, op, nil);
+end;
+
+function SSL_CTX_get_options(ctx: PSSL_CTX): LongInt;
+begin
+  Result := SSL_CTX_ctrl(ctx, SSL_CTRL_OPTIONS, 0, nil);
+end;
 
 procedure AesEncryptStream(InStream, OutStream: TStream; const pass: PAnsiChar; bits: Integer);
 var
