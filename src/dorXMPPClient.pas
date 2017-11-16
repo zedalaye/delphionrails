@@ -1067,7 +1067,7 @@ function TXMPPClient.StartSSL: Boolean;
 begin
   Result := False;
 
-  FCtx := SSL_CTX_new(TLSv1_method);
+  FCtx := SSL_CTX_new(SSLv23_method);
   SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
 
   SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
