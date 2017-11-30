@@ -11,7 +11,7 @@ type
   end;
 
 implementation
-uses dorOpenSSL, WinSock;
+uses dorOpenSSL, WinSock2;
 
 { THTTPConnection }
 
