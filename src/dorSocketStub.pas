@@ -183,12 +183,12 @@ type
     FStubClass: TClientStubClass;
     FOnSocketStub: TOnSocketStub;
     FAddress: TSockAddr;
-    FSocketHandle: LongInt;
+    FSocketHandle: TSocket;
     FPort: Word;
     FBind: Longint;
   public
     property Address: TSockAddr read FAddress;
-    property SocketHandle: LongInt read FSocketHandle;
+    property SocketHandle: TSocket read FSocketHandle;
     constructor CreateServer(Port: Word; const Bind: string;
       const StubClass: TClientStubClass;
       const OnSocketStub: TOnSocketStub = nil); virtual;
@@ -870,7 +870,7 @@ end;
 
 function TSocketServer.Run: Cardinal;
 var
-  InputSocket: longint;
+  InputSocket: TSocket;
   InputAddress: TSockAddr;
   InputLen: Integer;
   Stub: TDORThread;
@@ -878,7 +878,6 @@ var
 //  linger: TLinger;
   optval: Integer;
   bytes: DWORD;
-  ret: Integer;
 begin
 {$if defined(DEBUG)}
   TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
@@ -940,7 +939,7 @@ begin
   if FSocketHandle <> INVALID_SOCKET then
   begin
     closesocket(FSocketHandle);
-    InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
+    FSocketHandle := INVALID_SOCKET;
   end;
 end;
 
@@ -971,7 +970,7 @@ begin
   if FSocketHandle <> INVALID_SOCKET then
   begin
     closesocket(FSocketHandle);
-    InterlockedExchange(LongInt(FSocketHandle), LongInt(INVALID_SOCKET));
+    FSocketHandle := INVALID_SOCKET;
   end;
 end;
 
