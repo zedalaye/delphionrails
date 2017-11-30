@@ -3,7 +3,7 @@ unit dorXMPPClient;
 
 interface
 uses
-  SysUtils, Windows, Classes, WinSock, dorXML, dorOpenSSL,
+  SysUtils, Windows, Classes, WinSock2, dorXML, dorOpenSSL,
   Generics.Collections;
 
 type
@@ -414,7 +414,7 @@ end;
 function TXMPPClient.Connect(const Host: AnsiString; Port: Word): Boolean;
 var
   AHost: PHostEnt;
-  addr: TSockAddrIn;
+  addr: TSockAddr;
   done: THandle;
   optval, ret: Integer;
   trhandle: TThreadIt;
@@ -446,14 +446,14 @@ begin
 
   // connect
   FillChar(addr, SizeOf(addr), 0);
-  addr.sin_family := AF_INET;
-  addr.sin_port := htons(port);
-  addr.sin_addr.S_addr := PInteger(AHost.h_addr^)^;
+  PSockAddrIn(@addr).sin_family := AF_INET;
+  PSockAddrIn(@addr).sin_port := htons(port);
+  PSockAddrIn(@addr).sin_addr.S_addr := PInteger(AHost.h_addr^)^;
 
   ret := 1;
   done := CreateEvent(nil, True, False, nil);
   trhandle := TThreadIt.Create(procedure begin
-    ret := WinSock.connect(FSocket, addr, SizeOf(addr));
+    ret := WinSock2.connect(FSocket, addr, SizeOf(addr));
     SetEvent(done);
   end);
   if WaitForSingleObject(done, 1000) <> WAIT_OBJECT_0 then
@@ -1060,7 +1060,7 @@ function TXMPPClient.SockSend(var Buf; len, flags: Integer): Integer;
 begin
   if FSsl <> nil then
     Result := SSL_write(FSsl, @Buf, len) else
-    Result := WinSock.send(FSocket, Buf, len, flags);
+    Result := WinSock2.send(FSocket, Buf, len, flags);
 end;
 
 function TXMPPClient.StartSSL: Boolean;

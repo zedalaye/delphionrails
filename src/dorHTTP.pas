@@ -1,7 +1,7 @@
 unit dorHTTP;
 
 interface
-uses WinSock;
+uses WinSock2;
 
 type
   TOnHTTPReadWrite = reference to function(var Buf; len: Integer): Integer;

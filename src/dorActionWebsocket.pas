@@ -16,7 +16,7 @@
 unit dorActionWebsocket;
 
 interface
-uses Windows, Classes, WinSock, superobject, dorSocketStub, dorHTTPStub;
+uses Windows, Classes, WinSock2, superobject, dorSocketStub, dorHTTPStub;
 
 type
   TActionWebsocket = class(TCustomObserver)

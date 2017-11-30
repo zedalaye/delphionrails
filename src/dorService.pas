@@ -20,7 +20,7 @@ uses
 {$if Defined(madExcept) and Defined(CONSOLEAPP)}
   madExcept,
 {$ifend}
-  WinSock,
+  WinSock2,
   SysUtils,
   Windows,
   WinSvc,

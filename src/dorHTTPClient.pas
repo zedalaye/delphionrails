@@ -2,7 +2,7 @@ unit dorHTTPClient;
 
 interface
 uses
-  SysUtils, AnsiStrings, dorUtils, Generics.Collections, WinSock, Classes;
+  SysUtils, AnsiStrings, dorUtils, Generics.Collections, WinSock2, Classes;
 
 type
  IHTTPRequest = interface;
@@ -889,13 +889,13 @@ function THTTPRequest.SockSend(var Buf; len: Integer): Integer;
 begin
   if FSsl <> nil then
     Result := SSL_write(FSsl, @Buf, len) else
-    Result := WinSock.send(FSocket, Buf, len, 0);
+    Result := WinSock2.send(FSocket, Buf, len, 0);
 end;
 
 function THTTPRequest.TCPConnect(const domain: RawByteString; port: Word; ssl: Boolean): Boolean;
 var
   host: PHostEnt;
-  addr: TSockAddrIn;
+  addr: TSockAddr;
 begin
   Result := True;
   // find host
@@ -908,9 +908,9 @@ begin
 
   // connect
   FillChar(addr, SizeOf(addr), 0);
-  addr.sin_family := AF_INET;
-  addr.sin_port := htons(Port);
-  addr.sin_addr.S_addr := PInteger(host.h_addr^)^;
+  PSockAddrIn(@addr).sin_family := AF_INET;
+  PSockAddrIn(@addr).sin_port := htons(Port);
+  PSockAddrIn(@addr).sin_addr.S_addr := PInteger(host.h_addr^)^;
   if connect(FSocket, addr, SizeOf(addr)) <> 0 then
     Exit(False);
 

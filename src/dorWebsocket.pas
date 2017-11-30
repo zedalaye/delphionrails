@@ -1,7 +1,7 @@
 unit dorWebsocket;
 
 interface
-uses SysUtils, WinSock, Classes, SyncObjs, dorHTTP, dorOpenSSL;
+uses SysUtils, WinSock2, Classes, SyncObjs, dorHTTP, dorOpenSSL;
 
 type
   TWSMessage = reference to procedure(const msg: string);
@@ -268,7 +268,7 @@ var
   ssl: Boolean;
   port: Word;
   host: PHostEnt;
-  addr: TSockAddrIn;
+  addr: TSockAddr;
   ReadTimeOut: Integer;
   dic: TDictionary<RawByteString, RawByteString>;
   value: RawByteString;
@@ -329,9 +329,9 @@ begin
 
     // connect
     FillChar(addr, SizeOf(addr), 0);
-    addr.sin_family := AF_INET;
-    addr.sin_port := htons(port);
-    addr.sin_addr.S_addr := PInteger(host.h_addr^)^;
+    PSockAddrIn(@addr).sin_family := AF_INET;
+    PSockAddrIn(@addr).sin_port := htons(port);
+    PSockAddrIn(@addr).sin_addr.S_addr := PInteger(host.h_addr^)^;
     if connect(FSocket, addr, SizeOf(addr)) <> 0 then
     begin
       if Assigned(FOnError) then
@@ -825,7 +825,7 @@ function TWebSocket.SockSend(var Buf; len, flags: Integer): Integer;
 begin
   if FSsl <> nil then
     Result := SSL_write(FSsl, @Buf, len) else
-    Result := WinSock.send(FSocket, Buf, len, flags);
+    Result := WinSock2.send(FSocket, Buf, len, flags);
 end;
 
 function TWebSocket.SockRecv(var Buf; len, flags: Integer): Integer;

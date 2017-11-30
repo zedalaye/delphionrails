@@ -1,7 +1,7 @@
 unit dorRedis;
 
 interface
-uses SysUtils, WinSock, SyncObjs, Generics.Collections;
+uses SysUtils, WinSock2, SyncObjs, Generics.Collections;
 
 type
   PNString = ^NString;
@@ -1074,7 +1074,7 @@ var
   entry: TResponseEntry;
 begin
   buff := UTF8String('*' + IntToStr(count) + #13#10);
-  WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
+  WinSock2.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
 
   entry.command    := ParseCommand(getData(0));
   entry.onresponse := onresponse;
@@ -1092,9 +1092,9 @@ begin
   begin
     item := utf8string(getData(i));
     buff := UTF8String('$' + IntToStr(Length(item)) + #13#10);
-    WinSock.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
+    WinSock2.send(FSocket, PAnsiChar(buff)^, Length(buff), 0);
     item := item + #13#10;
-    WinSock.send(FSocket, PAnsiChar(item)^, Length(item), 0);
+    WinSock2.send(FSocket, PAnsiChar(item)^, Length(item), 0);
   end;
   if FSync then
     Listen;
@@ -1135,7 +1135,7 @@ end;
 procedure TRedisClient.Open(const host: string; port: Word);
 var
   phost: PHostEnt;
-  addr: TSockAddrIn;
+  addr: TSockAddr;
   domain: AnsiString;
 begin
   if FReadyState <> rsClosed then
@@ -1165,9 +1165,9 @@ begin
 
     // connect
     FillChar(addr, SizeOf(addr), 0);
-    addr.sin_family := AF_INET;
-    addr.sin_port := htons(port);
-    addr.sin_addr.S_addr := PInteger(phost.h_addr^)^;
+    PSockAddrIn(@addr).sin_family := AF_INET;
+    PSockAddrIn(@addr).sin_port := htons(port);
+    PSockAddrIn(@addr).sin_addr.S_addr := PInteger(phost.h_addr^)^;
     if connect(FSocket, addr, SizeOf(addr)) <> 0 then
     begin
       if Assigned(FOnError) then

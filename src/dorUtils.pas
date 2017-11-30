@@ -27,7 +27,7 @@ uses Classes, SysUtils, supertypes, superobject
 , sockets
 , paszlib
 {$ELSE}
-, WinSock
+, WinSock2
 , ZLib
 {$ENDIF}
 ;

@@ -18,7 +18,7 @@ unit dorSocketStub;
 
 interface
 uses
-  Windows, Winsock, dorOpenSSL,
+  Windows, Winsock2, dorOpenSSL,
   Generics.Collections,
   dorUtils, Classes, superobject;
 
@@ -821,7 +821,7 @@ begin
   Result := 0;
   p := @Buf;
   while len > 0 do
-    if Winsock.recv(FSocket, p^, 1, 0) = 1 then
+    if Winsock2.recv(FSocket, p^, 1, 0) = 1 then
     begin
       Dec(len, 1);
       Inc(p);
@@ -849,7 +849,7 @@ begin
     FWriteTimeout := Timeout;
   end;
 
-  Result := Winsock.send(FSocket, buf, len, 0);
+  Result := Winsock2.send(FSocket, buf, len, 0);
 end;
 
 { TAbstractServer }
@@ -875,6 +875,10 @@ var
   InputLen: Integer;
   Stub: TDORThread;
   SO_True: Integer;
+//  linger: TLinger;
+  optval: Integer;
+  bytes: DWORD;
+  ret: Integer;
 begin
 {$if defined(DEBUG)}
   TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
@@ -883,12 +887,16 @@ begin
   SO_True := -1;
   Result := 0;
   FSocketHandle := socket(AF_INET, SOCK_STREAM, 0);
-  FAddress.sin_addr.s_addr := FBind;
-  FAddress.sin_family := AF_INET;
-  FAddress.sin_port := htons(FPort);
+  PSockAddrIn(@FAddress).sin_addr.s_addr := FBind;
+  PSockAddrIn(@FAddress).sin_family := AF_INET;
+  PSockAddrIn(@FAddress).sin_port := htons(FPort);
 
-  SetSockOpt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@SO_True), SizeOf(SO_True));
-  SetSockOpt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@SO_True), SizeOf(SO_True));
+  setsockopt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@SO_True), SizeOf(SO_True));
+  setsockopt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@SO_True), SizeOf(SO_True));
+
+//  linger.l_onoff := 0;
+//  linger.l_linger := 0;
+//	setsockopt(FSocketHandle, SOL_SOCKET, SO_LINGER, PAnsiChar(@linger), sizeof(linger));
 
   if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
   begin
@@ -896,11 +904,16 @@ begin
     raise Exception.Create('can''t bind.');
   end;
 
-  if (listen(FSocketHandle, 200) <> 0) then
+  if (listen(FSocketHandle, SOMAXCONN) <> 0) then
   begin
     Stop;
     raise Exception.Create('can''t listen.');
   end;
+
+	optval := 1;
+	bytes := 0;
+
+	WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 16), @optval, sizeof(optval),	nil, 0, bytes, nil, nil);
 
   InputLen := SizeOf(InputAddress);
   while not Stopped do
@@ -941,9 +954,9 @@ begin
 
   Result := 0;
   FSocketHandle := socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  FAddress.sin_addr.s_addr := FBind;
-  FAddress.sin_family := AF_INET;
-  FAddress.sin_port := htons(FPort);
+  PSockAddrIn(@FAddress).sin_addr.s_addr := FBind;
+  PSockAddrIn(@FAddress).sin_family := AF_INET;
+  PSockAddrIn(@FAddress).sin_port := htons(FPort);
 
   if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
   begin
