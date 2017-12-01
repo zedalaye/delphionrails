@@ -935,13 +935,14 @@ begin
       WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
     end;
 
-
   until not ObjectFindNext(ite);
   ObjectFindClose(ite);
 
   if FSendFile <> '' then
     SendFile(FSendFile) else
     SendStream(Response.Content);
+
+  Source.Flush;
 
   FReturn.Clear(true);
   FParams.Clear(true);
@@ -1547,6 +1548,7 @@ function THTTPStub.Upgrade: Cardinal;
       WriteLine('Sec-WebSocket-Protocol: ' + RawByteString(protocol.asstring));
     WriteLine('');
     Source.Write(response, SizeOf(response), 0);
+    Source.Flush;
     Result := WebSocket;
   end;
 
@@ -1577,6 +1579,7 @@ function THTTPStub.Upgrade: Cardinal;
 	  WriteLine('Sec-WebSocket-Origin: ' + RawByteString(origin.AsString));
     WriteLine('Sec-WebSocket-Accept: ' + ret);
     WriteLine('');
+    Source.Flush;
     Result := WebSocket;
   end;
 begin

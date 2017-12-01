@@ -127,27 +127,28 @@ begin
       rw.Write(b, 1, 0);
       if len < 126 then
         rw.Write(len, 1, 0) else
-        if len < High(Word) then
-        begin
-          b := 126;
-          rw.Write(b, 1, 0);
-          rw.Write(lenarray[1], 1, 0);
-          rw.Write(lenarray[0], 1, 0);
-        end else
-        begin
-          b := 127;
-          rw.Write(b, 1, 0);
-          rw.Write(lenarray[7], 1, 0);
-          rw.Write(lenarray[6], 1, 0);
-          rw.Write(lenarray[5], 1, 0);
-          rw.Write(lenarray[4], 1, 0);
-          rw.Write(lenarray[3], 1, 0);
-          rw.Write(lenarray[2], 1, 0);
-          rw.Write(lenarray[1], 1, 0);
-          rw.Write(lenarray[0], 1, 0);
-        end;
+      if len < High(Word) then
+      begin
+        b := 126;
+        rw.Write(b, 1, 0);
+        rw.Write(lenarray[1], 1, 0);
+        rw.Write(lenarray[0], 1, 0);
+      end else
+      begin
+        b := 127;
+        rw.Write(b, 1, 0);
+        rw.Write(lenarray[7], 1, 0);
+        rw.Write(lenarray[6], 1, 0);
+        rw.Write(lenarray[5], 1, 0);
+        rw.Write(lenarray[4], 1, 0);
+        rw.Write(lenarray[3], 1, 0);
+        rw.Write(lenarray[2], 1, 0);
+        rw.Write(lenarray[1], 1, 0);
+        rw.Write(lenarray[0], 1, 0);
+      end;
       if data <> nil then
         rw.Write(data^, len, 0);
+      rw.Flush;
     end;
   finally
     LeaveCriticalSection(FCriticalSection);
@@ -174,6 +175,7 @@ begin
         EnterCriticalSection(FCriticalSection);
         try
           rw.Write(PAnsiChar(utf8)^, Length(utf8), 0);
+          rw.Flush;
         finally
           LeaveCriticalSection(FCriticalSection);
         end;
@@ -215,6 +217,7 @@ begin
       end else
         Break;
     end;
+    rw.Flush;
   end;
 end;
 

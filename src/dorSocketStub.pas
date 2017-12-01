@@ -127,15 +127,20 @@ type
     function HavePeerCertificate: Boolean;
     function SSLSubject(const key: AnsiString): AnsiString;
     function SSLIssuer(const key: AnsiString): AnsiString;
+    procedure Flush;
     procedure Close;
   end;
 
   TRWSocket = class(TInterfacedObject, IReadWrite)
+  private const
+    BUFFER_SIZE = 1024;
   private
     FSocket: TSocket;
     FOwned: Boolean;
     FReadTimeout: Cardinal;
     FWriteTimeout: Cardinal;
+    FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
+    FBufferPos: Integer;
   protected
     function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
     function Write(var buf; len, Timeout: Cardinal): Cardinal; virtual;
@@ -143,6 +148,7 @@ type
     function HavePeerCertificate: Boolean; virtual;
     function SSLSubject(const key: AnsiString): AnsiString; virtual;
     function SSLIssuer(const key: AnsiString): AnsiString; virtual;
+    procedure Flush;
     procedure Close;
   public
     constructor Create(Socket: TSocket; Owned: Boolean); virtual;
@@ -150,6 +156,8 @@ type
   end;
 
   TSSLRWSocket = class(TInterfacedObject, IReadWrite)
+  private const
+    BUFFER_SIZE = 1024;
   private
     FSocket: TSocket;
     FOwned: Boolean;
@@ -161,6 +169,8 @@ type
     FX509: PX509;
     FPassword: AnsiString;
     FConnected: Boolean;
+    FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
+    FBufferPos: Integer;
     procedure CloseSSL;
   protected
     function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
@@ -169,6 +179,7 @@ type
     function HavePeerCertificate: Boolean; virtual;
     function SSLSubject(const key: AnsiString): AnsiString; virtual;
     function SSLIssuer(const key: AnsiString): AnsiString; virtual;
+    procedure Flush;
     procedure Close;
   public
     constructor Create(Socket: TSocket; Owned: Boolean; Verify: Integer;
@@ -223,7 +234,7 @@ threadvar
 
 implementation
 uses
-  SysUtils, dorService;
+  SysUtils, Math, dorService;
 
 var
   AThreadCount: Integer = 0;
@@ -775,6 +786,7 @@ end;
 
 procedure TRWSocket.Close;
 begin
+  Flush;
   if FOwned then
   begin
     CloseSocket(FSocket);
@@ -786,6 +798,7 @@ end;
 constructor TRWSocket.Create(Socket: TSocket; Owned: Boolean);
 begin
   inherited Create;
+  FBufferPos := 0;
   FSocket := Socket;
   FOwned := Owned;
   FReadTimeout := 0;
@@ -796,6 +809,15 @@ destructor TRWSocket.Destroy;
 begin
   Close;
   inherited;
+end;
+
+procedure TRWSocket.Flush;
+begin
+  if FBufferPos > 0 then
+  begin
+    Winsock2.send(FSocket, FBuffer, FBufferPos, 0);
+    FBufferPos := 0;
+  end;
 end;
 
 function TRWSocket.HavePeerCertificate: Boolean;
@@ -842,14 +864,34 @@ begin
 end;
 
 function TRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
+var
+  l: Cardinal;
+  p: PByte;
 begin
+  Result := len;
+
   if (FWriteTimeout <> Timeout) then
   begin
     setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
     FWriteTimeout := Timeout;
   end;
 
-  Result := Winsock2.send(FSocket, buf, len, 0);
+  l := Min(len, BUFFER_SIZE - FBufferPos);
+  p := PByte(@buf);
+  while l > 0 do
+  begin
+    Move(p^, FBuffer[FBufferPos], l);
+    Dec(len, l);
+    Inc(p, l);
+    Inc(FBufferPos, l);
+
+    if FBufferPos = BUFFER_SIZE then
+    begin
+      Winsock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
+      FBufferPos := 0;
+    end;
+    l := Min(len, BUFFER_SIZE - FBufferPos);
+  end;
 end;
 
 { TAbstractServer }
@@ -875,9 +917,6 @@ var
   InputLen: Integer;
   Stub: TDORThread;
   SO_True: Integer;
-//  linger: TLinger;
-  optval: Integer;
-  bytes: DWORD;
 begin
 {$if defined(DEBUG)}
   TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
@@ -893,26 +932,17 @@ begin
   setsockopt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@SO_True), SizeOf(SO_True));
   setsockopt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@SO_True), SizeOf(SO_True));
 
-//  linger.l_onoff := 0;
-//  linger.l_linger := 0;
-//	setsockopt(FSocketHandle, SOL_SOCKET, SO_LINGER, PAnsiChar(@linger), sizeof(linger));
-
   if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
   begin
     Stop;
     raise Exception.Create('can''t bind.');
   end;
 
-  if (listen(FSocketHandle, SOMAXCONN) <> 0) then
+  if (listen(FSocketHandle, 200) <> 0) then
   begin
     Stop;
     raise Exception.Create('can''t listen.');
   end;
-
-	optval := 1;
-	bytes := 0;
-
-	WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 16), @optval, sizeof(optval),	nil, 0, bytes, nil, nil);
 
   InputLen := SizeOf(InputAddress);
   while not Stopped do
@@ -1021,6 +1051,7 @@ procedure TSSLRWSocket.Close;
 begin
   if FOwned then
   begin
+    Flush;
     CloseSocket(FSocket);
     Sleep(1);
     CloseSSL;
@@ -1114,6 +1145,15 @@ begin
   inherited;
 end;
 
+procedure TSSLRWSocket.Flush;
+begin
+  if FBufferPos > 0 then
+  begin
+    SSL_write(FSsl, @FBuffer, FBufferPos);
+    FBufferPos := 0;
+  end;
+end;
+
 function TSSLRWSocket.HavePeerCertificate: Boolean;
 begin
   Result := FX509 <> nil;
@@ -1166,15 +1206,37 @@ begin
 end;
 
 function TSSLRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
+var
+  l: Cardinal;
+  p: PByte;
 begin
   if FConnected then
   begin
+    Result := len;
+
     if (FWriteTimeout <> Timeout) then
     begin
       setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
       FWriteTimeout := Timeout;
     end;
-    Result := SSL_write(FSsl, @buf, len)
+
+    l := Min(len, BUFFER_SIZE - FBufferPos);
+    p := PByte(@buf);
+    while l > 0 do
+    begin
+      Move(p^, FBuffer[FBufferPos], l);
+      Dec(len, l);
+      Inc(p, l);
+      Inc(FBufferPos, l);
+
+      if FBufferPos = BUFFER_SIZE then
+      begin
+        SSL_write(FSsl, @FBuffer, BUFFER_SIZE);
+        FBufferPos := 0;
+      end;
+      l := Min(len, BUFFER_SIZE - FBufferPos);
+    end;
+
   end else
     Result := 0;
 end;

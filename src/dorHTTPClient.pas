@@ -71,6 +71,8 @@ type
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
   private
+    const BUFFER_SIZE = 1024;
+  private
   type
     TOnHeaderEvent = reference to function(const value: RawByteString): Boolean;
     TContentEncoding = (
@@ -135,10 +137,15 @@ type
     FUploadRate: Cardinal;
     FTimeout: Cardinal;
 
+    // Buffer
+    FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
+    FBufferPos: Cardinal;
+
     procedure SetResponseHeader(const header, value: RawByteString);
     procedure HTTPWriteLine(const data: RawByteString);
     function SockSend(var Buf; len: Integer): Integer;
     function SockRecv(var Buf; len: Integer): Integer;
+    procedure Flush;
     procedure LoadDefaultHeader;
     procedure LoadCharsets;
     procedure LoadEvents;
@@ -190,7 +197,7 @@ type
   end;
 
 implementation
-uses Windows, ZLib, dorOpenSSL, dorHTTP;
+uses Windows, Math, ZLib, dorOpenSSL, dorHTTP;
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: THTTPRequest): Integer; cdecl;
@@ -224,6 +231,7 @@ begin
   FTimeout := 0;
   FDownloadRate := 0;
   FUploadRate := 0;
+  FBufferPos := 0;
 
   FSocket := INVALID_SOCKET;
   FPort := 80;
@@ -777,6 +785,7 @@ begin
       deflate.Free;
   end else
     HTTPWriteLine('');
+  Flush;
   SetReadyState(rsSent);
 end;
 
@@ -886,10 +895,30 @@ begin
 end;
 
 function THTTPRequest.SockSend(var Buf; len: Integer): Integer;
+var
+  l: Cardinal;
+  p: PByte;
 begin
-  if FSsl <> nil then
-    Result := SSL_write(FSsl, @Buf, len) else
-    Result := WinSock2.send(FSocket, Buf, len, 0);
+  Result := len;
+
+  l := Min(len, BUFFER_SIZE - FBufferPos);
+  p := PByte(@buf);
+  while l > 0 do
+  begin
+    Move(p^, FBuffer[FBufferPos], l);
+    Dec(len, l);
+    Inc(p, l);
+    Inc(FBufferPos, l);
+
+    if FBufferPos = BUFFER_SIZE then
+    begin
+      if FSsl <> nil then
+        SSL_write(FSsl, @FBuffer, BUFFER_SIZE) else
+        WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
+      FBufferPos := 0;
+    end;
+    l := Min(len, BUFFER_SIZE - FBufferPos);
+  end;
 end;
 
 function THTTPRequest.TCPConnect(const domain: RawByteString; port: Word; ssl: Boolean): Boolean;
@@ -951,6 +980,7 @@ procedure THTTPRequest.TCPDisconnect;
 begin
   if FSocket <> INVALID_SOCKET then
   begin
+    Flush;
     closesocket(FSocket);
     FSocket := INVALID_SOCKET;
     Sleep(1);
@@ -987,6 +1017,18 @@ end;
 class destructor THTTPRequest.Destroy;
 begin
   WSACleanup;
+end;
+
+procedure THTTPRequest.Flush;
+begin
+  if FBufferPos > 0 then
+  begin
+    if FSsl <> nil then
+      SSL_write(FSsl, @FBuffer, FBufferPos)
+    else
+      WinSock2.send(FSocket, FBuffer, FBufferPos, 0);
+    FBufferPos := 0;
+  end;
 end;
 
 procedure THTTPRequest.LoadCharsets;
