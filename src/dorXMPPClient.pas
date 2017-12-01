@@ -166,6 +166,8 @@ type
 
   TXMPPClient = class(TInterfacedObject, IXMPPClient)
   private
+    const BUFFER_SIZE = 1024;
+  private
     FJID: string;
     FOnTrace: TXMPPTraceEvent;
     FOnError: TXMPPErrorEvent;
@@ -179,6 +181,7 @@ type
     FOnStateChange: TXMPPReadyStateChange;
     FLockWrite: TRTLCriticalSection;
     FLockEvents: TRTLCriticalSection;
+
     // SSL
     FCtx: PSSL_CTX;
     FSsl: PSSL;
@@ -186,18 +189,25 @@ type
     FCertificateFile: AnsiString;
     FPrivateKeyFile: AnsiString;
     FCertCAFile: AnsiString;
+
+    // buffer write
+    FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
+    FBufferPos: Cardinal;
+
     FEvents: TDictionary<Integer, TXMPPIQResponse>;
     procedure doSynchronize(const node: IXMLNode; const proc: TProc<IXMLNode>);
     function StartSSL: Boolean;
     procedure Listen(const domain, resource: string);
-    function SockSend(var Buf; len, flags: Integer): Integer;
-    function SockRecv(var Buf; len, flags: Integer): Integer;
+    function SockSend(var Buf; len: Integer): Integer;
+    function SockRecv(var Buf; len: Integer): Integer;
+    procedure Flush;
     procedure SetReadyState(rs: TXMPPReadyState);
     function HostName(const user, host: string): AnsiString;
     function DomainName(const user, host: string): string;
     function UserName(const user: string): string;
     function Connect(const Host: AnsiString; Port: Word): Boolean;
     function Login(const user, domain, pass: string; options: TXMPPOptions): Boolean;
+    procedure InternalSend(const data: string);
   protected
     function GetJID: string;
     function GetOnReadyStateChange: TXMPPReadyStateChange;
@@ -209,6 +219,7 @@ type
     procedure SendFmt(const data: string; params: array of const);
     procedure Send(const data: string);
     procedure SendIQ(const IQ: IXMPPIQ; const callback: TXMPPIQResponse);
+    procedure SendXML(const xml: IXMLNode);
     procedure Close;
     function GetOnTrace: TXMPPTraceEvent;
     function GetOnError: TXMPPErrorEvent;
@@ -220,7 +231,7 @@ type
     procedure SetOnIQ(const value: TXMPPIQEvent);
     procedure SetOnPresence(const value: TXMPPEvent);
     procedure SetOnMessage(const value: TXMPPMessageEvent);
-    procedure SendXML(const xml: IXMLNode);
+
     function GetOnSynchronize: TXMPPOnSynchronize;
     procedure SetOnSynchronize(const value: TXMPPOnSynchronize);
   public
@@ -234,10 +245,12 @@ type
 
 implementation
 uses
-  AnsiStrings, dorUtils, dorHTTP, dorMD5, dorPunyCode;
+  Math, AnsiStrings, dorUtils, dorHTTP, dorMD5, dorPunyCode;
 
 const
-  XML_STREAM_STREAM = '<stream:stream to="%s" xmlns="jabber:client" xmlns:stream="http://etherx.jabber.org/streams" version="1.0">';
+  XML_STREAM_STREAM = '<?xml version="1.0" ?><stream:stream to="%s" '+
+    'xmlns="jabber:client" xmlns:stream="http://etherx.jabber.org/streams" '+
+    'version="1.0">';
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: TXMPPClient): Integer; cdecl;
@@ -499,6 +512,7 @@ constructor TXMPPClient.Create(const password, CertificateFile,
 begin
   inherited Create;
   FGenId := 0;
+  FBufferPos := 0;
   FReadyState := rsOffline;
   FSocket := INVALID_SOCKET;
   FCtx := nil;
@@ -529,6 +543,22 @@ begin
 
   inc(d);
   Result := PunycodeEncodeDomain(d);
+end;
+
+procedure TXMPPClient.InternalSend(const data: string);
+var
+  rb: UTF8String;
+begin
+  EnterCriticalSection(FLockWrite);
+  try
+    rb := UTF8String(data);
+    SockSend(PAnsiChar(rb)^, Length(rb));
+{$IFDEF XMPP_DEBUG_CONSOLE}
+    write(rb);
+{$ENDIF}
+  finally
+    LeaveCriticalSection(FLockWrite);
+  end;
 end;
 
 procedure TXMPPClient.Listen(const domain, resource: string);
@@ -595,7 +625,6 @@ begin
   events := TDictionary<string, TFunc<Boolean>>.Create;
   try
     SetReadyState(rsConnecting);
-    Send('<?xml version="1.0" ?>');
     SendFmt(XML_STREAM_STREAM, [domain]);
 redo:
     //<<< stream:features
@@ -704,7 +733,7 @@ redo:
     XMLParseSAX(
       function (var c: AnsiChar): Boolean
       begin
-        Result := SockRecv(c, 1, 0) = 1
+        Result := SockRecv(c, 1) = 1
       end,
       function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean
       begin
@@ -916,7 +945,6 @@ begin
   stack := TStack<IXMLNode>.Create;
   events := TDictionary<string, TFunc<Boolean>>.Create;
   try
-    Send('<?xml version="1.0" ?>');
     SendFmt(XML_STREAM_STREAM, [domain]);
 redo:
     //<<< stream:features
@@ -950,7 +978,7 @@ redo:
     XMLParseSAX(
       function (var c: AnsiChar): Boolean
       begin
-        Result := SockRecv(c, 1, 0) = 1
+        Result := SockRecv(c, 1) = 1
       end,
       function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean
       begin
@@ -1056,11 +1084,31 @@ begin
       begin FOnStateChange(Self) end);
 end;
 
-function TXMPPClient.SockSend(var Buf; len, flags: Integer): Integer;
+function TXMPPClient.SockSend(var Buf; len: Integer): Integer;
+var
+  l: Cardinal;
+  p: PByte;
 begin
-  if FSsl <> nil then
-    Result := SSL_write(FSsl, @Buf, len) else
-    Result := WinSock2.send(FSocket, Buf, len, flags);
+  Result := len;
+
+  l := Min(len, BUFFER_SIZE - FBufferPos);
+  p := PByte(@buf);
+  while l > 0 do
+  begin
+    Move(p^, FBuffer[FBufferPos], l);
+    Dec(len, l);
+    Inc(p, l);
+    Inc(FBufferPos, l);
+
+    if FBufferPos = BUFFER_SIZE then
+    begin
+      if FSsl <> nil then
+        SSL_write(FSsl, @FBuffer, BUFFER_SIZE) else
+        WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
+      FBufferPos := 0;
+    end;
+    l := Min(len, BUFFER_SIZE - FBufferPos);
+  end;
 end;
 
 function TXMPPClient.StartSSL: Boolean;
@@ -1157,30 +1205,26 @@ begin
     xml.SaveToXML(
       procedure(const data: string)
         begin
-          Send(data);
+          InternalSend(data);
         end);
+    Flush;
   finally
     LeaveCriticalSection(FLockWrite);
   end;
 end;
 
 procedure TXMPPClient.Send(const data: string);
-var
-  rb: UTF8String;
 begin
   EnterCriticalSection(FLockWrite);
   try
-    rb := UTF8String(data);
-    SockSend(PAnsiChar(rb)^, Length(rb), 0);
-{$IFDEF XMPP_DEBUG_CONSOLE}
-    write(rb);
-{$ENDIF}
+    InternalSend(data);
+    Flush;
   finally
     LeaveCriticalSection(FLockWrite);
   end;
 end;
 
-function TXMPPClient.SockRecv(var Buf; len, flags: Integer): Integer;
+function TXMPPClient.SockRecv(var Buf; len: Integer): Integer;
 begin
   if FSsl <> nil then
     try
@@ -1188,8 +1232,9 @@ begin
     except
       // sometime openssl can raise an AV exception error on closing socket.
       Result := 0;
-    end else
-    Result := recv(FSocket, Buf, len, flags);
+    end
+  else
+    Result := recv(FSocket, Buf, len, 0);
 end;
 
 class destructor TXMPPClient.Destroy;
@@ -1214,6 +1259,23 @@ begin
   if Assigned(FOnSynchronize) then
     FOnSynchronize(node, proc) else
     TThread.Synchronize(nil, procedure begin proc(node) end);
+end;
+
+procedure TXMPPClient.Flush;
+begin
+  EnterCriticalSection(FLockWrite);
+  try
+    if FBufferPos > 0 then
+    begin
+      if FSsl <> nil then
+        SSL_write(FSsl, @FBuffer, FBufferPos)
+      else
+        WinSock2.send(FSocket, FBuffer, FBufferPos, 0);
+      FBufferPos := 0;
+    end;
+  finally
+    LeaveCriticalSection(FLockWrite);
+  end;
 end;
 
 function TXMPPClient.GetJID: string;
