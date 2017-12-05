@@ -487,7 +487,9 @@ begin
 end;
 
 initialization
+{$IFNDEF CONSOLEAPP}
   ServiceCheckPoint := 1;
+{$ENDIF}
   Application;
 
 end.
