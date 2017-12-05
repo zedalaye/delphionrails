@@ -102,6 +102,7 @@ end;
 var
   ServiceStatus: TServiceStatus;
   ServiceStatusHandle: THandle;
+  ServiceCheckPoint: Cardinal;
 {$ENDIF}
 
 procedure Terminate;
@@ -126,109 +127,112 @@ end;
 {$ENDIF}
 
 {$IFNDEF CONSOLEAPP}
-procedure ServiceCtrlHandler(Opcode: LongWord); stdcall;
+procedure ReportSvcStatus(CurrentState, Win32ExitCode, WaitHint: Cardinal);
 begin
-  case Opcode of
+  ServiceStatus.dwCurrentState  := CurrentState;
+  ServiceStatus.dwWin32ExitCode := Win32ExitCode;
+  ServiceStatus.dwWaitHint      := WaitHint;
+
+  if CurrentState = SERVICE_START_PENDING then
+    ServiceStatus.dwControlsAccepted := 0
+  else
+    ServiceStatus.dwControlsAccepted := SERVICE_ACCEPT_STOP or SERVICE_ACCEPT_PAUSE_CONTINUE or SERVICE_ACCEPT_SHUTDOWN;
+
+  if (CurrentState = SERVICE_RUNNING) or (CurrentState = SERVICE_STOPPED) then
+    ServiceStatus.dwCheckPoint := 0
+  else
+  begin
+    Inc(ServiceCheckPoint);
+    ServiceStatus.dwCheckPoint := ServiceCheckPoint;
+  end;
+
+  SetServiceStatus(ServiceStatusHandle, ServiceStatus);
+end;
+
+procedure ServiceCtrlHandler(ControlCode: LongWord); stdcall;
+begin
+  case ControlCode of
+    SERVICE_CONTROL_INTERROGATE:
+      begin
+        // Fall through to send current status.
+      end;
+
     SERVICE_CONTROL_PAUSE:
       begin
         // Do whatever it takes to pause here.
-        ServiceStatus.dwCurrentState := SERVICE_PAUSED;
+        ReportSvcStatus(SERVICE_PAUSE_PENDING, NO_ERROR, 3000);
         Application.Suspend;
+        ReportSvcStatus(SERVICE_PAUSED, NO_ERROR, 0);
       end;
 
     SERVICE_CONTROL_CONTINUE:
       begin
         // Do whatever it takes to continue here.
-        ServiceStatus.dwCurrentState := SERVICE_RUNNING;
+        ReportSvcStatus(SERVICE_CONTINUE_PENDING, NO_ERROR, 3000);
         Application.Resume;
+        ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
       end;
 
-    SERVICE_CONTROL_STOP:
+    SERVICE_CONTROL_STOP, SERVICE_CONTROL_SHUTDOWN:
       begin
         // Do whatever it takes to stop here.
+        ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
         Terminate;
-
-        ServiceStatus.dwWin32ExitCode := 0;
-        ServiceStatus.dwCurrentState  := SERVICE_STOPPED;
-        ServiceStatus.dwCheckPoint    := 0;
-        ServiceStatus.dwWaitHint      := 0;
-
-        if (not SetServiceStatus(ServiceStatusHandle, ServiceStatus)) then
-          RaiseLastOSError;
-
         Exit;
       end;
-
-    SERVICE_CONTROL_INTERROGATE:
-    begin
-      // Fall through to send current status.
-    end;
-
   else
-    raise Exception.CreateFmt('Unrecognized opcode %d', [Opcode]);
+    if not (ControlCode in [128..255]) then
+      raise Exception.CreateFmt('Unrecognized ControlCode %d', [ControlCode])
+  {
+    else
+      User OpCode
+  }
   end;
 
-  // Send current status.
-  if (not SetServiceStatus(ServiceStatusHandle, ServiceStatus)) then
-    RaiseLastOSError;
+  ReportSvcStatus(ServiceStatus.dwCurrentState, NO_ERROR, 0);
 end;
-{$ENDIF}
 
-{$IFNDEF CONSOLEAPP}
 procedure ServiceMain(argc: LongWord; argv: PChar); stdcall;
 var
-  status: LongWord;
-  oldthreadid: LongWord;
+  OldThreadId: Cardinal;
 begin
-  ServiceStatus.dwServiceType        := Application.FServiceType;
-  ServiceStatus.dwCurrentState       := SERVICE_START_PENDING;
-  ServiceStatus.dwControlsAccepted   := SERVICE_ACCEPT_STOP or SERVICE_ACCEPT_PAUSE_CONTINUE or SERVICE_ACCEPT_SHUTDOWN;
-  ServiceStatus.dwWin32ExitCode      := 0;
-  ServiceStatus.dwServiceSpecificExitCode := 0;
-  ServiceStatus.dwCheckPoint         := 0;
-  ServiceStatus.dwWaitHint           := 0;
-
   ServiceStatusHandle := RegisterServiceCtrlHandler(
     @Application.FName[1], @ServiceCtrlHandler);
 
-  if (ServiceStatusHandle = 0) then
+  if ServiceStatusHandle = 0 then
   begin
     raise Exception.CreateFmt('RegisterServiceCtrlHandler failed %d', [GetLastError]);
     Exit;
   end;
 
-  ServiceStatus.dwCurrentState       := SERVICE_RUNNING;
-  ServiceStatus.dwCheckPoint         := 0;
-  ServiceStatus.dwWaitHint           := 0;
+  ServiceStatus.dwServiceType := Application.FServiceType;
+  ServiceStatus.dwServiceSpecificExitCode := 0;
 
-  if (not SetServiceStatus(ServiceStatusHandle, ServiceStatus)) then
-  begin
-    status := GetLastError;
-    raise Exception.CreateFmt('SetServiceStatus error %d', [status]);
-  end;
+  ReportSvcStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
 
   // This is where the service does its work.
-  if not Application.Start then
+  if Application.Start then
   begin
-    ServiceStatus.dwCurrentState := SERVICE_STOPPED;
-    ServiceStatus.dwWin32ExitCode := GetLastError;
-    SetServiceStatus(ServiceStatusHandle, ServiceStatus);
-  end;
-  oldthreadid := MainThreadID;
-  MainThreadID := GetCurrentThreadId;
-  try
-    while FApplication <> nil do
-    begin
-      CheckSynchronize;
-      Sleep(10);
-    end;
-  finally
-    MainThreadID := oldthreadid;
-  end;
-end;
-{$ENDIF}
+    ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
-{$IFNDEF CONSOLEAPP}
+    OldThreadId := MainThreadID;
+    MainThreadID := GetCurrentThreadId;
+    try
+      while FApplication <> nil do
+      begin
+        CheckSynchronize;
+        Sleep(10);
+      end;
+    finally
+      MainThreadID := OldThreadId;
+    end;
+
+    ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
+  end
+  else
+    ReportSvcStatus(SERVICE_STOPPED, GetLastError, 0)
+end;
+
 function StartService: boolean;
 var
   DispatchTable: array[0..1] of TServiceTableEntry;
@@ -483,6 +487,7 @@ begin
 end;
 
 initialization
+  ServiceCheckPoint := 1;
   Application;
 
 end.
