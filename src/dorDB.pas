@@ -79,7 +79,20 @@ type
     function Cell(const Sql: string; const Params: array of const): ISuperObject; overload;
   end;
 
-  TExecuteCallback = reference to procedure(const item: ISuperObject; isResult: boolean; affected: Integer);
+  TExecuteResult = record
+    IsResult: Boolean;
+    HasAffectedRows: Boolean;
+    Selected: Cardinal;
+    Inserted: Cardinal;
+    Updated: Cardinal;
+    Deleted: Cardinal;
+    function ItemResult: Boolean;
+    function Changed: Cardinal;
+    constructor Create(AIsResult, AHasAffectedRows: Boolean; ASelected, AInserted, AUpdated, ADeleted: Cardinal); overload;
+    constructor Create(AIsResult, AHasAffectedRows: Boolean); overload;
+  end;
+
+  TExecuteCallback = reference to procedure(const item: ISuperObject; const result: TExecuteResult);
 
   IDBTransaction = interface
   ['{51992399-2D1A-47EF-9DB1-C5654325F41B}']
@@ -906,6 +919,39 @@ function TDBQuery.Table(const Params: ISuperObject;
   const Transaction: IDBTransaction): ISuperObject;
 begin
   Result := Execute(Params, [qoArray], Transaction);
+end;
+
+{ TExecuteResult }
+
+function TExecuteResult.Changed: Cardinal;
+begin
+  Result := Self.Inserted + Self.Updated + Self.Deleted;
+end;
+
+constructor TExecuteResult.Create(AIsResult, AHasAffectedRows: Boolean;
+  ASelected, AInserted, AUpdated, ADeleted: Cardinal);
+begin
+  Self.IsResult := AIsResult;
+  Self.HasAffectedRows := AHasAffectedRows;
+  Self.Selected := ASelected;
+  Self.Inserted := AInserted;
+  Self.Updated := AUpdated;
+  Self.Deleted := ADeleted;
+end;
+
+constructor TExecuteResult.Create(AIsResult, AHasAffectedRows: Boolean);
+begin
+  Self.IsResult := AIsResult;
+  Self.HasAffectedRows := AHasAffectedRows;
+  Self.Selected := 0;
+  Self.Inserted := 0;
+  Self.Updated := 0;
+  Self.Deleted := 0;
+end;
+
+function TExecuteResult.ItemResult: Boolean;
+begin
+  Result := (not IsResult) or (not HasAffectedRows)
 end;
 
 end.

@@ -353,12 +353,12 @@ var
   ret: ISuperObject;
 begin
   Execute(Params,
-    procedure(const item: ISuperObject; isResult: boolean; affected: Integer)
+    procedure(const item: ISuperObject; const R: TExecuteResult)
     begin
-      if isResult then
+      if R.IsResult then
       begin
-        if affected >= 0 then
-          ret := TSuperObject.Create(affected)
+        if R.HasAffectedRows then
+          ret := TSuperObject.Create(Int64(R.Changed))
         else
           ret := item;
       end
@@ -559,7 +559,10 @@ var
   end;
 
   procedure Process;
+  var
+    result: TExecuteResult;
   begin
+    result := TExecuteResult.Create(False, False, 0, 0, 0, 0);
     with TDBUIBConnection(FConnection), FLibrary, TDBUIBTransaction(ctx) do
       if FSQLResult.FieldCount > 0 then
       begin
@@ -575,17 +578,26 @@ var
             DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
 
           if NoCursor then
-            callback(getone, True, -1)
+          begin
+            result.IsResult := True;
+            callback(getone, result);
+          end
           else if not (qoSingleton in Options) then
           begin
-            callback(nil, false, -1); { prepare an empty result object, even if we fetch no data }
+            callback(nil, result); { prepare an empty result object, even if we fetch no data }
             while DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) do
-              callback(getone, False, -1);
+              callback(getone, result);
           end
           else if DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) then
-            callback(getone, True, -1)
+          begin
+            result.IsResult := True;
+            callback(getone, result)
+          end
           else
-            callback(nil, True, -1);
+          begin
+            result.IsResult := True;
+            callback(nil, result);
+          end;
         finally
           if not NoCursor then
             DSQLFreeStatement(FStHandle, DSQL_close);
@@ -594,7 +606,13 @@ var
       else
       begin
         DSQLExecute(FTrHandle, FStHandle, 3, FSQLParams);
-        callback(nil, True, DSQLInfoRowsAffected(FStHandle, FStatementType));
+
+        result.IsResult := True;
+        result.HasAffectedRows := True;
+        if FStatementType in [stUpdate, stDelete, stInsert, stExecProcedure] then
+          DSQLInfoRowsAffected2(FStHandle, result.Selected, result.Inserted, result.Updated, result.Deleted);
+
+        callback(nil, result);
       end;
   end;
 var
