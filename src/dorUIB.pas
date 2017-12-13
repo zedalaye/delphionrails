@@ -55,6 +55,7 @@ type
   protected
     procedure ExecuteImmediate(const Options: SOString); override;
     function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery; override;
+    procedure Rollback(value: boolean); override;
   public
     constructor Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject); reintroduce;
     destructor Destroy; override;
@@ -308,6 +309,11 @@ begin
     Result := TDBUIBQuery.Create(FConnection, Self, Sql)
   else
     Result := TDBUIBQuery.Create(Connection, Self, Sql)
+end;
+
+procedure TDBUIBTransaction.Rollback(value: boolean);
+begin
+  FRollback := value;
 end;
 
 { TDBUIBQuery }

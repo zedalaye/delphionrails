@@ -141,6 +141,7 @@ type
     function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload;
     function Cell(const Sql: string; const Params: array of const): ISuperObject; overload;
 
+    procedure Rollback(value: boolean);
     procedure OnCommit(const proc: TProc);
     procedure OnRollback(const proc: TProc);
   end;
@@ -277,6 +278,7 @@ type
     function Cell(const Sql: string; const Params: ISuperObject = nil): ISuperObject; overload; virtual;
     function Cell(const Sql: string; const Params: array of const): ISuperObject; overload; virtual;
 
+    procedure Rollback(value: boolean); virtual; abstract;
     procedure OnCommit(const proc: TProc);
     procedure OnRollback(const proc: TProc);
   public
