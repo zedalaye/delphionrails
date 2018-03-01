@@ -988,7 +988,7 @@ begin
 
   with Request.AsObject do
   begin
-    O['remote-ip'] := Source.ClientIP;
+    S['remote-ip'] := Source.ClientIP;
   { for reverse proxies... cf. https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For
     O['x-forwarded-for'] := HTTPInterprete(PSOChar(Request.S['env.x-forwarded-for']), false, ',');
     O['forwarded'] := HTTPInterprete(PSOChar(Request.S['env.forwarded']), true); }
