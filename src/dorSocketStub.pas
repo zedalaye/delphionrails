@@ -121,6 +121,7 @@ type
 
   IReadWrite = interface
   ['{EA82DA8F-F2AB-4B93-AAAA-E388C9E72F20}']
+    function ClientIP: AnsiString;
     function Read(var buf; len, Timeout: Cardinal): Cardinal;
     function Write(var buf; len, Timeout: Cardinal): Cardinal;
     function IsSSL: Boolean;
@@ -137,11 +138,13 @@ type
   private
     FSocket: TSocket;
     FOwned: Boolean;
+    FClientIP: AnsiString;
     FReadTimeout: Cardinal;
     FWriteTimeout: Cardinal;
     FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
     FBufferPos: Integer;
   protected
+    function ClientIP: AnsiString; virtual;
     function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
     function Write(var buf; len, Timeout: Cardinal): Cardinal; virtual;
     function IsSSL: Boolean; virtual;
@@ -151,7 +154,7 @@ type
     procedure Flush;
     procedure Close;
   public
-    constructor Create(Socket: TSocket; Owned: Boolean); virtual;
+    constructor Create(Socket: TSocket; const ClientIP: AnsiString; Owned: Boolean); virtual;
     destructor Destroy; override;
   end;
 
@@ -161,6 +164,7 @@ type
   private
     FSocket: TSocket;
     FOwned: Boolean;
+    FClientIP: AnsiString;
     FReadTimeout: Cardinal;
     FWriteTimeout: Cardinal;
     // SSL
@@ -173,6 +177,7 @@ type
     FBufferPos: Integer;
     procedure CloseSSL;
   protected
+    function ClientIP: AnsiString;
     function Read(var buf; len, Timeout: Cardinal): Cardinal; virtual;
     function Write(var buf; len, Timeout: Cardinal): Cardinal; virtual;
     function IsSSL: Boolean; virtual;
@@ -182,12 +187,12 @@ type
     procedure Flush;
     procedure Close;
   public
-    constructor Create(Socket: TSocket; Owned: Boolean; Verify: Integer;
+    constructor Create(Socket: TSocket; const ClientIP: AnsiString; Owned: Boolean; Verify: Integer;
       const password, CertificateFile, PrivateKeyFile, CertCAFile: AnsiString); virtual;
     destructor Destroy; override;
   end;
 
-  TOnSocketStub = function(socket: TSocket): IReadWrite;
+  TOnSocketStub = function(socket: TSocket; const ClientIP: AnsiString): IReadWrite;
 
   TAbstractServer = class(TDORThread)
   private
@@ -784,6 +789,11 @@ end;
 
 { TRWSocket }
 
+function TRWSocket.ClientIP: AnsiString;
+begin
+  Result := FClientIP;
+end;
+
 procedure TRWSocket.Close;
 begin
   Flush;
@@ -795,12 +805,13 @@ begin
   FSocket := INVALID_SOCKET;
 end;
 
-constructor TRWSocket.Create(Socket: TSocket; Owned: Boolean);
+constructor TRWSocket.Create(Socket: TSocket; const ClientIP: AnsiString; Owned: Boolean);
 begin
   inherited Create;
   FBufferPos := 0;
   FSocket := Socket;
   FOwned := Owned;
+  FClientIP := ClientIP;
   FReadTimeout := 0;
   FWriteTimeout := 0;
 end;
@@ -913,7 +924,7 @@ end;
 function TSocketServer.Run: Cardinal;
 var
   InputSocket: TSocket;
-  InputAddress: TSockAddr;
+  InputAddress: TSockAddrIn;
   InputLen: Integer;
   Stub: TDORThread;
   SO_True: Integer;
@@ -951,8 +962,8 @@ begin
     if (InputSocket <> INVALID_SOCKET) then
     begin
       if not Assigned(FOnSocketStub) then
-        Stub := FStubClass.CreateStub(Self, TRWSocket.Create(InputSocket, True)) else
-        Stub := FStubClass.CreateStub(Self, FOnSocketStub(InputSocket));
+        Stub := FStubClass.CreateStub(Self, TRWSocket.Create(InputSocket, inet_ntoa(InputAddress.sin_addr), True)) else
+        Stub := FStubClass.CreateStub(Self, FOnSocketStub(InputSocket, inet_ntoa(InputAddress.sin_addr)));
 
       if Stub <> nil then
         Stub.Start else
@@ -1047,6 +1058,11 @@ begin
   Move(PAnsiChar(password)^, buffer^, Result + 1);
 end;
 
+function TSSLRWSocket.ClientIP: AnsiString;
+begin
+  Result := FClientIP;
+end;
+
 procedure TSSLRWSocket.Close;
 begin
   if FOwned then
@@ -1079,14 +1095,15 @@ begin
   end;
 end;
 
-constructor TSSLRWSocket.Create(Socket: TSocket; Owned: Boolean;
-  Verify: Integer; const password, CertificateFile,
+constructor TSSLRWSocket.Create(Socket: TSocket; const ClientIP: AnsiString;
+  Owned: Boolean; Verify: Integer; const password, CertificateFile,
   PrivateKeyFile, CertCAFile: AnsiString);
 label
   error;
 begin
   inherited Create;
   FSocket := Socket;
+  FClientIP := ClientIP;
   FOwned := Owned;
   FReadTimeout := 0;
   FWriteTimeout := 0;
