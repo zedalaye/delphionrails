@@ -132,6 +132,19 @@ type
     procedure Close;
   end;
 
+  TNullSocket = class(TInterfacedObject, IReadWrite)
+  protected
+    function ClientIP: AnsiString;
+    function Read(var buf; len, Timeout: Cardinal): Cardinal;
+    function Write(var buf; len, Timeout: Cardinal): Cardinal;
+    function IsSSL: Boolean;
+    function HavePeerCertificate: Boolean;
+    function SSLSubject(const key: AnsiString): AnsiString;
+    function SSLIssuer(const key: AnsiString): AnsiString;
+    procedure Flush;
+    procedure Close;
+  end;
+
   TRWSocket = class(TInterfacedObject, IReadWrite)
   private const
     BUFFER_SIZE = 1024;
@@ -225,12 +238,13 @@ type
   TClientStub = class(TDORThread)
   private
     FSource: IReadWrite;
+    function GetSource: IReadWrite;
   protected
     function Run: Cardinal; override;
     procedure Stop; override;
     procedure Release;
   public
-    property Source: IReadWrite read FSource;
+    property Source: IReadWrite read GetSource;
     constructor CreateStub(AOwner: TSocketServer; const Source: IReadWrite); virtual;
   end;
 
@@ -1039,6 +1053,14 @@ begin
   end;
 end;
 
+function TClientStub.GetSource: IReadWrite;
+begin
+  if Assigned(FSource) then
+    Result := FSource
+  else
+    Result := TNullSocket.Create;
+end;
+
 procedure TClientStub.Release;
 begin
   FSource := nil;
@@ -1256,6 +1278,53 @@ begin
 
   end else
     Result := 0;
+end;
+
+{ TNullSocket }
+
+function TNullSocket.ClientIP: AnsiString;
+begin
+  Result := '';
+end;
+
+procedure TNullSocket.Close;
+begin
+  { do nothing }
+end;
+
+procedure TNullSocket.Flush;
+begin
+  { do nothing }
+end;
+
+function TNullSocket.HavePeerCertificate: Boolean;
+begin
+  Result := False;
+end;
+
+function TNullSocket.IsSSL: Boolean;
+begin
+  Result := False;
+end;
+
+function TNullSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
+begin
+  Result := 0;
+end;
+
+function TNullSocket.SSLIssuer(const key: AnsiString): AnsiString;
+begin
+  Result := '';
+end;
+
+function TNullSocket.SSLSubject(const key: AnsiString): AnsiString;
+begin
+  Result := '';
+end;
+
+function TNullSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
+begin
+  Result := 0;
 end;
 
 initialization
