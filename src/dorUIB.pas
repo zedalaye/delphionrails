@@ -492,6 +492,7 @@ var
     blob: IDBBlob;
     dt: TDateTime;
     i: Int64;
+    stream: TPooledMemoryStream;
   begin
     if ObjectIsType(value, stNull) then
       FSQLParams.IsNull[index] := true
@@ -549,8 +550,18 @@ var
             FSQLParams.AsQuad[Index] := BlobCreate(FDbHandle, FTrHandle, BlobHandle);
             if value.QueryInterface(IDBBlob, blob) = 0 then
               BlobWriteStream(BlobHandle, blob.getData)
+            else if FSQLParams.IsBlobText[Index] then
+              BlobWriteString(BlobHandle, MBUEncode(value.AsString, CharacterSetCP[FCharacterSet]))
             else
-              BlobWriteString(BlobHandle, MBUEncode(value.AsString, CharacterSetCP[FCharacterSet]));
+            begin
+              stream := TPooledMemoryStream.Create;
+              try
+                Base64ToStream(value.AsString, stream);
+                BlobWriteStream(BlobHandle, stream);
+              finally
+                stream.Free;
+              end;
+            end;
             BlobClose(BlobHandle);
           end;
 
