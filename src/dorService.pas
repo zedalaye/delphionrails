@@ -20,11 +20,14 @@ uses
 {$if Defined(madExcept) and Defined(CONSOLEAPP)}
   madExcept,
 {$ifend}
-  WinSock2,
-  SysUtils,
   Windows,
   WinSvc,
-  dorSocketStub;
+  WinSock2,
+  SysUtils,
+  Classes,
+  dorSocketStub,
+  dorWebsocket,
+  superobject;
 
 type
   TDORService = class
@@ -83,7 +86,6 @@ const
 procedure Terminate;
 
 implementation
-uses Classes;
 
 var
   FApplication: TDORService = nil;
@@ -109,6 +111,8 @@ procedure Terminate;
 begin
   if FApplication <> nil then
   begin
+    TCustomObserver.TriggerEvent(SO(['event', 'application_terminate']));
+
     FApplication.Free;
     FApplication := nil;
 
