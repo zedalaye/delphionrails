@@ -97,11 +97,13 @@ var
 
 function Application: TDORService;
 begin
-{$IFDEF CONSOLEAPP}
-  AllocConsole;
-{$ENDIF}
   if FApplication = nil then
+  begin
+  {$IFDEF CONSOLEAPP}
+    AllocConsole;
+  {$ENDIF}
     FApplication := TDORService.Create;
+  end;
   Result := FApplication;
 end;
 
