@@ -30,6 +30,9 @@ uses
   superobject;
 
 type
+  TDORService = class;
+  TDORServiceTerminateProc = reference to procedure(var CanStop: Boolean);
+
   TDORService = class
   private
     FThreads: TDORThread;
@@ -41,6 +44,7 @@ type
     FServiceType: Cardinal;
     FStartType: Cardinal;
 {$ENDIF}
+    FTerminateProc: TDORServiceTerminateProc;
     function Start: boolean;
     procedure Suspend;
     procedure Resume;
@@ -63,6 +67,7 @@ type
     property ServiceType: Cardinal read FServiceType write FServiceType;
     property StartType: Cardinal read FStartType write FStartType;
 {$ENDIF}
+    property OnTerminate: TDORServiceTerminateProc read FTerminateProc write FTerminateProc;
   end;
 
   function Application: TDORService;
@@ -108,10 +113,21 @@ var
 {$ENDIF}
 
 procedure Terminate;
+var
+  CanStop: Boolean;
 begin
   if FApplication <> nil then
   begin
     TCustomObserver.TriggerEvent(SO(['event', 'application_terminate']));
+    if Assigned(FApplication.OnTerminate) then
+    begin
+      CanStop := True;
+      repeat
+        Sleep(100);
+        FApplication.OnTerminate(CanStop);
+      until CanStop;
+    end;
+    FApplication.OnTerminate := nil;
 
     FApplication.Free;
     FApplication := nil;
