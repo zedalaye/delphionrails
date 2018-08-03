@@ -515,7 +515,7 @@ var
   buff: array[0..1023] of AnsiChar;
   strm: TStream;
   encoding: TContentEncoding;
-  t: timeval;
+  t: DWORD; // linux: timeval
   Total, Rate, Start, Curr, Freq: Int64;
   wait: TProc<Integer>;
 begin
@@ -547,8 +547,7 @@ begin
       FResponseData.Size := 0;
     FResponseHeader.Clear;
 
-    t.tv_sec := TimeOut;
-    t.tv_usec := 0;
+    t := TimeOut * 1000;
     setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @t, SizeOf(t));
 
     if not HTTPParse(
