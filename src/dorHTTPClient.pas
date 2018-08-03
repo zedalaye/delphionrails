@@ -980,6 +980,7 @@ begin
   if FSocket <> INVALID_SOCKET then
   begin
     Flush;
+    shutdown(FSocket, SD_BOTH);
     closesocket(FSocket);
     FSocket := INVALID_SOCKET;
     Sleep(1);

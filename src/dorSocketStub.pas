@@ -813,7 +813,8 @@ begin
   Flush;
   if FOwned then
   begin
-    CloseSocket(FSocket);
+    shutdown(FSocket, SD_BOTH);
+    closesocket(FSocket);
     Sleep(1);
   end;
   FSocket := INVALID_SOCKET;
@@ -993,6 +994,7 @@ begin
   inherited;
   if FSocketHandle <> INVALID_SOCKET then
   begin
+    shutdown(FSocketHandle, SD_BOTH);
     closesocket(FSocketHandle);
     FSocketHandle := INVALID_SOCKET;
   end;
@@ -1024,6 +1026,7 @@ begin
   inherited;
   if FSocketHandle <> INVALID_SOCKET then
   begin
+    shutdown(FSocketHandle, SD_BOTH);
     closesocket(FSocketHandle);
     FSocketHandle := INVALID_SOCKET;
   end;
@@ -1090,7 +1093,8 @@ begin
   if FOwned then
   begin
     Flush;
-    CloseSocket(FSocket);
+    shutdown(FSocket, SD_BOTH);
+    closesocket(FSocket);
     Sleep(1);
     CloseSSL;
   end;
