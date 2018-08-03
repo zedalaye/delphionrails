@@ -216,7 +216,7 @@ end;
 procedure THTTPRequest.Abort;
 begin
   FReadyState := rsUninitialized;
-  if FResponseData <> nil then
+  if FResponseDataOwned and (FResponseData <> nil) then
     FResponseData.Size := 0;
   LoadDefaultHeader;
   FResponseHeader.Clear;
