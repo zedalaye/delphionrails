@@ -320,6 +320,7 @@ const
   procedure SSL_CTX_set_default_passwd_cb(ctx: PSSL_CTX; cb: Pointer); cdecl; external SSLEAY;
   procedure SSL_CTX_set_default_passwd_cb_userdata(ctx: PSSL_CTX; u: Pointer); cdecl; external SSLEAY;
   function SSL_CTX_load_verify_locations(ctx: PSSL_CTX; const CAfile: PAnsiChar; const CApath: PAnsiChar):Integer; cdecl; external SSLEAY;
+  procedure SSL_CTX_set_cert_verify_callback(ctx: PSSL_CTX; cb: Pointer; arg: Pointer); cdecl; external SSLEAY;
   function SSL_new(ctx: PSSL_CTX):PSSL; cdecl; external SSLEAY;
   procedure SSL_free(ssl: PSSL); cdecl; external SSLEAY;
   function SSL_connect(ssl: PSSL):Integer; cdecl; external SSLEAY;
