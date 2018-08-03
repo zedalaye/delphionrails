@@ -423,24 +423,37 @@ begin
 end;
 
 function THTTPStub.DecodeContent: boolean;
+const
+  BLOCK_SIZE = 8*1024;
 var
   ContentLength: integer;
-  len: Integer;
-  b: Byte;
+  len, total: Integer;
+  b: array[0..BLOCK_SIZE] of Byte;
+
+  function max_block_size(total: Integer): Integer; inline;
+  begin
+    if total < BLOCK_SIZE then
+      Result := total
+    else
+      Result := BLOCK_SIZE;
+  end;
+
 begin
+  Result := True;
   ContentLength := Request.I['env.content-length'];
   if ContentLength > 0 then
-  with Request.FContent do
   begin
-    Size := ContentLength;
-    Seek(0, soFromBeginning);
-    for len := 1 to ContentLength do
-    begin
-      Source.Read(b, 1, ReadTimeOut);
-      Write(b, 1);
-    end;
+    Request.FContent.Size := ContentLength;
+    Request.FContent.Seek(0, soFromBeginning);
+    total := ContentLength;
+    repeat
+      len := Source.Read(b[0], max_block_size(total), ReadTimeOut);
+      if len > 0 then
+        Request.FContent.Write(b[0], len);
+      Dec(total, len);
+    until (total = 0) or (len <= 0);
+    Result := total = 0;
   end;
-  Result := True;
 end;
 
 function THTTPStub.DecodeCommand(str: PChar): boolean;
