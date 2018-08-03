@@ -937,38 +937,62 @@ end;
 { TSocketServer }
 
 function TSocketServer.Run: Cardinal;
+const
+  DOR_MAX_CONN = SOMAXCONN; // 200
 var
   InputSocket: TSocket;
   InputAddress: TSockAddrIn;
   InputLen: Integer;
   Stub: TDORThread;
   SO_True: Integer;
+//  SO_Zero: Integer;
+  linger: TLinger;
+  optval: Integer;
+  bytes: DWORD;
 begin
 {$if defined(DEBUG)}
   TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
 {$ifend}
 
-  SO_True := -1;
   Result := 0;
   FSocketHandle := socket(AF_INET, SOCK_STREAM, 0);
   PSockAddrIn(@FAddress).sin_addr.s_addr := FBind;
   PSockAddrIn(@FAddress).sin_family := AF_INET;
   PSockAddrIn(@FAddress).sin_port := htons(FPort);
 
-  setsockopt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@SO_True), SizeOf(SO_True));
-  setsockopt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@SO_True), SizeOf(SO_True));
+  SO_True := -1;
+//  if setsockopt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@SO_True), SizeOf(SO_True)) <> 0 then
+//    RaiseLastOSError(WSAGetLastError);
+
+  if setsockopt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@SO_True), SizeOf(SO_True)) <> 0 then
+    RaiseLastOSError(WSAGetLastError);
+
+//  SO_Zero := 0;
+//  if setsockopt(FSocketHandle, SOL_SOCKET, SO_SNDBUF, PAnsiChar(@SO_Zero), SizeOf(SO_Zero)) <> 0 then
+//    RaiseLastOSError(WSAGetLastError);
+
+  linger.l_onoff := 1;
+  linger.l_linger := 5;
+  setsockopt(FSocketHandle, SOL_SOCKET, SO_LINGER, PAnsiChar(@linger), sizeof(linger));
 
   if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
   begin
     Stop;
-    raise Exception.Create('can''t bind.');
+    raise Exception.Create('Can''t bind()');
   end;
 
-  if (listen(FSocketHandle, 200) <> 0) then
+  if (listen(FSocketHandle, DOR_MAX_CONN) <> 0) then
   begin
     Stop;
-    raise Exception.Create('can''t listen.');
+    raise Exception.Create('Can''t listen()');
   end;
+
+  { Borrowed from Firebird source code : optimization for loopback connections
+    SIO_LOOPBACK_FAST_PATH = _WSAIOW(IOC_VENDOR, 16)
+    Only for Windows 8+ and Windows Server 2012+ }
+  optval := 1;
+  bytes := 0;
+  WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 16), @optval, sizeof(optval),	nil, 0, bytes, nil, nil);
 
   InputLen := SizeOf(InputAddress);
   while not Stopped do
