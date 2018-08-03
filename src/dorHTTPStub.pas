@@ -877,32 +877,100 @@ begin
   FResponse := THTTPMessage.Create;
   FResponse._AddRef;
 
-
   FContext := TSuperRttiContext.Create;
+
+  { Cf. https://developer.mozilla.org/fr/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Complete_list_of_MIME_types }
 
   FFormats := TSuperObject.Create;
   with FFormats do
   begin
-    S['htm.content'] := 'text/html';
-    S['htm.charset'] := DEFAULT_CHARSET;
-    B['htm.istext'] := True;
-    S['html.content'] := 'text/html';
-    S['html.charset'] := DEFAULT_CHARSET;
-    B['html.istext'] := True;
-    S['xml.content'] := 'text/xml';
-    B['xml.istext'] := True;
-    S['json.content'] := 'text/json';
-    B['json.istext'] := True;
-    S['png.content'] := 'image/png';
-    S['jpeg.content'] := 'image/jpeg';
-    S['jpg.content'] := 'image/jpeg';
-    S['gif.content'] := 'image/gif';
-    S['css.content'] := 'text/css';
-    B['css.istext'] := True;
-    S['js.content'] := 'text/javascript';
-    B['js.istext'] := True;
-    S['svg.content'] := 'image/svg+xml';
-    B['svg.istext'] := True;
+    S['aac.content']   := 'audio/aac';
+    S['wav.content']   := 'audio/x-wav';
+    S['oga.content']   := 'audio/ogg';
+    S['weba.content']  := 'audio/webm';
+
+    S['avi.content']   := 'video/ms-video';
+    S['ogv.content']   := 'video/ogg';
+    S['mpeg.content']  := 'video/mpeg';
+    S['webm.content']  := 'video/webm';
+
+    S['bz.content']    := 'application/x-bzip';
+    S['bz2.content']   := 'application/x-bzip2';
+    S['rar.content']   := 'application/x-rar-compressed';
+    S['tar.content']   := 'application/x-tar';
+    S['zip.content']   := 'application/zip';
+    S['7z.content']    := 'application/x-7z-compressed';
+
+    S['pdf.content']   := 'application/pdf';
+    S['ogx.content']   := 'application/ogg';
+    S['doc.content']   := 'application/msword';
+    S['docx.content']  := 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    S['ppt.content']   := 'application/vnd.ms-powerpoint';
+    S['pptx.content']  := 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    S['xls.content']   := 'application/vnd.ms-excel';
+    S['xlsx.content']  := 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    S['epub.content']  := 'application/epub+zip';
+    S['jar.content']   := 'application/java-archive';
+    S['odp.content']   := 'application/vnd.oasis.opendocument.presentation';
+    S['ods.content']   := 'application/vnd.oasis.opendocument.spreadsheet';
+    S['odt.content']   := 'application/vnd.oasis.opendocument.text';
+
+    S['eot.content']   := 'application/vnd.ms-fontobject';
+    S['otf.content']   := 'font/otf';
+    S['ttf.content']   := 'font/ttf';
+    S['woff.content']  := 'font/woff';
+    S['woff2.content'] := 'font/woff2';
+
+    S['csv.content']   := 'text/csv';
+    S['csv.charset']   := DEFAULT_CHARSET;
+    B['csv.istext']    := True;
+
+    S['rtf.content']   := 'application/rtf';
+    S['rtf.charset']   := DEFAULT_CHARSET;
+    B['rtf.istext']    := True;
+
+    S['htm.content']   := 'text/html';
+    S['htm.charset']   := DEFAULT_CHARSET;
+    B['htm.istext']    := True;
+
+    S['html.content']  := 'text/html';
+    S['html.charset']  := DEFAULT_CHARSET;
+    B['html.istext']   := True;
+
+    S['xhtml.content'] := 'application/xhtml+xml';
+    S['xhtml.charset'] := DEFAULT_CHARSET;
+    B['xhtml.istext']  := True;
+
+    S['xml.content']   := 'application/xml';
+    B['xml.istext']    := True;
+
+    S['xml.content']   := 'text/calendar';
+    B['xml.istext']    := True;
+
+    S['json.content']  := 'application/json';
+    B['json.istext']   := True;
+
+    S['png.content']   := 'image/png';
+    S['jpeg.content']  := 'image/jpeg';
+    S['jpg.content']   := 'image/jpeg';
+    S['gif.content']   := 'image/gif';
+    S['ico.content']   := 'image/x-icon';
+    S['tif.content']   := 'image/tiff';
+    S['tiff.content']  := 'image/tiff';
+    S['webp.content']  := 'image/webp';
+
+    S['css.content']   := 'text/css';
+    B['css.istext']    := True;
+
+    S['js.content']    := 'application/javascript';
+    B['js.istext']     := True;
+
+    S['ts.content']    := 'application/typescript';
+    B['ts.istext']     := True;
+
+    S['svg.content']   := 'image/svg+xml';
+    B['svg.istext']    := True;
   end;
 end;
 
