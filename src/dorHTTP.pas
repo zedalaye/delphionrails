@@ -16,7 +16,8 @@ function HTTPParse(const receive: TOnHTTPReadWrite; const onResponse: TOnHTTPRes
 
 function HTTPEncode(const AStr: string): RawByteString;
 function HTTPDecode(const AStr: string): RawByteString;
-function HttpResponseStrings(code: integer): RawByteString;
+function HttpStatusString(code: Integer): string;
+function HttpResponseStrings(code: Integer): RawByteString;
 function HTTPParseURL(const uri: PChar; out protocol: string;
   out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
 function HTTPParseHeader(const header: RawByteString; subkeys: Boolean; const onfield: TOnHTTPHeaderField): Boolean;
@@ -558,70 +559,87 @@ redo:
   end;
 end;
 
+function HttpStatusString(code: Integer): string;
+begin
+  case code of
+    100: Result := 'Continue';
+    101: Result := 'Switching Protocols';
+    102: Result := 'Processing'; // WebDAV
+
+    200: Result := 'OK';
+    201: Result := 'Created';
+    202: Result := 'Accepted';
+    203: Result := 'Non-Authoritative Information';
+    204: Result := 'No Content';
+    205: Result := 'Reset Content';
+    206: Result := 'Partial Content';
+    207: Result := 'Multi-Status'; // WebDAV
+
+    300: Result := 'Multiple Choices';
+    301: Result := 'Moved Permanently';
+    302: Result := 'Found';
+    303: Result := 'See Other';
+    304: Result := 'Not Modified';
+    305: Result := 'Use Proxy';
+    306: Result := 'unused';
+    307: Result := 'Temporary Redirect';
+
+    400: Result := 'Bad Request';
+    401: Result := 'Authorization Required';
+    402: Result := 'Payment Required';
+    403: Result := 'Forbidden';
+    404: Result := 'Not Found';
+    405: Result := 'Method Not Allowed';
+    406: Result := 'Not Acceptable';
+    407: Result := 'Proxy Authentication Required';
+    408: Result := 'Request Time-out';
+    409: Result := 'Conflict';
+    410: Result := 'Gone';
+    411: Result := 'Length Required';
+    412: Result := 'Precondition Failed';
+    413: Result := 'Request Entity Too Large';
+    414: Result := 'Request-URI Too Large';
+    415: Result := 'Unsupported Media Type';
+    416: Result := 'Requested Range Not Satisfiable';
+    417: Result := 'Expectation Failed';
+    418: Result := 'I''m a teapot';
+    422: Result := 'Unprocessable Entity'; // WebDAV
+    423: Result := 'Locked'; // WebDAV
+    424: Result := 'Failed Dependency'; // WebDAV
+    425: Result := 'Unordered Collection'; // WebDAV
+    426: Result := 'Upgrade Required';
+    449: Result := 'Retry With';
+    450: Result := 'Blocked by Windows Parental Controls';
+
+    500: Result := 'Internal Server Error';
+    501: Result := 'Method Not Implemented';
+    502: Result := 'Bad Gateway';
+    503: Result := 'Service Temporarily Unavailable';
+    504: Result := 'Gateway Time-out';
+    505: Result := 'HTTP Version Not Supported';
+    506: Result := 'Variant Also Negotiates';
+    507: Result := 'Insufficient Storage'; // WebDAV
+    509: Result := 'Bandwidth Limit Exceeded';
+    510: Result := 'Not Extended';
+  else
+    Result := IntToStr(code);
+  end;
+end;
+
 function HttpResponseStrings(code: integer): RawByteString;
 begin
   case code of
-    100: Result := '100 Continue';
-    101: Result := '101 Switching Protocols';
-    102: Result := 'Processing'; // WebDAV
-
-    200: Result := 'HTTP/1.1 200 OK';
-    201: Result := 'HTTP/1.1 201 Created';
-    202: Result := 'HTTP/1.1 202 Accepted';
-    203: Result := 'HTTP/1.1 203 Non-Authoritative Information';
-    204: Result := 'HTTP/1.1 204 No Content';
-    205: Result := 'HTTP/1.1 205 Reset Content';
-    206: Result := 'HTTP/1.1 206 Partial Content';
-    207: Result := 'HTTP/1.1 207 Multi-Status'; // WebDAV
-
-    300: Result := 'HTTP/1.1 300 Multiple Choices';
-    301: Result := 'HTTP/1.1 301 Moved Permanently';
-    302: Result := 'HTTP/1.1 302 Found';
-    303: Result := 'HTTP/1.1 303 See Other';
-    304: Result := 'HTTP/1.1 304 Not Modified';
-    305: Result := 'HTTP/1.1 305 Use Proxy';
-    306: Result := 'HTTP/1.1 306 unused';
-    307: Result := 'HTTP/1.1 307 Temporary Redirect';
-
-    400: Result := 'HTTP/1.1 400 Bad Request';
-    401: Result := 'HTTP/1.1 401 Authorization Required';
-    402: Result := 'HTTP/1.1 402 Payment Required';
-    403: Result := 'HTTP/1.1 403 Forbidden';
-    404: Result := 'HTTP/1.1 404 Not Found';
-    405: Result := 'HTTP/1.1 405 Method Not Allowed';
-    406: Result := 'HTTP/1.1 406 Not Acceptable';
-    407: Result := 'HTTP/1.1 407 Proxy Authentication Required';
-    408: Result := 'HTTP/1.1 408 Request Time-out';
-    409: Result := 'HTTP/1.1 409 Conflict';
-    410: Result := 'HTTP/1.1 410 Gone';
-    411: Result := 'HTTP/1.1 411 Length Required';
-    412: Result := 'HTTP/1.1 412 Precondition Failed';
-    413: Result := 'HTTP/1.1 413 Request Entity Too Large';
-    414: Result := 'HTTP/1.1 414 Request-URI Too Large';
-    415: Result := 'HTTP/1.1 415 Unsupported Media Type';
-    416: Result := 'HTTP/1.1 416 Requested Range Not Satisfiable';
-    417: Result := 'HTTP/1.1 417 Expectation Failed';
-    418: Result := 'HTTP/1.1 418 I''m a teapot';
-    422: Result := 'HTTP/1.1 422 Unprocessable Entity'; // WebDAV
-    423: Result := 'HTTP/1.1 417 Locked'; // WebDAV
-    424: Result := 'HTTP/1.1 424 Failed Dependency'; // WebDAV
-    425: Result := 'HTTP/1.1 425 Unordered Collection'; // WebDAV
-    426: Result := 'HTTP/1.1 426 Upgrade Required';
-    449: Result := 'HTTP/1.1 449 Retry With';
-    450: Result := 'HTTP/1.1 450 Blocked by Windows Parental Controls';
-
-    500: Result := 'HTTP/1.1 500 Internal Server Error';
-    501: Result := 'HTTP/1.1 501 Method Not Implemented';
-    502: Result := 'HTTP/1.1 502 Bad Gateway';
-    503: Result := 'HTTP/1.1 503 Service Temporarily Unavailable';
-    504: Result := 'HTTP/1.1 504 Gateway Time-out';
-    505: Result := 'HTTP/1.1 505 HTTP Version Not Supported';
-    506: Result := 'HTTP/1.1 506 Variant Also Negotiates';
-    507: Result := 'HTTP/1.1 507 Insufficient Storage'; // WebDAV
-    509: Result := 'HTTP/1.1 509 Bandwidth Limit Exceeded';
-    510: Result := 'HTTP/1.1 510 Not Extended';
+    100, 101:
+      Result := RawByteString(Format('%d %s', [code, HttpStatusString(code)]));
+    102:
+      Result := 'Processing'; // WebDAV
+    200..207,
+    300..307,
+    400..426, 449, 450,
+    500..510:
+      Result := RawByteString(Format('HTTP/1.1 %d %s', [code, HttpStatusString(code)]))
   else
-    Result := 'HTTP/1.1 ' + RawByteString(inttostr(code));
+    Result := 'HTTP/1.1 ' + RawByteString(IntToStr(code));
   end;
 end;
 
