@@ -896,6 +896,8 @@ var
 begin
   Result := len;
 
+  SocketTuneSendBuffer(FSocket);
+
   if (FWriteTimeout <> Timeout) then
   begin
     setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
@@ -992,7 +994,7 @@ begin
     Only for Windows 8+ and Windows Server 2012+ }
   optval := 1;
   bytes := 0;
-  WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 16), @optval, sizeof(optval),	nil, 0, bytes, nil, nil);
+  WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 16), @optval, SizeOf(optval),	nil, 0, bytes, nil, nil);
 
   InputLen := SizeOf(InputAddress);
   while not Stopped do
@@ -1280,6 +1282,8 @@ begin
   if FConnected then
   begin
     Result := len;
+
+    SocketTuneSendBuffer(FSocket);
 
     if (FWriteTimeout <> Timeout) then
     begin

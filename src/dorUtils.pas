@@ -125,6 +125,8 @@ function StreamToStr(stream: TStream): string;
 function GetTickCount: Cardinal;
 {$ENDIF}
 
+procedure SocketTuneSendBuffer(const Socket: TSocket);
+
 implementation
 
 const
@@ -619,6 +621,18 @@ begin
   finally
     strm.Free;
   end;
+end;
+
+procedure SocketTuneSendBuffer(const Socket: TSocket);
+var
+  ideal: ULONG;
+  len: DWORD;
+begin
+  { Borrowed from Curl source code : optimisation to fine-tune the BACKLOG buffer
+    Only for Windows Server 2008+ and Vista SP1+
+    SIO_IDEAL_SEND_BACKLOG_QUERY = _IOR(Ord('t'), 123, SizeOf(ULONG)) }
+  if WSAIoctl(Socket, _IOR(Ord('t'), 123, SizeOf(ULONG)), nil, 0, @ideal, SizeOf(ideal), len, nil, nil) = 0 then
+    setsockopt(Socket, SOL_SOCKET, SO_SNDBUF, PAnsiChar(@ideal), SizeOf(ideal));
 end;
 
 { TPooledMemoryStream }

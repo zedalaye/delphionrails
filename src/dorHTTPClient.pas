@@ -942,6 +942,8 @@ begin
   if connect(FSocket, addr, SizeOf(addr)) <> 0 then
     Exit(False);
 
+  SocketTuneSendBuffer(FSocket);
+
   if ssl then
   begin
     FCtx := SSL_CTX_new(SSLv23_method);
