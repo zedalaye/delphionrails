@@ -1,10 +1,12 @@
 unit dorSynchronizer;
 
 interface
-uses SysUtils, Windows, Classes;
+
+uses
+  SysUtils, Windows, Classes, RTLConsts;
 
 type
-  TSynchonizer<T> = class
+  TSynchronizer<T> = class
   private type
     PSynchronizeRecord = ^TSynchronizeRecord;
     TSynchronizeRecord = record
@@ -33,7 +35,6 @@ type
   end;
 
 implementation
-uses RTLConsts;
 
 {$IFNDEF CPUX64}
 type
@@ -42,7 +43,7 @@ type
 
 { TSynchonizer<T> }
 
-function TSynchonizer<T>.CheckSynchronize(Timeout: Integer): Boolean;
+function TSynchronizer<T>.CheckSynchronize(Timeout: Integer): Boolean;
 var
   SyncProc: PSyncProc;
   LocalSyncList: TList;
@@ -96,7 +97,7 @@ begin
   end;
 end;
 
-constructor TSynchonizer<T>.Create;
+constructor TSynchronizer<T>.Create;
 begin
   FMainThreadID := GetCurrentThreadId;
   InitializeCriticalSection(FThreadLock);
@@ -105,14 +106,14 @@ begin
     RaiseLastOSError;
 end;
 
-destructor TSynchonizer<T>.Destroy;
+destructor TSynchronizer<T>.Destroy;
 begin
   DeleteCriticalSection(FThreadLock);
   CloseHandle(FSyncEvent);
   inherited;
 end;
 
-procedure TSynchonizer<T>.Synchronize(const data: T; const AThreadProc: TProc<T>);
+procedure TSynchronizer<T>.Synchronize(const data: T; const AThreadProc: TProc<T>);
 var
   ASynchronize: TSynchronizeRecord;
 begin
@@ -122,7 +123,7 @@ begin
   doSynchronize(@ASynchronize);
 end;
 
-procedure TSynchonizer<T>.doSynchronize(ASyncRec: PSynchronizeRecord;
+procedure TSynchronizer<T>.doSynchronize(ASyncRec: PSynchronizeRecord;
   QueueEvent: Boolean);
 var
   SyncProc: TSyncProc;
@@ -132,7 +133,8 @@ begin
   begin
     if Assigned(ASyncRec.FProcedure) then
       ASyncRec.FProcedure(AsyncRec.FData);
-  end else
+  end
+  else
   begin
     if QueueEvent then
       New(SyncProcPtr)
@@ -172,7 +174,7 @@ begin
   end;
 end;
 
-procedure TSynchonizer<T>.Queue(const data: T; const AThreadProc: TProc<T>);
+procedure TSynchronizer<T>.Queue(const data: T; const AThreadProc: TProc<T>);
 var
   LSynchronize: PSynchronizeRecord;
 begin
