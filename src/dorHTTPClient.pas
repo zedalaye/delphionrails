@@ -197,7 +197,9 @@ type
   end;
 
 implementation
-uses Windows, Math, ZLib, dorOpenSSL, dorHTTP;
+
+uses
+  Windows, Math, ZLib, dorOpenSSL, dorHTTP;
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: THTTPRequest): Integer; cdecl;
@@ -288,7 +290,8 @@ var
   rec: THTTPHeader;
 begin
   if FRequestHeader.TryGetValue(LowerCase(header), rec) then
-    Result := rec.value else
+    Result := rec.value
+  else
     Result := '';
 end;
 
@@ -302,7 +305,8 @@ var
   rec: THTTPHeader;
 begin
   if (FReadyState >= rsReceiving) and FResponseHeader.TryGetValue(LowerCase(header), rec) then
-    Result := rec.value else
+    Result := rec.value
+  else
     Result := '';
 end;
 
@@ -349,7 +353,8 @@ begin
             freecharset := True;
           end;
           Result := False;
-        end else
+        end
+        else
           Result := True;
       end);
     end;
@@ -360,7 +365,6 @@ begin
   finally
     if freecharset and (encoding <> nil) then
       encoding.Free;
-
     strings.Free;
   end;
 end;
@@ -411,42 +415,46 @@ begin
   if (url <> '') and (url[1] = '/') then
   begin
     if urlencode then
-      FPath := HTTPEncode(url) else
+      FPath := HTTPEncode(url)
+    else
       FPath := RawbyteString(url);
-  end else
+  end
+  else
+  begin
+    if not HTTPParseURL(PChar(url), Protocol, Domain, Port, FPath, urlencode) then
+      Exit(False);
+
+    if SameText(Protocol, 'http') then
     begin
-      if not HTTPParseURL(PChar(url), Protocol, Domain, Port, FPath, urlencode) then
-        Exit(False);
+      ssl := False;
+      if Port = 0 then
+        Port := 80;
+    end
+    else if SameText(Protocol, RawbyteString('https')) then
+    begin
+      ssl := True;
+      if Port = 0 then
+        Port := 443;
+    end
+    else
+      Exit(False);
 
-      if SameText(Protocol, 'http') then
-      begin
-        ssl := False;
-        if Port = 0 then
-          Port := 80;
-      end else
-        if SameText(Protocol, RawbyteString('https')) then
-        begin
-          ssl := True;
-          if Port = 0 then
-            Port := 443;
-        end else
-          Exit(False);
-
-      if (FSocket <> INVALID_SOCKET) then
-      begin
-        if (FDomain = Domain) and (FPort = Port) and (ssl = (FSsl <> nil)) then
-          goto keepsocket else
-          Abort;
-      end;
-
-      if not TCPConnect(Domain, Port, ssl) then
-        goto error;
-
-      FProtocol := Protocol;
-      FDomain := Domain;
-      FPort := Port;
-      LoadDefaultHeader;
+    if (FSocket <> INVALID_SOCKET) then
+    begin
+      if (FDomain = Domain) and (FPort = Port) and (ssl = (FSsl <> nil)) then
+        goto keepsocket
+      else
+        Abort;
     end;
+
+    if not TCPConnect(Domain, Port, ssl) then
+      goto error;
+
+    FProtocol := Protocol;
+    FDomain := Domain;
+    FPort := Port;
+    LoadDefaultHeader;
+  end;
 
 keepsocket:
   FAsync := async;
@@ -530,7 +538,8 @@ begin
         QueryPerformanceCounter(Curr);
         Rate := Round((Total / 1024) / ((Curr - Start) / Freq));
         if Rate < DownloadRate then
-          Break else
+          Break
+        else
           SleepEx(1000, True);
       end;
     end;
@@ -543,7 +552,8 @@ begin
     begin
       FResponseData := TPooledMemoryStream.Create;
       FResponseDataOwned := True;
-    end else
+    end
+    else
       FResponseData.Size := 0;
     FResponseHeader.Clear;
 
@@ -565,25 +575,28 @@ begin
       begin
         SetResponseHeader(key, value);
         Result := True;
-      end) then
-        Exit(False);
+      end)
+    then
+      Exit(False);
 
     if FResponseHeader.TryGetValue('content-encoding', str) then
     begin
       if AnsiStrings.SameText(str.value, 'deflate') then
       begin
         encoding := encDeflate;
-      end else
-      if AnsiStrings.SameText(str.value, 'gzip') then
-        encoding := encGZIP else
+      end
+      else if AnsiStrings.SameText(str.value, 'gzip') then
+        encoding := encGZIP
+      else
         encoding := encUnknown;
-    end else
+    end
+    else
       encoding := encUnknown;
 
     if encoding = encUnknown then
-      strm := FResponseData else
+      strm := FResponseData
+    else
       strm := TPooledMemoryStream.Create;
-
 
     Total := 0;
     if DownloadRate > 0 then
@@ -604,10 +617,11 @@ begin
         begin
           SetReadyState(rsReceiving);
           Result := strm.Write(buf, len);
-        end) then
-          Exit(False);
-    end else
-    if FResponseHeader.TryGetValue('content-length', str) and
+        end)
+      then
+        Exit(False);
+    end
+    else if FResponseHeader.TryGetValue('content-length', str) and
       TryStrToInt(string(str.value), len) and (len > 0) then
     begin
       while len > 0 do
@@ -619,7 +633,8 @@ begin
           rcv := SockRecv(buff, SizeOf(buff));
           if rcv <> SizeOf(buff) then
             Exit(False);
-        end else
+        end
+        else
         begin
           wait(len);
           rcv := SockRecv(buff, len);
@@ -629,8 +644,8 @@ begin
         strm.Write(buff, rcv);
         Dec(len, rcv);
       end;
-    end else
-    if FResponseHeader.TryGetValue('connection', str) and (string(str.value) = 'close') then
+    end
+    else if FResponseHeader.TryGetValue('connection', str) and (string(str.value) = 'close') then
     begin
       repeat
         SetReadyState(rsReceiving);
@@ -681,7 +696,8 @@ begin
   begin
     TThreadAsync.Create(Self, data, FTimeOut, FDownloadRate, FUploadRate);
     Result := True;
-  end else
+  end
+  else
   begin
     Result := InternalSend(data, FTimeOut, FDownloadRate, FUploadRate);
     SetReadyState(rsLoaded);
@@ -715,7 +731,8 @@ begin
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
 
   if ((FSsl = nil) and (FPort <> 80)) or ((FSsl <> nil) and (FPort <> 443)) then
-    HTTPWriteLine('Host: ' + FDomain + ':' + RawByteString(IntToStr(FPort))) else
+    HTTPWriteLine('Host: ' + FDomain + ':' + RawByteString(IntToStr(FPort)))
+  else
     HTTPWriteLine('Host: ' + FDomain);
 
   for pair in FRequestHeader.Values do
@@ -726,7 +743,8 @@ begin
     if Pos(cook.Value.path, FPath) = 1 then
     begin
       if cookiecount > 0 then
-        cookie := cookie + '; ' else
+        cookie := cookie + '; '
+      else
         cookie := 'Cookie: ';
       cookie := cookie + cook.Key + '=' + cook.Value.value;
       Inc(cookiecount);
@@ -760,7 +778,6 @@ begin
     else
       compressed := nil;
 
-
     HTTPWriteLine('Content-Length: ' + RawByteString(IntToStr(data.Size - data.Position)));
     HTTPWriteLine('');
 
@@ -783,7 +800,8 @@ begin
             QueryPerformanceCounter(Curr);
             Rate := Round((Total / 1024) / ((Curr - Start) / Freq));
             if Rate < UploadRate then
-              Break else
+              Break
+            else
               Sleep(1000);
           end;
         end;
@@ -796,6 +814,7 @@ begin
   end
   else
     HTTPWriteLine('');
+
   Flush;
   SetReadyState(rsSent);
 end;
@@ -889,7 +908,8 @@ begin
   while len > 0 do
   begin
     if FSsl <> nil then
-      rcv := SSL_read(FSsl, p, 1) else
+      rcv := SSL_read(FSsl, p, 1)
+    else
       rcv := recv(FSocket, p^, 1, 0);
     if rcv <> 1 then
     begin
@@ -924,7 +944,8 @@ begin
     if FBufferPos = BUFFER_SIZE then
     begin
       if FSsl <> nil then
-        SSL_write(FSsl, @FBuffer, BUFFER_SIZE) else
+        SSL_write(FSsl, @FBuffer, BUFFER_SIZE)
+      else
         WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
       FBufferPos := 0;
     end;
@@ -940,11 +961,13 @@ begin
   Result := True;
   // find host
   host := gethostbyname(PAnsiChar(Domain));
-  if host = nil then Exit(False);
+  if host = nil then
+    Exit(False);
 
   // socket
   FSocket := socket(AF_INET, SOCK_STREAM, 0);
-  if FSocket = INVALID_SOCKET then Exit(False);
+  if FSocket = INVALID_SOCKET then
+    Exit(False);
 
   // connect
   FillChar(addr, SizeOf(addr), 0);
@@ -1096,14 +1119,15 @@ begin
           begin
             name := key;
             cookie.value := value;
-          end else
-            if AnsiStrings.SameText(key, 'path') then
-               cookie.path := value else
-               if AnsiStrings.SameText(key, 'domain') then
-                 cookie.domain := value;
+          end
+          else if AnsiStrings.SameText(key, 'path') then
+            cookie.path := value
+          else if AnsiStrings.SameText(key, 'domain') then
+            cookie.domain := value;
           Result := True;
-        end) then
-          FCookies.AddOrSetValue(name, cookie);
+        end)
+      then
+        FCookies.AddOrSetValue(name, cookie);
       Result := False;
     end);
 end;
@@ -1122,7 +1146,8 @@ begin
   begin
     FData := TPooledMemoryStream.Create;
     FData.LoadFromStream(data);
-  end else
+  end
+  else
     FData := nil;
   inherited Create(False);
 end;

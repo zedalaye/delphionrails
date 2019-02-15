@@ -100,8 +100,8 @@ type
     destructor Destroy; override;
   end;
 
-function CompressStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION; skipflag: Boolean = False): boolean; overload;
-function DecompressStream(inStream, outStream: TStream; addflag: Boolean = False; maxin: Integer = 0): boolean; overload;
+function CompressStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION; skipflag: Boolean = False): boolean;
+function DecompressStream(inStream, outStream: TStream; addflag: Boolean = False; maxin: Integer = 0): boolean;
 
 { Same a above with GZip Header }
 function CompressGZipStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION): Boolean;

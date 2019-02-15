@@ -104,6 +104,7 @@ type
   end;
 
 implementation
+
 uses
 {$IFDEF MSWINDOWS}
  windows,
@@ -197,7 +198,6 @@ begin
     Result := TSuperObject.Create(p);
 end;
 
-
 function MBUDecode(const str: RawByteString; cp: Word): UnicodeString;
 begin
   SetLength(Result, MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), nil, 0));
@@ -211,71 +211,78 @@ var
   i: integer;
   obj, obj2, value: ISuperObject;
 begin
+  if named then
+    Result := TSuperObject.create(stObject)
+  else
+    Result := TSuperObject.create(stArray);
+
+  if not StrictSep then
+    while {$IFDEF UNICODE}(src^ < #256) and {$ENDIF} (AnsiChar(src^) in [#1..' ']) do
+      Inc(src);
+
+  while src^ <> #0 do
+  begin
+    P1 := src;
+    while ((not StrictSep and (src^ >= ' ')) or
+          (StrictSep and (src^ <> #0))) and (src^ <> sep) do
+      Inc(src);
+    SetString(S, P1, src - P1);
+    if codepage > 0 then
+      S := MBUDecode(HTTPDecode(S), codepage);
     if named then
-      Result := TSuperObject.create(stObject) else
-      Result := TSuperObject.create(stArray);
+    begin
+      i := pos('=', S);
+      // named
+      if i > 1 then
+      begin
+        S[i] := #0;
+        obj := Result[S];
+//        if sep = '&' then
+//          value := DecodeValue(PChar(@S[i+1])) else
+        value := TSuperObject.Create(PSOChar(@S[i+1]));
+        if obj = nil then
+          Result[S] := value
+        else
+        begin
+          if obj.IsType(stArray) then
+            obj.AsArray.Add(value)
+          else
+          begin
+            obj2 := TSuperObject.Create(stArray);
+            Result[S] := obj2;
+            obj2.AsArray.Add(obj);
+            obj2.AsArray.Add(value);
+          end;
+        end;
+      end
+      else
+      begin
+        // unamed value ignored
+      end;
+    end
+    else
+    begin
+      value := TSuperObject.Create(S);
+      if value = nil then
+//      if sep = '&' then
+//        value := DecodeValue(PChar(s)) else
+        value := TSuperObject.Create(s);
+      Result.AsArray.Add(value);
+    end;
     if not StrictSep then
       while {$IFDEF UNICODE}(src^ < #256) and {$ENDIF} (AnsiChar(src^) in [#1..' ']) do
         Inc(src);
-    while src^ <> #0 do
+    if src^ = sep then
     begin
       P1 := src;
-      while ((not StrictSep and (src^ >= ' ')) or
-            (StrictSep and (src^ <> #0))) and (src^ <> sep) do
+      Inc(P1);
+      if (P1^ = #0) and not named then
+        Result.AsArray.Add(TSuperObject.Create(''));
+      repeat
         Inc(src);
-      SetString(S, P1, src - P1);
-      if codepage > 0 then
-        S := MBUDecode(HTTPDecode(S), codepage);
-      if named then
-      begin
-        i := pos('=', S);
-        // named
-        if i > 1 then
-        begin
-          S[i] := #0;
-          obj := Result[S];
-//          if sep = '&' then
-//            value := DecodeValue(PChar(@S[i+1])) else
-            value := TSuperObject.Create(PSOChar(@S[i+1]));
-          if obj = nil then
-            Result[S] := value else
-            begin
-              if obj.IsType(stArray) then
-                obj.AsArray.Add(value) else
-                begin
-                  obj2 := TSuperObject.Create(stArray);
-                  Result[S] := obj2;
-                  obj2.AsArray.Add(obj);
-                  obj2.AsArray.Add(value);
-                end;
-            end;
-        end else
-        begin
-          // unamed value ignored
-        end;
-      end else
-      begin
-        value := TSuperObject.Create(S);
-        if value = nil then
-//          if sep = '&' then
-//            value := DecodeValue(PChar(s)) else
-            value := TSuperObject.Create(s);
-        Result.AsArray.Add(value);
-      end;
-      if not StrictSep then
-        while {$IFDEF UNICODE}(src^ < #256) and {$ENDIF} (AnsiChar(src^) in [#1..' ']) do
-          Inc(src);
-      if src^ = sep then
-      begin
-        P1 := src;
-        Inc(P1);
-        if (P1^ = #0) and not named then
-          Result.AsArray.Add(TSuperObject.Create(''));
-        repeat
-          Inc(src);
-        until not (not StrictSep and {$IFDEF UNICODE}(src^ < #256) and {$ENDIF} (AnsiChar(src^) in [#1..' ']));
-      end;
+      until not (not StrictSep and {$IFDEF UNICODE}(src^ < #256) and {$ENDIF} (AnsiChar(src^) in [#1..' ']));
     end;
+  end;
 end;
 
 function EncodeObject(const obj: ISuperObject; const pass: AnsiString): SOString;
@@ -413,12 +420,13 @@ var
 begin
   p := StrScan(str, ':');
   if p = nil then
-    Result := false else
+    Result := False
+  else
     with Request.ForcePath('env') do
     begin
       prop := LowerCase(Copy(str, 1, p-str));
       AsObject.S[prop] := p+2;
-      Result := true;
+      Result := True;
     end;
 end;
 
@@ -426,7 +434,7 @@ function THTTPStub.DecodeContent: boolean;
 const
   BLOCK_SIZE = 8*1024;
 var
-  ContentLength: integer;
+  ContentLength: Integer;
   len, total: Integer;
   b: array[0..BLOCK_SIZE] of Byte;
   ContentEncoding: string;
@@ -476,9 +484,12 @@ begin
 end;
 
 function THTTPStub.DecodeCommand(str: PChar): boolean;
+
   function DecodeURI(uri: PChar; len: integer; out data: string): boolean;
-  const hexcodes = ['0'..'9', 'A'..'F', 'a'..'f'];
-  var i: integer;
+  const
+    hexcodes = ['0'..'9', 'A'..'F', 'a'..'f'];
+  var
+    i: integer;
   begin
     data := '';
     while len > 0 do
@@ -490,131 +501,150 @@ function THTTPStub.DecodeCommand(str: PChar): boolean;
           {$IFDEF UNICODE}(uri[1] < #256) and {$ENDIF}(AnsiChar(uri[1]) in hexcodes) and
           {$IFDEF UNICODE}(uri[2] < #256) and {$ENDIF}(AnsiChar(uri[2]) in hexcodes) and
           TryStrToInt('$' + uri[1] + uri[2], i) and
-          (i in [32..255]) then
-            begin
-              data := data + char(i);
-              inc(uri, 3);
-              dec(len, 3);
-            end else
-            begin
-              Result := False;
-              Exit;
-            end;
-      end else
+          (i in [32..255])
+        then
+        begin
+          data := data + char(i);
+          inc(uri, 3);
+          dec(len, 3);
+        end
+        else
+        begin
+          Result := False;
+          Exit;
+        end;
+      end
+      else
       begin
         data := data + uri^;
         inc(uri, 1);
         dec(len, 1);
       end;
     end;
-    Result := true;
+    Result := True;
   end;
+
 var
   marker: PChar;
   param, value: string;
-  i: integer;
+  i: Integer;
 begin
-  result := false;
+  Result := False;
+
   marker := StrScan(str, SP);
-  if marker = nil then exit;
-  Request.AsObject.S['method'] := copy(str, 0, marker - str);
+  if marker = nil then
+    Exit;
+
+  Request.AsObject.S['method'] := Copy(str, 0, marker - str);
   str := marker;
 
   // SP
   if (str^ <> SP) then
-    exit;
+    Exit;
 
   // URI
-  inc(str);
+  Inc(str);
   marker := Str;
   while not ({$IFDEF UNICODE}(str^ < #256) and {$ENDIF}(AnsiChar(Str^) in [SP, NL, '?'])) do
     inc(str);
+
   if (str > marker) and (str^ <> NL) then
   begin
     if DecodeURI(marker, str - marker, value) then
-      Request.AsObject.S['uri'] := value else
-      exit;
-  end else
-    exit;
+      Request.AsObject.S['uri'] := value
+    else
+      Exit;
+  end
+  else
+    Exit;
 
-  // decode parametters
+  // Parameters
   if str^ = '?' then
   begin
-    inc(str);
+    Inc(str);
     marker := Str;
     param := '';
     value := '';
-    while true do
+    while True do
       case str^ of
-        '&', SP, NL: begin
-               if (param <> '') and (str > marker) then
-               begin
-                 if not DecodeURI(marker, str - marker, value) then exit;
-                 Request['params.'+string(HTTPDecode(param))] := DecodeValue(PChar(string(HTTPDecode(value))));
-               end;
-               if {$IFDEF UNICODE}(str^ < #256) and {$ENDIF}(AnsiChar(str^) in [SP, NL]) then
-                 Break;
-               param := '';
-               value := '';
-               inc(Str);
-               marker := Str;
-             end;
-        '=': begin
-               if (str > marker) then
-                 if not DecodeURI(marker, str - marker, param) then
-                   Exit;
-               inc(Str);
-               marker := Str;
-             end;
+        '&', SP, NL:
+          begin
+            if (param <> '') and (str > marker) then
+            begin
+              if not DecodeURI(marker, str - marker, value) then exit;
+              Request['params.'+string(HTTPDecode(param))] := DecodeValue(PChar(string(HTTPDecode(value))));
+            end;
+            if {$IFDEF UNICODE}(str^ < #256) and {$ENDIF}(AnsiChar(str^) in [SP, NL]) then
+              Break;
+            param := '';
+            value := '';
+            inc(Str);
+            marker := Str;
+          end;
+        '=':
+          begin
+            if (str > marker) then
+              if not DecodeURI(marker, str - marker, param) then
+                Exit;
+            Inc(Str);
+            marker := Str;
+          end;
       else
-        inc(Str);
+        Inc(Str);
         continue;
       end;
-
   end;
 
   // SP expected
-  if (str^ <> SP) then exit;
+  if (str^ <> SP) then
+    Exit;
   repeat
-    inc(str);
+    Inc(str);
   until str^ <> SP;
 
   // HTTP/
   if not ((str[0] = 'H') and (str[1] = 'T') and (str[2] = 'T') and
      (str[3] = 'P') and (str[4] = SL)) then
-    exit;
+    Exit;
   str := @str[5];
 
   // version major
   marker := str;
-  while {$IFDEF UNICODE}(str^ < #256) and{$ENDIF}(AnsiChar(str^) in ['0'..'9']) do inc(str);
+  while {$IFDEF UNICODE}(str^ < #256) and{$ENDIF}(AnsiChar(str^) in ['0'..'9']) do
+    Inc(str);
   if (str > marker) and (str^ <> NL) then
   begin
     if TryStrToInt(copy(marker, 0, str - marker), i) then
-      Request.I['http-version.major'] := i else
-      exit;
-  end else
-    exit;
+      Request.I['http-version.major'] := i
+    else
+      Exit;
+  end
+  else
+    Exit;
 
   // .
   if (str^ <> PT) then
-    exit;
-  inc(str);
+    Exit;
+  Inc(str);
 
   // version minor
   marker := str;
-  while {$IFDEF UNICODE}(str^ < #256) and{$ENDIF} (AnsiChar(str^) in ['0'..'9']) do inc(str);
+  while {$IFDEF UNICODE}(str^ < #256) and{$ENDIF} (AnsiChar(str^) in ['0'..'9']) do
+    Inc(str);
   if (str > marker) then
   begin
     if TryStrToInt(copy(marker, 0, str - marker), i) then
-      Request.I['http-version.minor']  := i else
-      exit;
-  end else
-    exit;
+      Request.I['http-version.minor']  := i
+    else
+      Exit;
+  end
+  else
+    Exit;
 
-  if (str^ <> NL) then exit;
+  if (str^ <> NL) then
+    Exit;
 
-  result := true;
+  Result := True;
 end;
 
 procedure THTTPStub.RenderInternal;
@@ -625,29 +655,30 @@ begin
   with params.AsObject do
   begin
     clazz := Context.Context.FindType(format('%s_view.T%sView', [S['controller'], CamelCase(S['controller'])]));
-    if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
+    if (clazz <> nil) and (clazz is  TRttiInstanceType) then
     begin
       with TRttiInstanceType(clazz) do
         inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
       try
         if inst is TActionView then
-          TActionView(inst).Invoke else
+          TActionView(inst).Invoke
+        else
           ErrorCode := 404;
       finally
         inst.Free;
       end;
-    end else
+    end
+    else
       ErrorCode := 404;
   end;
 end;
-
-
 
 function THTTPStub.RenderScript: Boolean;
 var
   state: Plua_State;
   ite: TSuperObjectIter;
   path, str, rel: string;
+
   procedure printerror;
   begin
     Response.Content.Clear;
@@ -695,8 +726,9 @@ var
      Return.AsJSon(true, false)+
      '</pre></code>'#10);
 {$ENDIF}
-  Render('</body></html>');
+    Render('</body></html>');
   end;
+
 begin
   Result := False;
   with Params.AsObject do
@@ -748,15 +780,17 @@ begin
           begin
             if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
               printerror;
-          end else
-            begin
-              rel := 'layout/application.' + S['format'];
-              str := path + rel;
-              if FileExists(str) then
-                if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
-                   printerror;
-            end;
-        end else
+          end
+          else
+          begin
+            rel := 'layout/application.' + S['format'];
+            str := path + rel;
+            if FileExists(str) then
+              if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
+                 printerror;
+          end;
+        end
+        else
           printerror;
       finally
 {$IFDEF DEBUG}
@@ -819,69 +853,75 @@ begin
       if Stopped then exit;
     until r > 0;
 {$ENDIF}
-    if Source.Read(c, 1, ReadTimeOut) <> 1 then exit;
+
+    if Source.Read(c, 1, ReadTimeOut) <> 1 then
+      Exit;
+
     case c of
     CR: dec(cursor){->LF};
-    LF: begin
-          if cursor = 1 then
-          begin
-            if not DecodeContent then
-              exit;
+    LF:
+      begin
+        if cursor = 1 then
+        begin
+          if not DecodeContent then
+            Exit;
 
-              FReturn := TSuperObject.Create;
-              FParams := TSuperObject.Create;
-              FSession := TSuperObject.Create;
+          FReturn := TSuperObject.Create;
+          FParams := TSuperObject.Create;
+          FSession := TSuperObject.Create;
+          try
+            doBeforeProcessRequest;
+            if pos('Upgrade', Request.S['env.connection']) > 0 then
+              Exit(Upgrade);
+            try
               try
-                doBeforeProcessRequest;
-                if pos('Upgrade', Request.S['env.connection']) > 0 then
-                  Exit(Upgrade);
-                try
-                  try
-                    ProcessRequest; // <<<<<<<<<<<<<<<
-                  except
-                    on E: Exception do
-                    begin
-                      FErrorCode := 500;
-                    {$ifdef madExcept}
-                      with NewException(etNormal, E) do
-                      begin
-                        Response.Content.WriteString(BugReport, False);
-                        AutoSaveBugReport(BugReport);
-                      end;
-                    {$else}
-                      Response.Content.WriteString(E.Message, False);
-                      Response.Content.WriteString(CRLF, False);
-                      Response.Content.WriteString(E.StackTrace, False);
-                    {$endif}
-                    end;
+                ProcessRequest; // <<<<<<<<<<<<<<<
+              except
+                on E: Exception do
+                begin
+                  FErrorCode := 500;
+                {$ifdef madExcept}
+                  with NewException(etNormal, E) do
+                  begin
+                    Response.Content.WriteString(BugReport, False);
+                    AutoSaveBugReport(BugReport);
                   end;
-                finally
-                  doAfterProcessRequest;
+                {$else}
+                  Response.Content.WriteString(E.Message, False);
+                  Response.Content.WriteString(CRLF, False);
+                  Response.Content.WriteString(E.StackTrace, False);
+                {$endif}
                 end;
-              finally
-                FParams := nil;
-                FReturn := nil;
-                FSession := nil;
               end;
-
-            line := 0;
-            cursor := 0;
-          end else
-          begin
-            buffer[cursor] := NL;
-            if line = 0 then
-            begin
-              if not DecodeCommand(Pointer(Buffer)) then
-                exit;
-            end else
-            begin
-              if not DecodeFields(Pointer(Buffer)) then
-                exit;
+            finally
+              doAfterProcessRequest;
             end;
-            cursor := 0;
-            inc(line);
+          finally
+            FParams := nil;
+            FReturn := nil;
+            FSession := nil;
           end;
+
+          line := 0;
+          cursor := 0;
+        end
+        else
+        begin
+          buffer[cursor] := NL;
+          if line = 0 then
+          begin
+            if not DecodeCommand(Pointer(Buffer)) then
+              Exit;
+          end
+          else
+          begin
+            if not DecodeFields(Pointer(Buffer)) then
+              Exit;
+          end;
+          cursor := 0;
+          inc(line);
         end;
+      end;
     else
       buffer[cursor] := c;
     end;
@@ -1012,7 +1052,8 @@ begin
   if FCompress then
   begin
     if Pos('deflate', Request.S['env.accept-encoding']) > 0 then
-      FResponse.AsObject.S['Content-Encoding'] := 'deflate' else
+      FResponse.AsObject.S['Content-Encoding'] := 'deflate'
+    else
       FCompress := False;
   end;
 
@@ -1034,12 +1075,12 @@ begin
     else
       WriteLine(RawByteString(ite.key + ': ' + ite.val.AsString));
     end;
-
   until not ObjectFindNext(ite);
   ObjectFindClose(ite);
 
   if FSendFile <> '' then
-    SendFile(FSendFile) else
+    SendFile(FSendFile)
+  else
     SendStream(Response.Content);
 
   Source.Flush;
@@ -1052,6 +1093,7 @@ begin
 end;
 
 procedure THTTPStub.doBeforeProcessRequest;
+
   function interprete(v: PSOChar; const name: string; parse: boolean): boolean;
   var
     p: PChar;
@@ -1067,12 +1109,15 @@ procedure THTTPStub.doBeforeProcessRequest;
         setlength(str, p - PChar(str));
       end;
       if parse then
-        FParams.AsObject.S[name] := LowerCase(str) else
+        FParams.AsObject.S[name] := LowerCase(str)
+      else
         FParams.AsObject[name] := DecodeValue(PChar(str));
       Result := true;
-    end else
+    end
+    else
       Result := false
   end;
+
 var
   obj: ISuperObject;
   pass: AnsiString;
@@ -1109,10 +1154,11 @@ begin
     end;
     if not ObjectIsType(FSession, stObject) then
       FSession := TSuperObject.Create(stObject);
-  end else
+  end
+  else
    FSession := TSuperObject.Create(stObject);
 
-  // get parametters
+  // get parameters
   FParams.Merge(Request['params'], true);
   if (Request.I['env.content-length'] > 0) then
   begin
@@ -1143,14 +1189,13 @@ begin
   obj := HTTPInterprete(PSOChar(Request.S['uri']), false, '/', false, DEFAULT_CP);
   begin
     if interprete(PSOChar(obj.AsArray.S[1]), 'controller', true) then
-    if interprete(PSOChar(obj.AsArray.S[2]), 'action', true) then
-       interprete(PSOChar(obj.AsArray.S[3]), 'id', false);
+      if interprete(PSOChar(obj.AsArray.S[2]), 'action', true) then
+         interprete(PSOChar(obj.AsArray.S[3]), 'id', false);
   end;
 
   // default controller is application
   if (FParams.AsObject['controller'] = nil) then
     FParams.AsObject.S['controller'] := 'application';
-
 
   // default action is index
   if (FParams.AsObject['action'] = nil) then
@@ -1161,7 +1206,8 @@ begin
   begin
     p := StrRScan(PSOChar(Request.S['uri']), '.');
     if p <> nil then
-      FParams.AsObject.S['format'] := LowerCase(p + 1) else
+      FParams.AsObject.S['format'] := LowerCase(p + 1)
+    else
       FParams.AsObject.S['format'] := 'html';
   end;
 
@@ -1190,7 +1236,8 @@ end;
 procedure THTTPStub.Redirect(const controler, action: string; const id: string);
 begin
   if id = '' then
-    Redirect('/' + controler + '/' + action + '.' +  FParams.S['format']) else
+    Redirect('/' + controler + '/' + action + '.' +  FParams.S['format'])
+  else
     Redirect('/' + controler + '/' + action + '/' + id + '.' +  FParams.S['format']);
 end;
 
@@ -1215,7 +1262,8 @@ begin
   Result := False;
   with FParams.AsObject do
     if FFormats[S['format'] + '.charset'] <> nil then
-      FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset'] else
+      FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset']
+    else
       FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'];
 
   if FParams.AsObject['controller'] <> nil then
@@ -1311,7 +1359,8 @@ begin
     FErrorCode := 200;
   {$WARN SYMBOL_DEPRECATED ON}
   {$WARN SYMBOL_PLATFORM ON}
-  end else
+  end
+  else
     FErrorCode :=  404;
 end;
 
@@ -1333,7 +1382,8 @@ begin
     finally
       stream.Free;
     end;
-  end else
+  end
+  else
     SendEmpty;
 end;
 
@@ -1379,19 +1429,23 @@ begin
     begin
       // controller
       t := Context.Context.FindType(format('%s_websocket.T%sWebsocket', [S['controller'], CamelCase(S['controller'])]));
-      if (t <> nil) and (t is  TRttiInstanceType)  then
+      if (t <> nil) and (t is  TRttiInstanceType) then
       begin
         if TRttiInstanceType(t).MetaclassType.InheritsFrom(TActionWebsocket) then
-          inst := TActionWebsocketClass(TRttiInstanceType(t).MetaclassType).Create(FWebSocketVersion) else
+          inst := TActionWebsocketClass(TRttiInstanceType(t).MetaclassType).Create(FWebSocketVersion)
+        else
           Exit;
-      end else
+      end
+      else
         Exit;
-    end else
+    end
+    else
       Exit;
   inst.Start;
 
   if FWebSocketVersion  = 0 then
-    state := stStartOldMode else
+    state := stStartOldMode
+  else
     state := stStartNewMode;
 
   stream := TPooledMemoryStream.Create;
@@ -1402,25 +1456,28 @@ begin
         case state of
           stStartOldMode:
             if b = 0 then
-              state := stOldMode else
+              state := stOldMode
+            else
               Exit;
           stOldMode:
             begin
               if b <> $FF then
-                stream.Write(b, 1) else
-                begin
-                  SetLength(data, stream.Size);
-                  stream.Seek(0, soFromBeginning);
-                  stream.Read(PAnsiChar(data)^, stream.Size);
-                  inst.TriggerInternalEvent(TSuperObject.Create(string(data)));
-                  stream.Size := 0;
-                  state := stStartOldMode;
-                end;
+                stream.Write(b, 1)
+              else
+              begin
+                SetLength(data, stream.Size);
+                stream.Seek(0, soFromBeginning);
+                stream.Read(PAnsiChar(data)^, stream.Size);
+                inst.TriggerInternalEvent(TSuperObject.Create(string(data)));
+                stream.Size := 0;
+                state := stStartOldMode;
+              end;
             end;
           stStartNewMode:
             begin
               fin := (b and $80) <> 0;
-              if (b and $70) <> 0 then Exit; // reserved
+              if (b and $70) <> 0 then // reserved
+                Exit;
               opcode := b and $0F;
               closecode := 0;
               state := stNext;
@@ -1428,19 +1485,21 @@ begin
           stNext:
             begin
               // maskBit is necessary on server side
-              if b and $80 = 0 then Exit;
+              if b and $80 = 0 then
+                Exit;
               payloadLength := b and $7F;
 
               if (payloadLength < 126) then
               begin
                 state := stMask;
                 pos := 0;
-              end else
-              if (payloadLength = 126) then
+              end
+              else if (payloadLength = 126) then
               begin
                 pos := 0;
                 state := stPayload16;
-              end  else
+              end
+              else
               begin
                 pos := 0;
                 state := stPayload64;
@@ -1489,7 +1548,8 @@ begin
                   begin
                     state := stData;
                     pos := 0;
-                  end else
+                  end
+                  else
                     state := stStartNewMode;
                 end;
             end;
@@ -1550,6 +1610,7 @@ begin
 end;
 
 procedure THTTPStub.SendStream(Stream: TStream);
+
   procedure SendIt(s: TSTream);
   var
     size: Integer;
@@ -1563,6 +1624,7 @@ procedure THTTPStub.SendStream(Stream: TStream);
       size := s.Read(buffer, sizeof(buffer));
     end;
   end;
+
 var
   streamout: TPooledMemoryStream;
 begin
@@ -1579,7 +1641,8 @@ begin
     finally
       streamout.Free;
     end;
-  end else
+  end
+  else
   begin
     WriteLine(format(AnsiString('Content-Length: %d'), [Stream.size]));
     Stream.Seek(0, soFromBeginning);
@@ -1590,6 +1653,7 @@ end;
 function THTTPStub.Upgrade: Cardinal;
 
   function doWebSocket04: Cardinal;
+
     function getKeyNumber(const key: string; out spaces: Cardinal): Cardinal;
     var
       i: Integer;
@@ -1602,6 +1666,7 @@ function THTTPStub.Upgrade: Cardinal;
           ' ': inc(spaces);
         end;
     end;
+
     function bigendian(c: Cardinal): Cardinal;
     var
       i: array[0..3] of Byte absolute c;
@@ -1612,6 +1677,7 @@ function THTTPStub.Upgrade: Cardinal;
       o[2] := i[1];
       o[3] := i[0];
     end;
+
   var
     key1, key2, origin, protocol: ISuperObject;
 
@@ -1628,20 +1694,27 @@ function THTTPStub.Upgrade: Cardinal;
     if not ObjectIsType(origin, stString) then Exit;
 
     key1 := Request['env.sec-websocket-key1'];
-    if not ObjectIsType(key1, stString) then Exit;
+    if not ObjectIsType(key1, stString) then
+      Exit;
     key2 := Request['env.sec-websocket-key2'];
-    if not ObjectIsType(key2, stString) then Exit;
-    if Source.Read(challenge.key3, SizeOf(challenge.key3), 0) <> SizeOf(challenge.key3) then Exit;
+    if not ObjectIsType(key2, stString) then
+      Exit;
+    if Source.Read(challenge.key3, SizeOf(challenge.key3), 0) <> SizeOf(challenge.key3) then
+      Exit;
     if Copy(origin.AsString, 1, 8) = 'https://' then
-      location := RawByteString('wss://' + Request.s['env.host'] + Request.S['uri']) else
+      location := RawByteString('wss://' + Request.s['env.host'] + Request.S['uri'])
+    else
       location := RawByteString('ws://' + Request.s['env.host'] + Request.S['uri']);
     keyNumber1 := getKeyNumber(key1.AsString, space1);
     keyNumber2 := getKeyNumber(key2.AsString, space2);
-    if (space1 = 0) or (space2 = 0) then Exit;
-    if (keyNumber1 mod space1 <> 0) or (keyNumber2 mod space2 <> 0) Then Exit;
+    if (space1 = 0) or (space2 = 0) then
+      Exit;
+    if (keyNumber1 mod space1 <> 0) or (keyNumber2 mod space2 <> 0) then
+      Exit;
     challenge.part1 := bigendian(keyNumber1 div space1);
 	  challenge.part2 := bigendian(keyNumber2 div space2);
-    if MD5(@challenge, SizeOf(challenge), @response) = nil then Exit;;
+    if MD5(@challenge, SizeOf(challenge), @response) = nil then
+      Exit;
     WriteLine('HTTP/1.1 101 WebSocket Protocol Handshake');
 	  WriteLine('Upgrade: WebSocket');
 	  WriteLine('Connection: Upgrade');
@@ -1686,6 +1759,7 @@ function THTTPStub.Upgrade: Cardinal;
     Source.Flush;
     Result := WebSocket;
   end;
+
 begin
   Result := 0;
   if SameText(Request.S['env.upgrade'], 'WebSocket') then
