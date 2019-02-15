@@ -708,7 +708,8 @@ var
   cookiecount: Integer;
   buffer: array[0..1023] of AnsiChar;
   read: Integer;
-  deflate: TPooledMemoryStream;
+  encoding: string;
+  compressed: TPooledMemoryStream;
   Total, Rate, Start, Curr, Freq: Int64;
 begin
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
@@ -740,14 +741,24 @@ begin
   begin
     data.Seek(0, soFromBeginning);
 
-    if AnsiStrings.SameText(GetRequestHeader('Content-Encoding'), 'deflate') then
+    encoding := string(GetRequestHeader('Content-Encoding'));
+    if SameText(encoding, 'deflate') or SameText(encoding, 'gzip') then
     begin
-      deflate := TPooledMemoryStream.Create;
-      CompressStream(data, deflate);
-      data := deflate;
-      data.Seek(2, soFromBeginning);
-    end else
-      deflate := nil;
+      compressed := TPooledMemoryStream.Create;
+      if SameText(encoding, 'deflate') then
+      begin
+        CompressStream(data, compressed);
+        compressed.Seek(2, soFromBeginning);
+      end
+      else
+      begin
+        CompressGZipStream(data, compressed);
+        compressed.Seek(0, soFromBeginning);
+      end;
+      data := compressed;
+    end
+    else
+      compressed := nil;
 
 
     HTTPWriteLine('Content-Length: ' + RawByteString(IntToStr(data.Size - data.Position)));
@@ -780,9 +791,10 @@ begin
       end;
     until read = 0;
 
-    if deflate <> nil then
-      deflate.Free;
-  end else
+    if compressed <> nil then
+      compressed.Free;
+  end
+  else
     HTTPWriteLine('');
   Flush;
   SetReadyState(rsSent);
