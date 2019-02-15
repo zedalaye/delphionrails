@@ -1170,7 +1170,7 @@ begin
 {$IFDEF NO_SSLV3}
   SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3);
 {$ENDIF}
-  SSL_CTX_set_options(FCtx, SSL_OP_NO_COMPRESSION);
+//  SSL_CTX_set_options(FCtx, SSL_OP_NO_COMPRESSION);
   SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
   SSL_CTX_set_verify(FCtx, Verify, nil);
   SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
