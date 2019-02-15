@@ -429,6 +429,8 @@ var
   ContentLength: integer;
   len, total: Integer;
   b: array[0..BLOCK_SIZE] of Byte;
+  ContentEncoding: string;
+  stream: TPooledMemoryStream;
 
   function max_block_size(total: Integer): Integer; inline;
   begin
@@ -453,6 +455,23 @@ begin
       Dec(total, len);
     until (total = 0) or (len <= 0);
     Result := total = 0;
+
+    ContentEncoding := Request.S['env.content-encoding'];
+    if SameText(ContentEncoding, 'deflate') or SameText(ContentEncoding, 'gzip') then
+    begin
+      stream := TPooledMemoryStream.Create;
+      try
+        request.FContent.Seek(0, soFromBeginning);
+        if SameText(ContentEncoding, 'deflate') then
+          DecompressStream(Request.FContent, stream, True)
+        else
+          DecompressGZipStream(Request.FContent, stream);
+        { Exchange request.FContent with stream of decompressed data }
+        stream := InterlockedExchangePointer(Pointer(request.FContent), Pointer(stream));
+      finally
+        stream.Free;
+      end;
+    end;
   end;
 end;
 
