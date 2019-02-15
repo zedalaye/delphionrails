@@ -100,8 +100,11 @@ type
     destructor Destroy; override;
   end;
 
-function CompressStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION): boolean; overload;
+function CompressStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION; skipflag: Boolean = False): boolean; overload;
 function DecompressStream(inStream, outStream: TStream; addflag: Boolean = False; maxin: Integer = 0): boolean; overload;
+
+{ Same a above with GZip Header }
+function CompressGZipStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION): Boolean;
 function DecompressGZipStream(inStream, outStream: TStream): boolean;
 
 function receive(s: longint; var Buf; len, flags: Integer): Integer;
@@ -449,7 +452,7 @@ begin
   result := DeflateInit_(stream, level, ZLIB_VERSION, SizeOf(TZStreamRec));
 end;
 
-function CompressStream(inStream, outStream: TStream; level: Integer): boolean;
+function CompressStream(inStream, outStream: TStream; level: Integer; skipflag: Boolean): boolean;
 var
   zstream: TZStreamRec;
   zresult: Integer;
@@ -461,9 +464,11 @@ label
   error;
 begin
   Result := False;
+
   FillChar(zstream, SizeOf(zstream), 0);
   if DeflateInit(zstream, level) < Z_OK then
     exit;
+
   inSize := inStream.Read(inBuffer, bufferSize);
   while inSize > 0 do
   begin
@@ -475,10 +480,17 @@ begin
       if deflate(zstream, Z_NO_FLUSH) < Z_OK then
         goto error;
       outSize := bufferSize - zstream.avail_out;
-      outStream.Write(outBuffer, outSize);
+      if skipflag then
+      begin
+        outstream.Write(outbuffer[2], outSize - 2);
+        skipflag := False;
+      end
+      else
+        outStream.Write(outBuffer, outSize);
     until (zstream.avail_in = 0) and (zstream.avail_out > 0);
     inSize := inStream.Read(inBuffer, bufferSize);
   end;
+
   repeat
     zstream.next_out := @outBuffer;
     zstream.avail_out := bufferSize;
@@ -488,9 +500,11 @@ begin
     outSize := bufferSize - zstream.avail_out;
     outStream.Write(outBuffer, outSize);
   until (zresult = Z_STREAM_END) and (zstream.avail_out > 0);
+
   Result := deflateEnd(zstream) >= Z_OK;
-  exit;
-  error:
+  Exit;
+
+error:
   deflateEnd(zstream);
 end;
 
@@ -512,16 +526,19 @@ label
   finish;
 begin
   Result := False;
+
   FillChar(zstream, SizeOf(zstream), 0);
   if InflateInit(zstream) < Z_OK then
     exit;
+
   if addflag then
   begin
     inBuffer[0] := $78;
     inBuffer[1] := $9C;
     inSize := inStream.Read(inBuffer[2], bufferSize - 2) + 2;
     totalin := inSize - 2;
-  end else
+  end
+  else
   begin
     inSize := inStream.Read(inBuffer, bufferSize);
     totalin := inSize;
@@ -547,6 +564,7 @@ begin
     if (maxin > 0) and (totalin > maxin) then
       Dec(inSize, totalin - maxin);
   end;
+
   repeat
     zstream.next_out := @outBuffer;
     zstream.avail_out := bufferSize;
@@ -556,11 +574,11 @@ begin
     outSize := bufferSize - zstream.avail_out;
     outStream.Write(outBuffer, outSize);
   until ((zresult = Z_STREAM_END) and (zstream.avail_out > 0)) or (zresult = Z_BUF_ERROR);
+
 finish:
   Result := inflateEnd(zstream) >= Z_OK;
 end;
 
-function DecompressGZipStream(inStream, outStream: TStream): boolean;
 type
   TGzFlag = (fText, fHcrc, fExtra, fName, fComment);
   TGzFlags = set of TGzFlag;
@@ -573,6 +591,12 @@ type
     XFL: Byte;
     OS: Byte;
   end;
+  TGzFooter = packed record
+    CRC32: Cardinal;
+    ISIZE: Cardinal;
+  end;
+
+function DecompressGZipStream(inStream, outStream: TStream): boolean;
 var
   header: TGzHeader;
   len: Word;
@@ -602,6 +626,36 @@ begin
     inStream.Seek(2, soFromCurrent);
 
   Result := DecompressStream(inStream, outStream, True, inStream.Size - inStream.Position - 8);
+end;
+
+function CompressGZipStream(inStream, outStream: TStream; level: Integer): Boolean;
+var
+  header: TGzHeader;
+  footer: TGzFooter;
+begin
+  FillChar(header, SizeOf(TGzHeader), 0);
+  header.ID1 := 31;
+  header.ID2 := 139;
+  header.CM := 8;
+  header.XFL := 0;
+{$if defined(MSWINDOWS)}
+  header.OS := 11; { NTFS }
+{$else if defined(Darwin)}
+  header.OS := 7;  { Macintosh }
+{$else if defined(UNIX)}
+  header.OS := 3;  { Unix }
+{$else}
+  header.OS := 255; { Unknown }
+{$ifend}
+  outstream.Write(header, SizeOf(header));
+  if CompressStream(inStream, outStream, level, True) then
+  begin
+    FillChar(footer, SizeOf(TGzFooter), 0);
+    outStream.Write(footer, SizeOf(TGzFooter));
+    Result := True;
+  end
+  else
+    Result := False;
 end;
 
 function StreamToStr(stream: TStream): string;
