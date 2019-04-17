@@ -43,7 +43,8 @@ type
     function Transaction(const Options: ISuperObject = nil): IDBTransaction; overload; override;
   public
     constructor Create(const Database, Username, Password: string;
-      const Characterset: string = 'UTF8'; const Lib: string = ''); virtual;
+      const Role: string = ''; const CharacterSet: string = 'UTF8';
+      const Lib: string = ''); virtual;
     destructor Destroy; override;
   end;
 
@@ -98,8 +99,8 @@ end;
 
 { TDBUIBConnection }
 
-constructor TDBUIBConnection.Create(const Database, Username, Password,
-  Characterset, Lib: string);
+constructor TDBUIBConnection.Create(const Database, Username, Password, Role,
+  CharacterSet, Lib: string);
 var
   option: string;
 begin
@@ -124,6 +125,9 @@ begin
     FCharacterSet := StrToCharacterSet(AnsiString(characterset)) else
     FCharacterSet := GetSystemCharacterset;
   option := option + ';lc_ctype=' + string(CharacterSetStr[FCharacterSet]);
+
+  if role <> '' then
+    option := option + ';role=' + role;
 
   if database <> '' then
     FLibrary.AttachDatabase(AnsiString(database), FDbHandle, AnsiString(option)) else
