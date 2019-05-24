@@ -127,7 +127,7 @@ begin
   option := option + ';lc_ctype=' + string(CharacterSetStr[FCharacterSet]);
 
   if role <> '' then
-    option := option + ';role=' + role;
+    option := option + ';sql_role_name=' + role;
 
   if database <> '' then
     FLibrary.AttachDatabase(AnsiString(database), FDbHandle, AnsiString(option)) else
