@@ -281,6 +281,21 @@ const
  *}
   SSL_OP_CRYPTOPRO_TLSEXT_BUG                     = $80000000;
 
+const
+  SSL_ERROR_NONE                  = 0;
+  SSL_ERROR_SSL                   = 1;
+  SSL_ERROR_WANT_READ             = 2;
+  SSL_ERROR_WANT_WRITE            = 3;
+  SSL_ERROR_WANT_X509_LOOKUP      = 4;
+  SSL_ERROR_SYSCALL               = 5; {* look at error stack/return
+                                        * value/errno *}
+  SSL_ERROR_ZERO_RETURN           = 6;
+  SSL_ERROR_WANT_CONNECT          = 7;
+  SSL_ERROR_WANT_ACCEPT           = 8;
+  SSL_ERROR_WANT_ASYNC            = 9;
+  SSL_ERROR_WANT_ASYNC_JOB        = 10;
+  SSL_ERROR_WANT_CLIENT_HELLO_CB  = 11;
+
 type
   PSSL = Pointer;
   PSSL_CTX = Pointer;
@@ -308,9 +323,13 @@ const
 
   { General-purpose version-flexible SSL/TLS methods for OpenSSL 1.0.x }
   function SSLv23_method: PSSL_METHOD; cdecl; external SSLEAY;
+  function SSLv23_server_method: PSSL_METHOD; cdecl; external SSLEAY;
+  function SSLv23_client_method: PSSL_METHOD; cdecl; external SSLEAY;
 
   { General-purpose version-flexible SSL/TLS methods for OpenSSL 1.1.x }
 //  function TLS_method: PSSL_METHOD; cdecl; external SSLEAY;
+//  function TLS_server_method: PSSL_METHOD; cdecl; external SSLEAY;
+//  function TLS_client_method: PSSL_METHOD; cdecl; external SSLEAY;
 
   function SSL_CTX_ctrl(ctx: PSSL_CTX; cmd: Integer; larg: LongInt; parg: Pointer): LongInt; cdecl; external SSLEAY;
 
@@ -328,6 +347,11 @@ const
   function SSL_shutdown(ssl: PSSL):Integer; cdecl; external SSLEAY;
   function SSL_read(ssl: PSSL; buf: Pointer; num: Integer): Integer; cdecl; external SSLEAY;
   function SSL_write(ssl: PSSL; const buf: Pointer; num: Integer): Integer; cdecl; external SSLEAY;
+  function SSL_get_error(ssl: PSSL; ret: Integer): Integer; cdecl; external SSLEAY;
+
+  function SSL_pending(const ssl: PSSL): Integer; cdecl; external SSLEAY;
+  function SSL_has_pending(const ssl: PSSL): Integer; cdecl; external SSLEAY;
+
   procedure SSL_CTX_set_verify(ctx: PSSL_CTX; mode: Integer; arg2: Pointer); cdecl; external SSLEAY;
 
   function SSL_get_peer_certificate(ssl: PSSL): PX509; cdecl; external SSLEAY;
