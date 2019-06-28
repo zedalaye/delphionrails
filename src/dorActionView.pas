@@ -55,9 +55,13 @@ begin
   ctx := (CurrentDorThread as THTTPStub).Context;
   with (CurrentDorThread as THTTPStub).Params.AsObject do
     case TrySOInvoke(ctx, Self, S['action'] + '_' + S['format'], Return, ret) of
-      irSuccess: SetErrorCode(200);
-      irMethodError: SetErrorCode(404);
-      irParamError: SetErrorCode(400);
+      irSuccess:
+        if (CurrentDorThread as THTTPStub).ErrorCode = 0 then
+          SetErrorCode(200);
+      irMethodError:
+        SetErrorCode(404);
+      irParamError:
+        SetErrorCode(400);
     else
       SetErrorCode(500);
     end;
