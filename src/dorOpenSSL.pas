@@ -858,8 +858,121 @@ const
   SSL_FILETYPE_ASN1 = X509_FILETYPE_ASN1;
   SSL_FILETYPE_PEM  = X509_FILETYPE_PEM;
 
-  SSL_CTRL_OPTIONS = 32;
-  SSL_CTRL_CLEAR_OPTIONS      = 77;
+  SSL_CTRL_SET_TMP_DH                      = 3;
+  SSL_CTRL_SET_TMP_ECDH                    = 4;
+  SSL_CTRL_SET_TMP_DH_CB                   = 6;
+  SSL_CTRL_GET_CLIENT_CERT_REQUEST         = 9;
+  SSL_CTRL_GET_NUM_RENEGOTIATIONS          = 10;
+  SSL_CTRL_CLEAR_NUM_RENEGOTIATIONS        = 11;
+  SSL_CTRL_GET_TOTAL_RENEGOTIATIONS        = 12;
+  SSL_CTRL_GET_FLAGS                       = 13;
+  SSL_CTRL_EXTRA_CHAIN_CERT                = 14;
+  SSL_CTRL_SET_MSG_CALLBACK                = 15;
+  SSL_CTRL_SET_MSG_CALLBACK_ARG            = 16;
+(* only applies to datagram connections *)
+  SSL_CTRL_SET_MTU                         = 17;
+(* Stats *)
+  SSL_CTRL_SESS_NUMBER                     = 20;
+  SSL_CTRL_SESS_CONNECT                    = 21;
+  SSL_CTRL_SESS_CONNECT_GOOD               = 22;
+  SSL_CTRL_SESS_CONNECT_RENEGOTIATE        = 23;
+  SSL_CTRL_SESS_ACCEPT                     = 24;
+  SSL_CTRL_SESS_ACCEPT_GOOD                = 25;
+  SSL_CTRL_SESS_ACCEPT_RENEGOTIATE         = 26;
+  SSL_CTRL_SESS_HIT                        = 27;
+  SSL_CTRL_SESS_CB_HIT                     = 28;
+  SSL_CTRL_SESS_MISSES                     = 29;
+  SSL_CTRL_SESS_TIMEOUTS                   = 30;
+  SSL_CTRL_SESS_CACHE_FULL                 = 31;
+  SSL_CTRL_OPTIONS                         = 32;
+  SSL_CTRL_MODE                            = 33;
+  SSL_CTRL_GET_READ_AHEAD                  = 40;
+  SSL_CTRL_SET_READ_AHEAD                  = 41;
+  SSL_CTRL_SET_SESS_CACHE_SIZE             = 42;
+  SSL_CTRL_GET_SESS_CACHE_SIZE             = 43;
+  SSL_CTRL_SET_SESS_CACHE_MODE             = 44;
+  SSL_CTRL_GET_SESS_CACHE_MODE             = 45;
+  SSL_CTRL_GET_MAX_CERT_LIST               = 50;
+  SSL_CTRL_SET_MAX_CERT_LIST               = 51;
+  SSL_CTRL_SET_MAX_SEND_FRAGMENT           = 52;
+(* see tls1.h for macros based on these *)
+  SSL_CTRL_SET_TLSEXT_SERVERNAME_CB        = 53;
+  SSL_CTRL_SET_TLSEXT_SERVERNAME_ARG       = 54;
+  SSL_CTRL_SET_TLSEXT_HOSTNAME             = 55;
+  SSL_CTRL_SET_TLSEXT_DEBUG_CB             = 56;
+  SSL_CTRL_SET_TLSEXT_DEBUG_ARG            = 57;
+  SSL_CTRL_GET_TLSEXT_TICKET_KEYS          = 58;
+  SSL_CTRL_SET_TLSEXT_TICKET_KEYS          = 59;
+(* SSL_CTRL_SET_TLSEXT_OPAQUE_PRF_INPUT        = 60; *)
+(* SSL_CTRL_SET_TLSEXT_OPAQUE_PRF_INPUT_CB     = 61; *)
+(* SSL_CTRL_SET_TLSEXT_OPAQUE_PRF_INPUT_CB_ARG = 62; *)
+  SSL_CTRL_SET_TLSEXT_STATUS_REQ_CB        = 63;
+  SSL_CTRL_SET_TLSEXT_STATUS_REQ_CB_ARG    = 64;
+  SSL_CTRL_SET_TLSEXT_STATUS_REQ_TYPE      = 65;
+  SSL_CTRL_GET_TLSEXT_STATUS_REQ_EXTS      = 66;
+  SSL_CTRL_SET_TLSEXT_STATUS_REQ_EXTS      = 67;
+  SSL_CTRL_GET_TLSEXT_STATUS_REQ_IDS       = 68;
+  SSL_CTRL_SET_TLSEXT_STATUS_REQ_IDS       = 69;
+  SSL_CTRL_GET_TLSEXT_STATUS_REQ_OCSP_RESP = 70;
+  SSL_CTRL_SET_TLSEXT_STATUS_REQ_OCSP_RESP = 71;
+  SSL_CTRL_SET_TLSEXT_TICKET_KEY_CB        = 72;
+  SSL_CTRL_SET_TLS_EXT_SRP_USERNAME_CB     = 75;
+  SSL_CTRL_SET_SRP_VERIFY_PARAM_CB         = 76;
+  SSL_CTRL_SET_SRP_GIVE_CLIENT_PWD_CB      = 77;
+  SSL_CTRL_SET_SRP_ARG                     = 78;
+  SSL_CTRL_SET_TLS_EXT_SRP_USERNAME        = 79;
+  SSL_CTRL_SET_TLS_EXT_SRP_STRENGTH        = 80;
+  SSL_CTRL_SET_TLS_EXT_SRP_PASSWORD        = 81;
+  DTLS_CTRL_GET_TIMEOUT                    = 73;
+  DTLS_CTRL_HANDLE_TIMEOUT                 = 74;
+  SSL_CTRL_GET_RI_SUPPORT                  = 76;
+  SSL_CTRL_CLEAR_OPTIONS                   = 77;
+  SSL_CTRL_CLEAR_MODE                      = 78;
+  SSL_CTRL_SET_NOT_RESUMABLE_SESS_CB       = 79;
+  SSL_CTRL_GET_EXTRA_CHAIN_CERTS           = 82;
+  SSL_CTRL_CLEAR_EXTRA_CHAIN_CERTS         = 83;
+  SSL_CTRL_CHAIN                           = 88;
+  SSL_CTRL_CHAIN_CERT                      = 89;
+  SSL_CTRL_GET_GROUPS                      = 90;
+  SSL_CTRL_SET_GROUPS                      = 91;
+  SSL_CTRL_SET_GROUPS_LIST                 = 92;
+  SSL_CTRL_GET_SHARED_GROUP                = 93;
+  SSL_CTRL_SET_SIGALGS                     = 97;
+  SSL_CTRL_SET_SIGALGS_LIST                = 98;
+  SSL_CTRL_CERT_FLAGS                      = 99;
+  SSL_CTRL_CLEAR_CERT_FLAGS                = 100;
+  SSL_CTRL_SET_CLIENT_SIGALGS              = 101;
+  SSL_CTRL_SET_CLIENT_SIGALGS_LIST         = 102;
+  SSL_CTRL_GET_CLIENT_CERT_TYPES           = 103;
+  SSL_CTRL_SET_CLIENT_CERT_TYPES           = 104;
+  SSL_CTRL_BUILD_CERT_CHAIN                = 105;
+  SSL_CTRL_SET_VERIFY_CERT_STORE           = 106;
+  SSL_CTRL_SET_CHAIN_CERT_STORE            = 107;
+  SSL_CTRL_GET_PEER_SIGNATURE_NID          = 108;
+  SSL_CTRL_GET_PEER_TMP_KEY                = 109;
+  SSL_CTRL_GET_RAW_CIPHERLIST              = 110;
+  SSL_CTRL_GET_EC_POINT_FORMATS            = 111;
+  SSL_CTRL_GET_CHAIN_CERTS                 = 115;
+  SSL_CTRL_SELECT_CURRENT_CERT             = 116;
+  SSL_CTRL_SET_CURRENT_CERT                = 117;
+  SSL_CTRL_SET_DH_AUTO                     = 118;
+  DTLS_CTRL_SET_LINK_MTU                   = 120;
+  DTLS_CTRL_GET_LINK_MIN_MTU               = 121;
+  SSL_CTRL_GET_EXTMS_SUPPORT               = 122;
+  SSL_CTRL_SET_MIN_PROTO_VERSION           = 123;
+  SSL_CTRL_SET_MAX_PROTO_VERSION           = 124;
+  SSL_CTRL_SET_SPLIT_SEND_FRAGMENT         = 125;
+  SSL_CTRL_SET_MAX_PIPELINES               = 126;
+  SSL_CTRL_GET_TLSEXT_STATUS_REQ_TYPE      = 127;
+  SSL_CTRL_GET_TLSEXT_STATUS_REQ_CB        = 128;
+  SSL_CTRL_GET_TLSEXT_STATUS_REQ_CB_ARG    = 129;
+  SSL_CTRL_GET_MIN_PROTO_VERSION           = 130;
+  SSL_CTRL_GET_MAX_PROTO_VERSION           = 131;
+  SSL_CTRL_GET_SIGNATURE_NID               = 132;
+  SSL_CTRL_GET_TMP_KEY                     = 133;
+  SSL_CERT_SET_FIRST                       = 1;
+  SSL_CERT_SET_NEXT                        = 2;
+  SSL_CERT_SET_SERVER                      = 3;
 
 const
   SSL_OP_MICROSOFT_SESS_ID_BUG            = $00000001;
@@ -975,6 +1088,73 @@ const
   SSL_ERROR_WANT_ASYNC_JOB        = 10;
   SSL_ERROR_WANT_CLIENT_HELLO_CB  = 11;
 
+const
+  (*
+   * Allow SSL_write(..., n) to return r with 0 < r < n (i.e. report success
+   * when just a single record has been written):
+   *)
+  SSL_MODE_ENABLE_PARTIAL_WRITE = $00000001;
+  (*
+   * Make it possible to retry SSL_write() with changed buffer location (buffer
+   * contents must stay the same!); this is not the default to avoid the
+   * misconception that non-blocking SSL_write() behaves like non-blocking
+   * write():
+   *)
+  SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER = $00000002;
+  (*
+   * Never bother the application with retries if the transport is blocking:
+   *)
+  SSL_MODE_AUTO_RETRY = $00000004;
+  (*
+   * Don't attempt to automatically build certificate chain
+   *)
+  SSL_MODE_NO_AUTO_CHAIN = $00000008;
+  (*
+   * Save RAM by releasing read and write buffers when they're empty. (SSL3 and
+   * TLS only.) Released buffers are freed.
+   *)
+  SSL_MODE_RELEASE_BUFFERS = $00000010;
+  (*
+   * Send the current time in the Random fields of the ClientHello and
+   * ServerHello records for compatibility with hypothetical implementations
+   * that require it.
+   *)
+  SSL_MODE_SEND_CLIENTHELLO_TIME = $00000020;
+  SSL_MODE_SEND_SERVERHELLO_TIME = $00000040;
+  (*
+   * Send TLS_FALLBACK_SCSV in the ClientHello. To be set only by applications
+   * that reconnect with a downgraded protocol version; see
+   * draft-ietf-tls-downgrade-scsv-00 for details. DO NOT ENABLE THIS if your
+   * application attempts a normal handshake. Only use this in explicit
+   * fallback retries, following the guidance in
+   * draft-ietf-tls-downgrade-scsv-00.
+   *)
+  SSL_MODE_SEND_FALLBACK_SCSV = $00000080;
+  (*
+   * Support Asynchronous operation
+   *)
+  SSL_MODE_ASYNC = $00000100;
+  (*
+   * Don't use the kernel TLS data-path for sending.
+   *)
+  SSL_MODE_NO_KTLS_TX = $00000200;
+  (*
+   * When using DTLS/SCTP, include the terminating zero in the label
+   * used for computing the endpoint-pair shared secret. Required for
+   * interoperability with implementations having this bug like these
+   * older version of OpenSSL:
+   * - OpenSSL 1.0.0 series
+   * - OpenSSL 1.0.1 series
+   * - OpenSSL 1.0.2 series
+   * - OpenSSL 1.1.0 series
+   * - OpenSSL 1.1.1 and 1.1.1a
+   *)
+  SSL_MODE_DTLS_SCTP_LABEL_LENGTH_BUG = $00000400;
+  (*
+   * Don't use the kernel TLS data-path for receiving.
+   *)
+  SSL_MODE_NO_KTLS_RX = $00000800;
+
 type
   PSSL = Pointer;
   PSSL_CTX = Pointer;
@@ -1047,6 +1227,9 @@ const
   function SSL_CTX_set_options(ctx: PSSL_CTX; op: LongInt): LongInt;
   function SSL_CTX_clear_options(ctx: PSSL_CTX; op: LongInt): LongInt;
   function SSL_CTX_get_options(ctx: PSSL_CTX): LongInt;
+
+  function SSL_CTX_set_mode(ctx: PSSL_CTX; mode: LongInt): LongInt;
+  function SSL_CTX_get_mode(ctx: PSSL_CTX): LongInt;
 
   procedure SSL_CTX_set_cert_store(ctx: PSSL_CTX; store: PX509_STORE); cdecl; external LIBEAY;
   function X509_STORE_add_cert(ctx: PX509_STORE; x: PX509): Integer; cdecl; external SSLEAY;
@@ -1230,6 +1413,16 @@ end;
 function SSL_CTX_get_options(ctx: PSSL_CTX): LongInt;
 begin
   Result := SSL_CTX_ctrl(ctx, SSL_CTRL_OPTIONS, 0, nil);
+end;
+
+function SSL_CTX_set_mode(ctx: PSSL_CTX; mode: LongInt): LongInt;
+begin
+  Result := SSL_CTX_ctrl(ctx, SSL_CTRL_MODE, mode, nil);
+end;
+
+function SSL_CTX_get_mode(ctx: PSSL_CTX): LongInt;
+begin
+  Result := SSL_CTX_ctrl(ctx, SSL_CTRL_MODE, 0, nil);
 end;
 
 procedure AesEncryptStream(InStream, OutStream: TStream; const pass: PAnsiChar; bits: Integer);
