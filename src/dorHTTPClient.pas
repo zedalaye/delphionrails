@@ -1,11 +1,14 @@
 unit dorHTTPClient;
 
 interface
+
 uses
-  SysUtils, AnsiStrings, dorUtils, Generics.Collections, WinSock2, Classes;
+  WinSock2,
+  SysUtils, Classes, AnsiStrings, Generics.Collections,
+  dorUtils;
 
 type
- IHTTPRequest = interface;
+  IHTTPRequest = interface;
 
   TReadyState = (
     rsUninitialized,
@@ -266,6 +269,7 @@ begin
   FCharsets.Free;
   FResponseEvents.Free;
   FCookies.Free;
+
   inherited;
 end;
 
@@ -982,8 +986,9 @@ begin
   if ssl then
   begin
     FCtx := SSL_CTX_new(SSLv23_method);
+    SSL_CTX_set_mode(FCtx, SSL_CTX_get_mode(FCtx) or SSL_MODE_AUTO_RETRY);
   {$IFDEF NO_SSLV3}
-    SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(FCtx, SSL_CTX_get_options(FCtx) or SSL_OP_NO_SSLv3);
   {$ENDIF}
     SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
 
