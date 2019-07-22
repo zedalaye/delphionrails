@@ -50,25 +50,29 @@ type
     function ChildAdd(Item: TDORThread): Integer;
     procedure ChildDelete(Index: Integer);
     function ChildIndexOf(Item: TDORThread): Integer;
-    function ChildRemove(Item: TDORThread): Integer;
     function GetChildCount: Integer;
     function GetStopped: boolean;
   protected
     function Run: Cardinal; virtual;
     procedure Stop; virtual;
   public
+    constructor Create(AOwner: TDORThread); virtual;
+    destructor Destroy; override;
+
     class function ThreadCount: integer;
     class procedure BeginThread;
     class procedure EndThread;
-    property Owner: TDORThread read FOwner;
+
     procedure ChildClear; virtual;
+    function ChildRemove(Item: TDORThread): Integer;
+
     procedure Suspend;
     procedure Resume;
     procedure Start;
     procedure Lock;
     procedure UnLock;
-    constructor Create(AOwner: TDORThread); virtual;
-    destructor Destroy; override;
+
+    property Owner: TDORThread read FOwner;
     property ChildCount: Integer read GetChildCount;
     property ChildItems[Index: Integer]: TDORThread read ChildGet; default;
     property Stopped: boolean read GetStopped;
@@ -416,7 +420,8 @@ begin
 
   with ChildGet(Index) do
     if InterlockedDecrement(FThreadRefCount) = 0 then
-      Free else
+      Free
+    else
       Stop;
 
   Dec(FChildCount);

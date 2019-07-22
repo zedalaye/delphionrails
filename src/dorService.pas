@@ -54,11 +54,13 @@ type
     procedure RemoveService;
 {$ENDIF}
   public
-    property Threads: TDORThread read FThreads;
-    procedure Run;
-    function CreateThread(clazz: TDORThreadClass): TDORThread;
     constructor Create; virtual;
     destructor Destroy; override;
+
+    procedure Run;
+    function CreateThread(clazz: TDORThreadClass): TDORThread;
+
+    property Threads: TDORThread read FThreads;
     property Name: string read FName write FName;
     property DisplayName: string read FDisplayName write FDisplayName;
 {$IFNDEF CONSOLEAPP}
