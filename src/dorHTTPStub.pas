@@ -173,15 +173,18 @@ begin
   if h <> nil then
   begin
     case ar.event of
-      LUA_HOOKLINE: h.FLuaStack.line := ar.currentline;
+      LUA_HOOKLINE:
+        h.FLuaStack.line := ar.currentline;
       LUA_HOOKCALL:
         begin
           lua_getinfo(L, 'Snl', ar);
           if ar.name <> nil then
-            h.FLuaStack := h.FLuaStack.Push(ar.currentline, ar.name, ar.source) else
+            h.FLuaStack := h.FLuaStack.Push(ar.currentline, ar.name, ar.source)
+          else
             h.FLuaStack := h.FLuaStack.Push(ar.currentline, ar.what, ar.source);
         end;
-      LUA_HOOKRET : h.FLuaStack := h.FLuaStack.Pop;
+      LUA_HOOKRET :
+        h.FLuaStack := h.FLuaStack.Pop;
     end;
   end;
 end;
@@ -683,9 +686,10 @@ var
   begin
     Response.Content.Clear;
     Render(
-      '<html xmlns="http://www.w3.org/1999/xhtml">'#10+
+      '<!doctype html>'#10 +
+      '<html lang="en">'#10+
       '<head>'#10+
-      '  <meta http-equiv="Content-type" content="text/html; charset=utf-8"/>'+
+      '  <meta charset="utf-8"/>'+
       '  <title>LUA Error</title>'#10+
       '  <style>'#10+
       '    body { background-color: #fff; color: #333; }'#10+
@@ -772,13 +776,13 @@ begin
         lua_pushsuperobject(state, FSession);
         lua_setglobal(state, 'session');
 
-        if lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
+        if lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
         begin
           rel := 'layout/' + S['controller'] + '.' + S['format'];
           str := path + rel;
           if FileExists(str) then
           begin
-            if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
+            if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
               printerror;
           end
           else
@@ -786,7 +790,7 @@ begin
             rel := 'layout/application.' + S['format'];
             str := path + rel;
             if FileExists(str) then
-              if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel))) then
+              if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
                  printerror;
           end;
         end
