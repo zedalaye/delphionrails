@@ -501,7 +501,7 @@ var
 begin
   Lock;
   try
-    if ClassType <> TDORThread then
+    if (FThread = nil) and (ClassType <> TDORThread) then
       FThread := TThreadRun.Create(Self);
     for i := 0 to ChildCount - 1 do
       ChildItems[i].Start;
