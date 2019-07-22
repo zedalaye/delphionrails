@@ -27,10 +27,15 @@ type
     procedure ClearPool;
     procedure Lock;
     procedure Unlock;
+
+//    function _AddRef: Integer; stdcall;
+//    function _Release: Integer; stdcall;
   public
     constructor Create(const PoolName: string; Max: Integer; const Database, Username, Password: string;
       const Characterset: string = 'UTF8'; const Lib: string = ''); reintroduce;
     destructor Destroy; override;
+
+    function RefCount: Integer;
   end;
 
   TDBUIBConnection = class(TDBConnection)
@@ -927,9 +932,28 @@ begin
   FCriticalSection.Enter;
 end;
 
+function TDBUIBConnectionPool.RefCount: Integer;
+begin
+  Result := FRefCount;
+end;
+
 procedure TDBUIBConnectionPool.Unlock;
 begin
   FCriticalSection.Leave;
 end;
+
+//function TDBUIBConnectionPool._AddRef: Integer;
+//begin
+//  Result := InterlockedIncrement(FRefCount);
+//  OutputDebugString(PChar(Format('[POOL] %s.RefCount = %d', [FPoolName, FRefCount])));
+//end;
+//
+//function TDBUIBConnectionPool._Release: Integer;
+//begin
+//  Result := InterlockedDecrement(FRefCount);
+//  OutputDebugString(PChar(Format('[POOL] %s.RefCount = %d', [FPoolName, FRefCount])));
+//  if Result = 0 then
+//    Destroy;
+//end;
 
 end.

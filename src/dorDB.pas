@@ -26,6 +26,7 @@ type
     procedure ClearPool;
     procedure Lock;
     procedure Unlock;
+    function RefCount: Integer;
   end;
 
   IDBConnection = interface
