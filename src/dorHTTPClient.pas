@@ -906,6 +906,7 @@ function THTTPRequest.SockRecv(var Buf; len: Integer): Integer;
 var
   rcv: Integer;
   p: PByte;
+  last_error: Integer;
 begin
   Result := 0;
   p := @buf;
@@ -917,9 +918,10 @@ begin
       rcv := recv(FSocket, p^, 1, 0);
     if rcv <> 1 then
     begin
-      if (WSAGetLastError = WSAETIMEDOUT) then
+      last_error := WSAGetLastError;
+      if (last_error = WSAETIMEDOUT) then
         raise EHTTPRequest.Create('Timeout.');
-      FReadError := True;
+      FReadError := last_error <> 0;
       Exit;
     end;
 
