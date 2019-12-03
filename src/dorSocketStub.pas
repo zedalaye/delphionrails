@@ -944,6 +944,12 @@ end;
 { TSocketServer }
 
 function TSocketServer.Run: Cardinal;
+//type
+//  TTcpKeepalive = record
+//    onoff: Cardinal;
+//    keepalivetime: Cardinal;
+//    keepaliveinterval: Cardinal;
+//  end;
 const
   DOR_MAX_CONN = SOMAXCONN; // 200
 var
@@ -951,11 +957,10 @@ var
   InputAddress: TSockAddrIn;
   InputLen: Integer;
   Stub: TDORThread;
-  SO_True: Integer;
-//  SO_Zero: Integer;
   linger: TLinger;
   optval: Integer;
-  bytes: DWORD;
+//  bytes: DWORD;
+//  alive: TTcpKeepalive;
 begin
 {$if defined(DEBUG)}
   TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
@@ -967,20 +972,39 @@ begin
   PSockAddrIn(@FAddress).sin_family := AF_INET;
   PSockAddrIn(@FAddress).sin_port := htons(FPort);
 
-  SO_True := -1;
-//  if setsockopt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@SO_True), SizeOf(SO_True)) <> 0 then
-//    RaiseLastOSError(WSAGetLastError);
-
-  if setsockopt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@SO_True), SizeOf(SO_True)) <> 0 then
+  { Activates Socket ReuseAddr option }
+  optval := 1;
+  if setsockopt(FSocketHandle, SOL_SOCKET, SO_REUSEADDR, PAnsiChar(@optval), SizeOf(optval)) <> 0 then
     RaiseLastOSError(WSAGetLastError);
 
-//  SO_Zero := 0;
-//  if setsockopt(FSocketHandle, SOL_SOCKET, SO_SNDBUF, PAnsiChar(@SO_Zero), SizeOf(SO_Zero)) <> 0 then
+  { Disable Naggle algorithm }
+//  optval := 1;
+//  if setsockopt(FSocketHandle, IPPROTO_TCP, TCP_NODELAY, PAnsiChar(@optval), SizeOf(optval)) <> 0 then
 //    RaiseLastOSError(WSAGetLastError);
 
+  { Sets size of output buffer }
+//  optval := 0;
+//  if setsockopt(FSocketHandle, SOL_SOCKET, SO_SNDBUF, PAnsiChar(@optval), SizeOf(optval)) <> 0 then
+//    RaiseLastOSError(WSAGetLastError);
+
+  { Activates Socket KeepAlive option }
+  optval := 1;
+  if setsockopt(FSocketHandle, SOL_SOCKET, SO_KEEPALIVE, PAnsiChar(@optval), SizeOf(optval)) <> 0 then
+    RaiseLastOSError(WSAGetLastError);
+
+  { SIO_KEEPALIVE_VALS : Activates Socket KeepAlive option with KeepAlive values (time = 20s, interval = 1s) }
+//  alive.onoff := 1;
+//  alive.keepaliveinterval := 1000;
+//  alive.keepalivetime := 20 * 1000;
+//  bytes := 0;
+//  if WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 4), @alive, SizeOf(alive), nil, 0, bytes, nil, nil) = SOCKET_ERROR then
+//    RaiseLastOSError(WSAGetLastError);
+
+  { Activates Socket Linger on close() option }
   linger.l_onoff := 1;
   linger.l_linger := 5;
-  setsockopt(FSocketHandle, SOL_SOCKET, SO_LINGER, PAnsiChar(@linger), sizeof(linger));
+  if setsockopt(FSocketHandle, SOL_SOCKET, SO_LINGER, PAnsiChar(@linger), sizeof(linger)) <> 0 then
+    RaiseLastOSError(WSAGetLastError);
 
   if bind(FSocketHandle, FAddress, SizeOf(FAddress)) <> 0 then
   begin
@@ -994,12 +1018,13 @@ begin
     raise Exception.Create('Can''t listen()');
   end;
 
-  { Borrowed from Firebird source code : optimization for loopback connections
-    SIO_LOOPBACK_FAST_PATH = _WSAIOW(IOC_VENDOR, 16)
-    Only for Windows 8+ and Windows Server 2012+ }
-  optval := 1;
-  bytes := 0;
-  WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 16), @optval, SizeOf(optval),	nil, 0, bytes, nil, nil);
+//  { Borrowed from Firebird source code : optimization for loopback connections
+//    SIO_LOOPBACK_FAST_PATH = _WSAIOW(IOC_VENDOR, 16)
+//    Only for Windows 8+ and Windows Server 2012+ }
+//  optval := 1;
+//  bytes := 0;
+//  if WSAIoctl(FSocketHandle, _WSAIOW(IOC_VENDOR, 16), @optval, SizeOf(optval),	nil, 0, bytes, nil, nil) = SOCKET_ERROR then
+//    RaiseLastOSError(WSAGetLastError);
 
   InputLen := SizeOf(InputAddress);
   while not Stopped do
