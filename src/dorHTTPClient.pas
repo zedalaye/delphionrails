@@ -123,6 +123,7 @@ type
     FReadyState: TReadyState;
     FCharsets: TDictionary<RawByteString, Integer>;
     FReadError: Boolean;
+    FWriteError: Boolean;
     FRedirectCount: Integer;
 
     FSynchronize: Boolean;
@@ -465,6 +466,8 @@ keepsocket:
   FUser := user;
   FPassword := password;
   FMethod := method;
+  FStatus := 0;
+  FStatusText := '';
   SetReadyState(rsOpen);
   Exit(True);
 error:
@@ -477,16 +480,17 @@ var
   str: THTTPHeader;
 begin
   SendHeaders(data, UploadRate);
+  if FWriteError then
+    if TCPReconnect then
+      SendHeaders(data, UploadRate);
+
   Result := Receive(TimeOut, DownloadRate);
-  // Reconnect ?
   if FReadError then
-  begin
     if TCPReconnect then
     begin
       SendHeaders(data, UploadRate);
       Result := Receive(TimeOut, DownloadRate);
     end;
-  end;
 
   // Redirect ?
   if Result and IsRedirecting and FResponseHeader.TryGetValue('location', str) then
@@ -533,21 +537,21 @@ var
 begin
 
   wait := procedure(l: Integer)
-  begin
-    if DownloadRate > 0 then
-    begin
-      Inc(Total, l);
-      while True do
-      begin
-        QueryPerformanceCounter(Curr);
-        Rate := Round((Total / 1024) / ((Curr - Start) / Freq));
-        if Rate < DownloadRate then
-          Break
-        else
-          SleepEx(1000, True);
-      end;
-    end;
-  end;
+          begin
+            if DownloadRate > 0 then
+            begin
+              Inc(Total, l);
+              while True do
+              begin
+                QueryPerformanceCounter(Curr);
+                Rate := Round((Total / 1024) / ((Curr - Start) / Freq));
+                if Rate < DownloadRate then
+                  Break
+                else
+                  SleepEx(1000, True);
+              end;
+            end;
+          end;
 
   try
     FReadError := False;
@@ -567,6 +571,7 @@ begin
     if not HTTPParse(
       function (var buf; len: Integer): Integer
       begin
+        wait(len);
         Result := SockRecv(buf, len);
       end,
       function (code: Integer; const mesg: RawByteString): Boolean
@@ -732,6 +737,7 @@ var
   compressed: TPooledMemoryStream;
   Total, Rate, Start, Curr, Freq: Int64;
 begin
+  FWriteError := False;
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
 
   if ((FSsl = nil) and (FPort <> 80)) or ((FSsl <> nil) and (FPort <> 443)) then
@@ -810,6 +816,8 @@ begin
           end;
         end;
         SockSend(buffer, read);
+        if FWriteError then
+          Exit;
       end;
     until read = 0;
 
@@ -820,6 +828,9 @@ begin
     HTTPWriteLine('');
 
   Flush;
+  if FWriteError then
+    Exit;
+
   SetReadyState(rsSent);
 end;
 
@@ -916,12 +927,13 @@ begin
       rcv := SSL_read(FSsl, p, 1)
     else
       rcv := recv(FSocket, p^, 1, 0);
+
     if rcv <> 1 then
     begin
       last_error := WSAGetLastError;
       if (last_error = WSAETIMEDOUT) then
         raise EHTTPRequest.Create('Timeout.');
-      FReadError := last_error <> 0;
+      FReadError := True;
       Exit;
     end;
 
@@ -935,6 +947,8 @@ function THTTPRequest.SockSend(var Buf; len: Integer): Integer;
 var
   l: Cardinal;
   p: PByte;
+  sent: Integer;
+  last_error: Integer;
 begin
   Result := len;
 
@@ -950,11 +964,21 @@ begin
     if FBufferPos = BUFFER_SIZE then
     begin
       if FSsl <> nil then
-        SSL_write(FSsl, @FBuffer, BUFFER_SIZE)
+        sent := SSL_write(FSsl, @FBuffer, BUFFER_SIZE)
       else
-        WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
+        sent := WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
+
+      if sent <> BUFFER_SIZE then
+      begin
+        last_error := WSAGetLastError;
+        if (last_error = WSAETIMEDOUT) then
+          raise EHTTPRequest.Create('Timeout.');
+        FWriteError := last_error <> 0;
+      end;
+
       FBufferPos := 0;
     end;
+
     l := Min(len, BUFFER_SIZE - FBufferPos);
   end;
 end;
@@ -1064,13 +1088,25 @@ begin
 end;
 
 procedure THTTPRequest.Flush;
+var
+  sent: Integer;
+  last_error: Integer;
 begin
   if FBufferPos > 0 then
   begin
     if FSsl <> nil then
-      SSL_write(FSsl, @FBuffer, FBufferPos)
+      sent := SSL_write(FSsl, @FBuffer, FBufferPos)
     else
-      WinSock2.send(FSocket, FBuffer, FBufferPos, 0);
+      sent := WinSock2.send(FSocket, FBuffer, FBufferPos, 0);
+
+    if sent <> Integer(FBufferPos) then
+    begin
+      last_error := WSAGetLastError;
+      if (last_error = WSAETIMEDOUT) then
+        raise EHTTPRequest.Create('Timeout.');
+      FWriteError := last_error <> 0;
+    end;
+
     FBufferPos := 0;
   end;
 end;
