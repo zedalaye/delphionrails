@@ -61,7 +61,6 @@ type
     FSendFile: string;
     FIsStatic: Boolean;
     FWebSocketVersion: Integer;
-    FStopping: Boolean;
 {$IFDEF DEBUG}
     FLuaStack: PLuaStackInfo;
 {$ENDIF}
@@ -91,7 +90,6 @@ type
     procedure Redirect(const location: string); overload;
     procedure Redirect(const controler, action: string; const id: string = ''); overload;
     property FileToSend: string read FSendFile write FSendFile;
-    property Stopping: Boolean read FStopping write FStopping;
     property Return: ISuperObject read FReturn;
     property Request: THTTPMessage read FRequest;
     property Response: THTTPMessage read FResponse;
@@ -830,7 +828,7 @@ begin
   len := 0;
   line := 0;
   c := #0;
-  while not Stopping do
+  while not Stopped do
   begin
     //ProcessEvents;
     inc(cursor);
@@ -1132,7 +1130,6 @@ begin
   FCompress := False;
   FCompressLevel := 5;
   FSendFile := '';
-  FStopping := False;
   FIsStatic := False;
 
   with Request.AsObject do
@@ -1290,7 +1287,7 @@ begin
         end;
       end;
 
-      if Stopping or (Response.FContent.Size > 0) or (FErrorCode >= 300) or (FErrorCode = 204) then
+      if Stopped or (Response.FContent.Size > 0) or (FErrorCode >= 300) or (FErrorCode = 204) then
         Exit;
 
       if (Request.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
@@ -1447,14 +1444,14 @@ begin
       Exit;
   inst.Start;
 
-  if FWebSocketVersion  = 0 then
+  if FWebSocketVersion = 0 then
     state := stStartOldMode
   else
     state := stStartNewMode;
 
   stream := TPooledMemoryStream.Create;
   try
-    while not Stopping do
+    while not Stopped do
       if Source.Read(b, 1, 0) = 1 then
       begin
         case state of

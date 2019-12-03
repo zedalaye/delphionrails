@@ -180,10 +180,10 @@ end;
 
 class procedure TActionController.Send(stream: TStream);
 begin
-  with (CurrentDorThread as THTTPStub) do begin
+  with (CurrentDorThread as THTTPStub) do
+  begin
     if stream <> nil then
       Response.Content.LoadFromStream(stream);
-    Stopping := True;
   end;
 end;
 
