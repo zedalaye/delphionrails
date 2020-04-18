@@ -28,6 +28,13 @@ type
 
   EHTTPRequest = Exception;
 
+  TCookie = record
+    path: RawByteString;
+    domain: RawByteString;
+    value: RawByteString;
+    max_age: Integer;
+  end;
+
   IHTTPRequest = interface
     ['{105BFAD3-A4AE-459E-8EA6-377E9E065827}']
     function Open(const method: RawByteString; const url: string; async: Boolean = False;
@@ -57,6 +64,8 @@ type
     procedure SetUploadRate(value: Cardinal);
     function GetTimeout: Cardinal;
     procedure SetTimeout(value: Cardinal);
+    function GetCookie(const Name: RawByteString): TCookie;
+    procedure SetCookie(const Name: RawByteString; Value: TCookie);
 
     property RequestHeader[const header: RawByteString]: RawByteString read GetRequestHeader write SetRequestHeader;
     property ResponseHeader[const header: RawByteString]: RawByteString read GetResponseHeader;
@@ -70,6 +79,7 @@ type
     property DownloadRate: Cardinal read GetDownloadRate write SetDownloadRate;
     property UploadRate: Cardinal read GetUploadRate write SetUploadRate;
     property Timeout: Cardinal read GetTimeout write SetTimeout;
+    property Cookie[const name: RawByteString]: TCookie read GetCookie write SetCookie;
   end;
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
@@ -82,11 +92,6 @@ type
       encUnknown,
       encDeflate,
       encGZIP);
-    TCookie = record
-      path: RawByteString;
-      domain: RawByteString;
-      value: RawByteString;
-    end;
     TThreadAsync = class(TThread)
     private
       FThis: IHTTPRequest;
@@ -192,6 +197,8 @@ type
     procedure SetUploadRate(value: Cardinal);
     function GetTimeout: Cardinal;
     procedure SetTimeout(value: Cardinal);
+    function GetCookie(const Name: RawByteString): TCookie;
+    procedure SetCookie(const Name: RawByteString; Value: TCookie);
   public
     constructor Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
       const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = ''); virtual;
@@ -272,6 +279,17 @@ begin
   FCookies.Free;
 
   inherited;
+end;
+
+function THTTPRequest.GetCookie(const Name: RawByteString): TCookie;
+begin
+  if not FCookies.TryGetValue(Name, Result) then
+  begin
+    Result.path := '';
+    Result.value := '';
+    Result.domain := '';
+    Result.max_age := 0;
+  end;
 end;
 
 function THTTPRequest.GetDownloadRate: Cardinal;
@@ -848,6 +866,11 @@ begin
   end;
 end;
 
+procedure THTTPRequest.SetCookie(const Name: RawByteString; Value: TCookie);
+begin
+  FCookies.AddOrSetValue(Name, Value);
+end;
+
 procedure THTTPRequest.SetDownloadRate(value: Cardinal);
 begin
   FDownloadRate := value;
@@ -1166,7 +1189,9 @@ begin
           else if AnsiStrings.SameText(key, 'path') then
             cookie.path := value
           else if AnsiStrings.SameText(key, 'domain') then
-            cookie.domain := value;
+            cookie.domain := value
+          else if AnsiStrings.SameText(key, 'max-age') then
+            cookie.max_age := StrToIntDef(string(value), 0);
           Result := True;
         end)
       then
