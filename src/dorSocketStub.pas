@@ -432,7 +432,6 @@ end;
 
 function TDORThread.ChildGet(Index: Integer): TDORThread;
 begin
-  Result := nil;
   Lock;
   try
     if (Index < 0) or (Index >= FChildCount) then

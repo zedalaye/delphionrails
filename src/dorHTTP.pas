@@ -26,7 +26,7 @@ function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
 function HTMLEncode(const AStr: string): string;
 
 implementation
-uses SysUtils, dorPunyCode;
+uses SysUtils, AnsiStrings, dorPunyCode;
 
 function HTTPParseURL(const uri: PChar; out protocol: string;
   out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
@@ -297,7 +297,7 @@ begin
         Rp^ := '+'
       else
       begin
-        FormatBuf(Rp^, 3, AnsiString('%%%.2x'), 6, [Ord(Sp^)]);
+        AnsiStrings.FormatBuf(Rp^, 3, AnsiString('%%%.2x'), 6, [Ord(Sp^)]);
         Inc(Rp,2);
       end;
     Inc(Rp);

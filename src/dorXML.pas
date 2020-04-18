@@ -1,7 +1,9 @@
 unit dorXML;
 
 interface
-uses SysUtils, Windows, Classes, Generics.Collections;
+
+uses
+  SysUtils, Windows, AnsiStrings, Classes, Generics.Collections;
 
 type
   IXMLNode = interface;
@@ -202,64 +204,66 @@ type
   function XMLParseCP(const cp: PAnsiChar): Integer;
 
 implementation
-uses Math;
+
+uses
+  Math;
 
 function XMLParseCP(const cp: PAnsiChar): Integer;
 var
   len: Integer;
 begin
   Result := CP_ACP;
-  len := StrLen(cp);
+  len := AnsiStrings.StrLen(cp);
   case len of
-    4: if StrLIComp(cp, 'big5', 4) = 0 then Exit(950);
+    4: if AnsiStrings.StrLIComp(cp, 'big5', 4) = 0 then Exit(950);
     5: case cp[4] of
-         '7': if StrLIComp(cp, 'utf-7', 5) = 0 then Exit(CP_UTF7);
-         '8': if StrLIComp(cp, 'utf-8', 5) = 0 then Exit(CP_UTF8);
+         '7': if AnsiStrings.StrLIComp(cp, 'utf-7', 5) = 0 then Exit(CP_UTF7);
+         '8': if AnsiStrings.StrLIComp(cp, 'utf-8', 5) = 0 then Exit(CP_UTF8);
        end;
     6: case cp[5] of
-         'p', 'P': if StrLIComp(cp, 'euc-jp', 6) = 0 then Exit(51932);
+         'p', 'P': if AnsiStrings.StrLIComp(cp, 'euc-jp', 6) = 0 then Exit(51932);
          'r', 'R':
            case cp^ of
-             'e', 'E': if StrLIComp(cp, 'euc-kr', 6) = 0 then Exit(51949);
-             'k', 'K': if StrLIComp(cp, 'koi8-r', 6) = 0 then Exit(20866);
+             'e', 'E': if AnsiStrings.StrLIComp(cp, 'euc-kr', 6) = 0 then Exit(51949);
+             'k', 'K': if AnsiStrings.StrLIComp(cp, 'koi8-r', 6) = 0 then Exit(20866);
            end;
-         '2': if StrLIComp(cp, 'gb2312', 6) = 0 then Exit(936);
-         'u', 'U': if StrLIComp(cp, 'koi8-u', 6) = 0 then Exit(21866);
+         '2': if AnsiStrings.StrLIComp(cp, 'gb2312', 6) = 0 then Exit(936);
+         'u', 'U': if AnsiStrings.StrLIComp(cp, 'koi8-u', 6) = 0 then Exit(21866);
        end;
-    8: if StrLIComp(cp, 'us-ascii', 8) = 0 then Exit(20127);
-    9: if StrLIComp(cp, 'shift_jis', 9) = 0 then Exit(932);
+    8: if AnsiStrings.StrLIComp(cp, 'us-ascii', 8) = 0 then Exit(20127);
+    9: if AnsiStrings.StrLIComp(cp, 'shift_jis', 9) = 0 then Exit(932);
     10: case cp[9] of
-          '1': if StrLIComp(cp, 'iso-8859-1', 10) = 0 then Exit(28591);
+          '1': if AnsiStrings.StrLIComp(cp, 'iso-8859-1', 10) = 0 then Exit(28591);
           '2': case cp[8] of
-                 '-': if StrLIComp(cp, 'iso-8859-2', 10) = 0 then Exit(28592);
-                 '1': if StrLIComp(cp, 'hz-gb-2312', 10) = 0 then Exit(52936);
+                 '-': if AnsiStrings.StrLIComp(cp, 'iso-8859-2', 10) = 0 then Exit(28592);
+                 '1': if AnsiStrings.StrLIComp(cp, 'hz-gb-2312', 10) = 0 then Exit(52936);
                end;
-          '3': if StrLIComp(cp, 'iso-8859-3', 10) = 0 then Exit(28593);
-          '4': if StrLIComp(cp, 'iso-8859-4', 10) = 0 then Exit(28594);
-          '5': if StrLIComp(cp, 'iso-8859-5', 10) = 0 then Exit(28595);
-          '6': if StrLIComp(cp, 'iso-8859-6', 10) = 0 then Exit(28596);
-          '7': if StrLIComp(cp, 'iso-8859-7', 10) = 0 then Exit(28597);
-          '9': if StrLIComp(cp, 'iso-8859-9', 10) = 0 then Exit(28599);
+          '3': if AnsiStrings.StrLIComp(cp, 'iso-8859-3', 10) = 0 then Exit(28593);
+          '4': if AnsiStrings.StrLIComp(cp, 'iso-8859-4', 10) = 0 then Exit(28594);
+          '5': if AnsiStrings.StrLIComp(cp, 'iso-8859-5', 10) = 0 then Exit(28595);
+          '6': if AnsiStrings.StrLIComp(cp, 'iso-8859-6', 10) = 0 then Exit(28596);
+          '7': if AnsiStrings.StrLIComp(cp, 'iso-8859-7', 10) = 0 then Exit(28597);
+          '9': if AnsiStrings.StrLIComp(cp, 'iso-8859-9', 10) = 0 then Exit(28599);
         end;
     11: case cp[5] of
-          '2': if StrLIComp(cp, 'csiso2022jp', 11) = 0 then Exit(50221);
-          '0': if StrLIComp(cp, 'iso-2022-jp', 11) = 0 then Exit(50220);
-          '8': if StrLIComp(cp, 'iso-8859-15', 11) = 0 then Exit(28605);
-          'w', 'W': if StrLIComp(cp, 'windows-874', 11) = 0 then Exit(874);
+          '2': if AnsiStrings.StrLIComp(cp, 'csiso2022jp', 11) = 0 then Exit(50221);
+          '0': if AnsiStrings.StrLIComp(cp, 'iso-2022-jp', 11) = 0 then Exit(50220);
+          '8': if AnsiStrings.StrLIComp(cp, 'iso-8859-15', 11) = 0 then Exit(28605);
+          'w', 'W': if AnsiStrings.StrLIComp(cp, 'windows-874', 11) = 0 then Exit(874);
         end;
     12: case cp[11] of
-          '0': if StrLIComp(cp, 'windows-1250', 12) = 0 then Exit(1250);
-          '1': if StrLIComp(cp, 'windows-1251', 12) = 0 then Exit(1251);
-          '2': if StrLIComp(cp, 'Windows-1252', 12) = 0 then Exit(1252);
-          '3': if StrLIComp(cp, 'windows-1253', 12) = 0 then Exit(1253);
-          '4': if StrLIComp(cp, 'windows-1254', 12) = 0 then Exit(1254);
-          '5': if StrLIComp(cp, 'windows-1255', 12) = 0 then Exit(1255);
-          '6': if StrLIComp(cp, 'windows-1256', 12) = 0 then Exit(1256);
-          '7': if StrLIComp(cp, 'windows-1257', 12) = 0 then Exit(1257);
-          '8': if StrLIComp(cp, 'windows-1258', 12) = 0 then Exit(1258);
-          'i', 'I': if StrLIComp(cp, 'iso-8859-8-i', 12) = 0 then Exit(38598);
+          '0': if AnsiStrings.StrLIComp(cp, 'windows-1250', 12) = 0 then Exit(1250);
+          '1': if AnsiStrings.StrLIComp(cp, 'windows-1251', 12) = 0 then Exit(1251);
+          '2': if AnsiStrings.StrLIComp(cp, 'Windows-1252', 12) = 0 then Exit(1252);
+          '3': if AnsiStrings.StrLIComp(cp, 'windows-1253', 12) = 0 then Exit(1253);
+          '4': if AnsiStrings.StrLIComp(cp, 'windows-1254', 12) = 0 then Exit(1254);
+          '5': if AnsiStrings.StrLIComp(cp, 'windows-1255', 12) = 0 then Exit(1255);
+          '6': if AnsiStrings.StrLIComp(cp, 'windows-1256', 12) = 0 then Exit(1256);
+          '7': if AnsiStrings.StrLIComp(cp, 'windows-1257', 12) = 0 then Exit(1257);
+          '8': if AnsiStrings.StrLIComp(cp, 'windows-1258', 12) = 0 then Exit(1258);
+          'i', 'I': if AnsiStrings.StrLIComp(cp, 'iso-8859-8-i', 12) = 0 then Exit(38598);
         end;
-    14: if StrLIComp(cp, 'ks_c_5601-1987', 14) = 0 then Exit(949);
+    14: if AnsiStrings.StrLIComp(cp, 'ks_c_5601-1987', 14) = 0 then Exit(949);
   end;
 end;
 
@@ -312,7 +316,7 @@ type
 
   function TWriterString.Append(buf: PAnsiChar): Integer;
   begin
-    Result := Append(buf, StrLen(buf));
+    Result := Append(buf, AnsiStrings.StrLen(buf));
   end;
 
   procedure TWriterString.Reset;
@@ -1038,7 +1042,7 @@ begin
           p: PAnsiChar;
         begin
           if not stripNS then Exit(s);
-          p := StrScan(PAnsiChar(s), ':');
+          p := AnsiStrings.StrScan(PAnsiChar(s), ':');
           if p <> nil then
           begin
             inc(p);
@@ -1052,7 +1056,7 @@ begin
           p: PAnsiChar;
         begin
           if not stripNS then Exit(s);
-          p := StrScan(PAnsiChar(s), ':');
+          p := AnsiStrings.StrScan(PAnsiChar(s), ':');
           if p <> nil then
             SetString(Result, PAnsiChar(s), p - PAnsiChar(s)) else
             Result := s;
