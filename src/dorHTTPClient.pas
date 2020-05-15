@@ -24,16 +24,17 @@ type
     class function Make(const name, value: RawByteString): THTTPHeader; static;
   end;
 
-  THeaderCollection = TDictionary<RawByteString,THTTPHeader>.TValueCollection;
-
-  EHTTPRequest = Exception;
-
   TCookie = record
     path: RawByteString;
     domain: RawByteString;
     value: RawByteString;
+    expires: RawByteString;
     max_age: Integer;
   end;
+
+  THeaderCollection = TDictionary<RawByteString, THTTPHeader>.TValueCollection;
+
+  EHTTPRequest = Exception;
 
   IHTTPRequest = interface
     ['{105BFAD3-A4AE-459E-8EA6-377E9E065827}']
@@ -281,13 +282,14 @@ begin
   inherited;
 end;
 
-function THTTPRequest.GetCookie(const Name: RawByteString): TCookie;
+function THTTPRequest.GetCookie(const name: RawByteString): TCookie;
 begin
-  if not FCookies.TryGetValue(Name, Result) then
+  if not FCookies.TryGetValue(name, Result) then
   begin
     Result.path := '';
-    Result.value := '';
     Result.domain := '';
+    Result.value := '';
+    Result.expires := '';
     Result.max_age := 0;
   end;
 end;
@@ -1190,8 +1192,11 @@ begin
             cookie.path := value
           else if AnsiStrings.SameText(key, 'domain') then
             cookie.domain := value
+          else if AnsiStrings.SameText(key, 'expires') then
+            cookie.expires := value
           else if AnsiStrings.SameText(key, 'max-age') then
             cookie.max_age := StrToIntDef(string(value), 0);
+
           Result := True;
         end)
       then
