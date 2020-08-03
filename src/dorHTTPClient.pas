@@ -41,46 +41,57 @@ type
     function Open(const method: RawByteString; const url: string; async: Boolean = False;
       const user: string = ''; const password: string = ''; urlencode: Boolean = True): Boolean;
     procedure Abort;
-    procedure SetRequestHeader(const header, value: RawByteString);
-    function GetRequestHeader(const header: RawByteString): RawByteString;
-    function GetResponseHeader(const header: RawByteString): RawByteString;
+
     function Send(data: TStream = nil): Boolean;
     function SendText(const data: string; encoding: TEncoding = nil): Boolean;
     function SendFile(const FileName: string): Boolean;
-    function GetStatus: Word;
-    function GetStatusText: RawByteString;
-    procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
+
+    procedure ClearRequestHeaders;
+
+    function GetCookie(const Name: RawByteString): TCookie;
+    function GetDownloadRate: Cardinal;
+    function GetFollowRedirect: Boolean;
     function GetOnReadyStateChange: TOnReadyStateChange;
     function GetReadyState: TReadyState;
-    function GetResponseStream: TStream;
-    procedure SetResponseStream(stream: TStream);
-    function GetResponseText: string;
+    function GetRequestHeader(const header: RawByteString): RawByteString;
     function GetRequestHeaders: THeaderCollection;
+    function GetResetDataStream: Boolean;
+    function GetResponseHeader(const header: RawByteString): RawByteString;
     function GetResponseHeaders: THeaderCollection;
+    function GetResponseStream: TStream;
+    function GetResponseText: string;
+    function GetStatus: Word;
+    function GetStatusText: RawByteString;
     function GetSynchronize: Boolean;
-    procedure SetSynchronize(value: Boolean);
-    function GetDownloadRate: Cardinal;
-    procedure SetDownloadRate(value: Cardinal);
-    function GetUploadRate: Cardinal;
-    procedure SetUploadRate(value: Cardinal);
     function GetTimeout: Cardinal;
-    procedure SetTimeout(value: Cardinal);
-    function GetCookie(const Name: RawByteString): TCookie;
-    procedure SetCookie(const Name: RawByteString; Value: TCookie);
+    function GetUploadRate: Cardinal;
 
-    property RequestHeader[const header: RawByteString]: RawByteString read GetRequestHeader write SetRequestHeader;
-    property ResponseHeader[const header: RawByteString]: RawByteString read GetResponseHeader;
-    property Status: Word read GetStatus;
-    property StatusText: RawByteString read GetStatusText;
+    procedure SetCookie(const Name: RawByteString; Value: TCookie);
+    procedure SetDownloadRate(value: Cardinal);
+    procedure SetFollowRedirect(value: Boolean);
+    procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
+    procedure SetRequestHeader(const header, value: RawByteString);
+    procedure SetResetDataStream(const value: Boolean);
+    procedure SetResponseStream(stream: TStream);
+    procedure SetSynchronize(value: Boolean);
+    procedure SetTimeout(value: Cardinal);
+    procedure SetUploadRate(value: Cardinal);
+
+    property Cookie[const name: RawByteString]: TCookie read GetCookie write SetCookie;
+    property DownloadRate: Cardinal read GetDownloadRate write SetDownloadRate;
+    property FollowRedirect: Boolean read GetFollowRedirect write SetFollowRedirect;
     property OnReadyStateChange: TOnReadyStateChange read GetOnReadyStateChange write SetOnReadyStateChange;
+    property ReadyState: TReadyState read GetReadyState;
+    property RequestHeader[const header: RawByteString]: RawByteString read GetRequestHeader write SetRequestHeader;
+    property ResetDataStream: Boolean read GetResetDataStream write SetResetDataStream;
+    property ResponseHeader[const header: RawByteString]: RawByteString read GetResponseHeader;
     property ResponseStream: TStream read GetResponseStream write SetResponseStream;
     property ResponseText: string read GetResponseText;
-    property ReadyState: TReadyState read GetReadyState;
+    property Status: Word read GetStatus;
+    property StatusText: RawByteString read GetStatusText;
     property Synchronize: Boolean read GetSynchronize write SetSynchronize;
-    property DownloadRate: Cardinal read GetDownloadRate write SetDownloadRate;
-    property UploadRate: Cardinal read GetUploadRate write SetUploadRate;
     property Timeout: Cardinal read GetTimeout write SetTimeout;
-    property Cookie[const name: RawByteString]: TCookie read GetCookie write SetCookie;
+    property UploadRate: Cardinal read GetUploadRate write SetUploadRate;
   end;
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
@@ -118,8 +129,8 @@ type
     FPassword: string;
     FResponseData: TStream;
     FResponseDataOwned: Boolean;
-    FRequestHeader: TDictionary<RawByteString, THTTPHeader>;
-    FResponseHeader: TDictionary<RawByteString, THTTPHeader>;
+    FRequestHeaders: TDictionary<RawByteString, THTTPHeader>;
+    FResponseHeaders: TDictionary<RawByteString, THTTPHeader>;
     FResponseEvents: TDictionary<RawByteString, TOnHeaderEvent>;
     FCookies: TDictionary<RawByteString, TCookie>;
 
@@ -146,6 +157,8 @@ type
     FDownloadRate: Cardinal;
     FUploadRate: Cardinal;
     FTimeout: Cardinal;
+    FFollowRedirect: Boolean;
+    FResetDataStream: Boolean;
 
     // Buffer
     FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
@@ -156,7 +169,7 @@ type
     function SockSend(var Buf; len: Integer): Integer;
     function SockRecv(var Buf; len: Integer): Integer;
     procedure Flush;
-    procedure LoadDefaultHeader;
+    procedure LoadDefaultHeaders;
     procedure LoadCharsets;
     procedure LoadEvents;
 
@@ -168,44 +181,56 @@ type
     function TCPReconnect: Boolean;
 
     function InternalSend(data: TSTream; TimeOut, DownloadRate, UploadRate: Cardinal): Boolean;
-    function InternalOpen(const method: RawByteString; const url: string; async: Boolean; const user, password: string; urlencode: Boolean): Boolean;
+    function InternalOpen(const method: RawByteString; const url: string;
+      async: Boolean; const user, password: string; urlencode: Boolean): Boolean;
     procedure InternalSetRequestHeader(const header, value: RawByteString);
     function IsRedirecting: Boolean;
+  private
+    class constructor Create;
+    class destructor Destroy;
   protected
-    function Open(const method: RawByteString; const url: string; async: Boolean; const user, password: string; urlencode: Boolean = True): Boolean;
-    procedure Abort;
-    procedure SetRequestHeader(const header, value: RawByteString);
+    function GetCookie(const Name: RawByteString): TCookie;
+    function GetDownloadRate: Cardinal;
+    function GetFollowRedirect: Boolean;
+    function GetOnReadyStateChange: TOnReadyStateChange;
+    function GetReadyState: TReadyState;
     function GetRequestHeader(const header: RawByteString): RawByteString;
+    function GetRequestHeaders: THeaderCollection;
+    function GetResetDataStream: Boolean;
     function GetResponseHeader(const header: RawByteString): RawByteString;
-    function Send(data: TStream): Boolean;
-    function SendText(const data: string; encoding: TEncoding): Boolean;
-    function SendFile(const FileName: string): Boolean;
+    function GetResponseHeaders: THeaderCollection;
+    function GetResponseStream: TStream;
+    function GetResponseText: string;
     function GetStatus: Word;
     function GetStatusText: RawByteString;
-    function GetReadyState: TReadyState;
-    procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
-    function GetOnReadyStateChange: TOnReadyStateChange;
-    function GetResponseStream: TStream;
-    procedure SetResponseStream(stream: TStream);
-    function GetResponseText: string;
-    function GetRequestHeaders: THeaderCollection;
-    function GetResponseHeaders: THeaderCollection;
     function GetSynchronize: Boolean;
-    procedure SetSynchronize(value: Boolean);
-    function GetDownloadRate: Cardinal;
-    procedure SetDownloadRate(value: Cardinal);
-    function GetUploadRate: Cardinal;
-    procedure SetUploadRate(value: Cardinal);
     function GetTimeout: Cardinal;
-    procedure SetTimeout(value: Cardinal);
-    function GetCookie(const Name: RawByteString): TCookie;
+    function GetUploadRate: Cardinal;
+
     procedure SetCookie(const Name: RawByteString; Value: TCookie);
+    procedure SetDownloadRate(value: Cardinal);
+    procedure SetFollowRedirect(value: Boolean);
+    procedure SetOnReadyStateChange(const ready: TOnReadyStateChange);
+    procedure SetRequestHeader(const header, value: RawByteString);
+    procedure SetResetDataStream(const value: Boolean);
+    procedure SetResponseStream(stream: TStream);
+    procedure SetSynchronize(value: Boolean);
+    procedure SetTimeout(value: Cardinal);
+    procedure SetUploadRate(value: Cardinal);
   public
     constructor Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
       const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = ''); virtual;
     destructor Destroy; override;
-    class constructor Create;
-    class destructor Destroy;
+
+    function Open(const method: RawByteString; const url: string; async: Boolean;
+      const user, password: string; urlencode: Boolean = True): Boolean;
+    procedure Abort;
+
+    procedure ClearRequestHeaders;
+
+    function Send(data: TStream): Boolean;
+    function SendText(const data: string; encoding: TEncoding): Boolean;
+    function SendFile(const FileName: string): Boolean;
   end;
 
 implementation
@@ -232,8 +257,8 @@ begin
   FReadyState := rsUninitialized;
   if FResponseDataOwned and (FResponseData <> nil) then
     FResponseData.Size := 0;
-  LoadDefaultHeader;
-  FResponseHeader.Clear;
+  LoadDefaultHeaders;
+  FResponseHeaders.Clear;
   FStatus := 0;
   FStatusText := '';
   FCookies.Clear;
@@ -246,6 +271,8 @@ begin
   FDownloadRate := 0;
   FUploadRate := 0;
   FBufferPos := 0;
+  FFollowRedirect := True;
+  FResetDataStream := True;
 
   FSocket := INVALID_SOCKET;
   FPort := 80;
@@ -257,8 +284,8 @@ begin
   FCertCAFile := CertCAFile;
   FResponseData := nil;
   FResponseDataOwned := False;
-  FRequestHeader := TDictionary<RawByteString, THTTPHeader>.Create;
-  FResponseHeader := TDictionary<RawByteString, THTTPHeader>.Create;
+  FRequestHeaders := TDictionary<RawByteString, THTTPHeader>.Create;
+  FResponseHeaders := TDictionary<RawByteString, THTTPHeader>.Create;
   FCookies := TDictionary<RawByteString, TCookie>.Create;
   FCharsets := TDictionary<RawByteString, Integer>.Create;
   FSynchronize := True;
@@ -273,8 +300,8 @@ begin
   TCPDisconnect;
   if (FResponseDataOwned) and (FResponseData <> nil) then
     FResponseData.Free;
-  FRequestHeader.Free;
-  FResponseHeader.Free;
+  FRequestHeaders.Free;
+  FResponseHeaders.Free;
   FCharsets.Free;
   FResponseEvents.Free;
   FCookies.Free;
@@ -299,6 +326,11 @@ begin
   Result := FDownloadRate;
 end;
 
+function THTTPRequest.GetFollowRedirect: Boolean;
+begin
+  Result := FFollowRedirect;
+end;
+
 function THTTPRequest.GetOnReadyStateChange: TOnReadyStateChange;
 begin
   Result := FOnReadyStateChange;
@@ -314,7 +346,7 @@ function THTTPRequest.GetRequestHeader(
 var
   rec: THTTPHeader;
 begin
-  if FRequestHeader.TryGetValue(LowerCase(header), rec) then
+  if FRequestHeaders.TryGetValue(LowerCase(header), rec) then
     Result := rec.value
   else
     Result := '';
@@ -322,14 +354,19 @@ end;
 
 function THTTPRequest.GetRequestHeaders: THeaderCollection;
 begin
-  Result := FRequestHeader.Values;
+  Result := FRequestHeaders.Values;
+end;
+
+function THTTPRequest.GetResetDataStream: Boolean;
+begin
+  Result := FResetDataStream;
 end;
 
 function THTTPRequest.GetResponseHeader(const header: RawByteString): RawByteString;
 var
   rec: THTTPHeader;
 begin
-  if (FReadyState >= rsReceiving) and FResponseHeader.TryGetValue(LowerCase(header), rec) then
+  if (FReadyState >= rsReceiving) and FResponseHeaders.TryGetValue(LowerCase(header), rec) then
     Result := rec.value
   else
     Result := '';
@@ -337,7 +374,7 @@ end;
 
 function THTTPRequest.GetResponseHeaders: THeaderCollection;
 begin
-  Result := FResponseHeader.Values;
+  Result := FResponseHeaders.Values;
 end;
 
 function THTTPRequest.GetResponseStream: TStream;
@@ -362,7 +399,7 @@ begin
   encoding := nil;
   strings := TStringList.Create;
   try
-    if FResponseHeader.TryGetValue('content-type', contenttype) then
+    if FResponseHeaders.TryGetValue('content-type', contenttype) then
     begin
       HTTPParseHeader(contenttype.value, True, function (group: Integer; const key: RawByteString;
         const value: RawByteString): Boolean
@@ -478,7 +515,7 @@ begin
     FProtocol := Protocol;
     FDomain := Domain;
     FPort := Port;
-    LoadDefaultHeader;
+    LoadDefaultHeaders;
   end;
 
 keepsocket:
@@ -513,7 +550,7 @@ begin
     end;
 
   // Redirect ?
-  if Result and IsRedirecting and FResponseHeader.TryGetValue('location', str) then
+  if Result and IsRedirecting and FResponseHeaders.TryGetValue('location', str) then
   begin
     Inc(FRedirectCount);
     if FRedirectCount > 10 then
@@ -528,12 +565,12 @@ end;
 procedure THTTPRequest.InternalSetRequestHeader(const header,
   value: RawByteString);
 begin
-  FRequestHeader.AddOrSetValue(LowerCase(header), THTTPHeader.Make(header, value));
+  FRequestHeaders.AddOrSetValue(LowerCase(header), THTTPHeader.Make(header, value));
 end;
 
 function THTTPRequest.IsRedirecting: Boolean;
 begin
-  Result := (FStatus = 201) or (FStatus = 301) or (FStatus = 302);
+  Result := FFollowRedirect and ((FStatus = 201) or (FStatus = 301) or (FStatus = 302));
 end;
 
 function THTTPRequest.Open(const method: RawByteString; const url: string; async: Boolean;
@@ -583,7 +620,7 @@ begin
     end
     else
       FResponseData.Size := 0;
-    FResponseHeader.Clear;
+    FResponseHeaders.Clear;
 
     t := TimeOut * 1000;
     setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @t, SizeOf(t));
@@ -608,7 +645,7 @@ begin
     then
       Exit(False);
 
-    if FResponseHeader.TryGetValue('content-encoding', str) then
+    if FResponseHeaders.TryGetValue('content-encoding', str) then
     begin
       if AnsiStrings.SameText(str.value, 'deflate') then
       begin
@@ -634,7 +671,7 @@ begin
       QueryPerformanceCounter(Start);
     end;
 
-    if FResponseHeader.TryGetValue('transfer-encoding', str) and AnsiStrings.SameText(str.value, 'chunked') then
+    if FResponseHeaders.TryGetValue('transfer-encoding', str) and AnsiStrings.SameText(str.value, 'chunked') then
     begin
       if not HTTPReadChunked(
         function (var buf; len: Integer): Integer
@@ -650,7 +687,7 @@ begin
       then
         Exit(False);
     end
-    else if FResponseHeader.TryGetValue('content-length', str) and
+    else if FResponseHeaders.TryGetValue('content-length', str) and
       TryStrToInt(string(str.value), len) and (len > 0) then
     begin
       while len > 0 do
@@ -674,7 +711,7 @@ begin
         Dec(len, rcv);
       end;
     end
-    else if FResponseHeader.TryGetValue('connection', str) and (string(str.value) = 'close') then
+    else if FResponseHeaders.TryGetValue('connection', str) and (string(str.value) = 'close') then
     begin
       repeat
         SetReadyState(rsReceiving);
@@ -765,7 +802,7 @@ begin
   else
     HTTPWriteLine('Host: ' + FDomain);
 
-  for pair in FRequestHeader.Values do
+  for pair in FRequestHeaders.Values do
     HTTPWriteLine(pair.name + ': ' + pair.value);
 
   cookiecount := 0;
@@ -785,9 +822,10 @@ begin
   if (FUser <> '') and (FPassword <> '') then
     HTTPWriteLine('Authorization: Basic ' + RawByteString(StrTobase64(FUser + ':' + FPassword)));
 
-  if (data <> nil) and (data.Size > 0) then
+  if (data <> nil) and (data.Size >= 0) then
   begin
-    data.Seek(0, soFromBeginning);
+    if FResetDataStream then
+      data.Seek(0, soFromBeginning);
 
     encoding := string(GetRequestHeader('Content-Encoding'));
     if SameText(encoding, 'deflate') or SameText(encoding, 'gzip') then
@@ -845,7 +883,10 @@ begin
       compressed.Free;
   end
   else
+  begin
+    HTTPWriteLine('Content-Length: 0');
     HTTPWriteLine('');
+  end;
 
   Flush;
   if FWriteError then
@@ -878,6 +919,11 @@ begin
   FDownloadRate := value;
 end;
 
+procedure THTTPRequest.SetFollowRedirect(value: Boolean);
+begin
+  FFollowRedirect := value;
+end;
+
 procedure THTTPRequest.SetOnReadyStateChange(const ready: TOnReadyStateChange);
 begin
   FOnReadyStateChange := ready;
@@ -905,6 +951,11 @@ begin
   InternalSetRequestHeader(header, value);
 end;
 
+procedure THTTPRequest.SetResetDataStream(const value: Boolean);
+begin
+  FResetDataStream := Value;
+end;
+
 procedure THTTPRequest.SetResponseHeader(const header, value: RawByteString);
 var
   event: TOnHeaderEvent;
@@ -912,7 +963,7 @@ var
 begin
   low := LowerCase(header);
   if not FResponseEvents.TryGetValue(low, event) or event(value) then
-    FResponseHeader.AddOrSetValue(low, THTTPHeader.Make(header, value));
+    FResponseHeaders.AddOrSetValue(low, THTTPHeader.Make(header, value));
 end;
 
 procedure THTTPRequest.SetResponseStream(stream: TStream);
@@ -1100,6 +1151,11 @@ begin
   Result := TCPConnect(FDomain, FPort, ssl);
 end;
 
+procedure THTTPRequest.ClearRequestHeaders;
+begin
+  FRequestHeaders.Clear;
+end;
+
 class constructor THTTPRequest.Create;
 var
   Data: TWSAData;
@@ -1159,9 +1215,9 @@ begin
   FCharsets.Add('windows-1252', 1252);
 end;
 
-procedure THTTPRequest.LoadDefaultHeader;
+procedure THTTPRequest.LoadDefaultHeaders;
 begin
-  FRequestHeader.Clear;
+  ClearRequestHeaders;
   InternalSetRequestHeader('Accept', '*/*');
   InternalSetRequestHeader('Accept-Charset', 'utf-8;q=0.7,*;q=0.3');
   InternalSetRequestHeader('Accept-Encoding', 'deflate,gzip');
