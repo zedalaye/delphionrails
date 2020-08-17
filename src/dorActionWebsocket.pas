@@ -16,7 +16,11 @@
 unit dorActionWebsocket;
 
 interface
-uses Windows, Classes, WinSock2, superobject, dorSocketStub, dorHTTPStub;
+
+uses
+  Windows, Classes, WinSock2,
+  SysUtils,
+  superobject, dorSocketStub, dorHTTPStub;
 
 type
   TActionWebsocket = class(TCustomObserver)
@@ -38,11 +42,12 @@ type
     procedure OutputPong(const msg: string);
     procedure OutputClose(error: Word);
     procedure OutputStream(stream: TStream);
-    procedure InputMessage(const msg: string); virtual;
-    procedure InputStream(stream: TStream); virtual;
-    procedure InputPing(const msg: string); virtual;
-    procedure InputPong(const msg: string); virtual;
-    procedure InputClose(error: Word); virtual;
+
+    procedure InputMessage(const msg, source: string); virtual;
+    procedure InputStream(stream: TStream; const source: string); virtual;
+    procedure InputPing(const msg: string; const source: string); virtual;
+    procedure InputPong(const msg: string; const source: string); virtual;
+    procedure InputClose(error: Word; const source: string); virtual;
 
     constructor Create(Version: Integer); reintroduce; virtual;
     destructor Destroy; override;
@@ -53,8 +58,8 @@ type
   end;
 
   TActionWebsocketClass = class of TActionWebsocket;
+
 implementation
-uses SysUtils;
 
 { TActionController }
 
@@ -77,39 +82,39 @@ end;
 procedure TActionWebsocket.doOnInternalEvent(const Event: ISuperObject);
 begin
   case ObjectGetType(Event) of
-    stString: InputMessage(Event.AsString);
+    stString: InputMessage(Event.AsString, '');
     stObject:
       case Event.I['opcode'] of
-        $1: InputMessage(Event.AsObject.S['data']);
-        $2: InputStream(TStream(Event.AsObject.I['data']));
-        $8: InputClose(Event.AsObject.I['data']);
-        $9: InputPing(Event.AsObject.S['data']);
-        $A: InputPong(Event.AsObject.S['data']);
+        $1: InputMessage(Event.AsObject.S['data'], Event.AsObject.S['source']);
+        $2: InputStream(TStream(Event.AsObject.I['data']), Event.AsObject.S['source']);
+        $8: InputClose(Event.AsObject.I['data'], Event.AsObject.S['source']);
+        $9: InputPing(Event.AsObject.S['data'], Event.AsObject.S['source']);
+        $A: InputPong(Event.AsObject.S['data'], Event.AsObject.S['source']);
       end;
   end
 end;
 
-procedure TActionWebsocket.InputClose(error: Word);
+procedure TActionWebsocket.InputClose(error: Word; const source: string);
 begin
 
 end;
 
-procedure TActionWebsocket.InputMessage(const msg: string);
+procedure TActionWebsocket.InputMessage(const msg: string; const source: string);
 begin
 
 end;
 
-procedure TActionWebsocket.InputPing(const msg: string);
+procedure TActionWebsocket.InputPing(const msg: string; const source: string);
 begin
   OutputPong(msg);
 end;
 
-procedure TActionWebsocket.InputPong(const msg: string);
+procedure TActionWebsocket.InputPong(const msg: string; const source: string);
 begin
 
 end;
 
-procedure TActionWebsocket.InputStream(stream: TStream);
+procedure TActionWebsocket.InputStream(stream: TStream; const source: string);
 begin
   stream.Free;
 end;
@@ -126,14 +131,15 @@ begin
     begin
       rw.Write(b, 1, 0);
       if len < 126 then
-        rw.Write(len, 1, 0) else
-      if len < High(Word) then
+        rw.Write(len, 1, 0)
+      else if len < High(Word) then
       begin
         b := 126;
         rw.Write(b, 1, 0);
         rw.Write(lenarray[1], 1, 0);
         rw.Write(lenarray[0], 1, 0);
-      end else
+      end
+      else
       begin
         b := 127;
         rw.Write(b, 1, 0);
@@ -166,21 +172,22 @@ var
   rw: IReadWrite;
 begin
   if FWebSocketVersion <> 0 then
-    OutputString($80 or $1, msg) else
+    OutputString($80 or $1, msg)
+  else
+  begin
+    rw := FStub.Source;
+    if rw <> nil then
     begin
-      rw := FStub.Source;
-      if rw <> nil then
-      begin
-        utf8 := #0 + UTF8String(msg) + #255;
-        EnterCriticalSection(FCriticalSection);
-        try
-          rw.Write(PAnsiChar(utf8)^, Length(utf8), 0);
-          rw.Flush;
-        finally
-          LeaveCriticalSection(FCriticalSection);
-        end;
+      utf8 := #0 + UTF8String(msg) + #255;
+      EnterCriticalSection(FCriticalSection);
+      try
+        rw.Write(PAnsiChar(utf8)^, Length(utf8), 0);
+        rw.Flush;
+      finally
+        LeaveCriticalSection(FCriticalSection);
       end;
     end;
+  end;
 end;
 
 procedure TActionWebsocket.OutputPing(const msg: string);
@@ -214,7 +221,8 @@ begin
       begin
         rw.Write(buffer, len, 0);
         len := stream.Read(buffer, SizeOf(buffer));
-      end else
+      end
+      else
         Break;
     end;
     rw.Flush;

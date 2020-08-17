@@ -6,7 +6,7 @@ uses application_websocket;
 type
   TChatWebsocket = class(TApplicationWebsocket)
   public
-    procedure InputMessage(const msg: string); override;
+    procedure InputMessage(const msg, source: string); override;
     constructor Create(Version: Integer); override;
   end;
 
@@ -24,7 +24,7 @@ begin
     end);
 end;
 
-procedure TChatWebsocket.InputMessage(const msg: string);
+procedure TChatWebsocket.InputMessage(const msg, source: string);
 begin
   TriggerEvent(SO([
     'event', 'chatmessage',

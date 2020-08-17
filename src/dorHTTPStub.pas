@@ -1573,7 +1573,7 @@ begin
                   case opcode of
                     OPClose:
                       begin
-                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', closecode]));
+                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', closecode, 'source', Source.ClientIP]));
                         Exit;
                       end;
                     OPText, OPPing, OPPong:
@@ -1581,12 +1581,12 @@ begin
                         SetLength(data, stream.Size);
                         stream.Seek(0, soFromBeginning);
                         stream.Read(PAnsiChar(data)^, stream.Size);
-                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', data]));
+                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', data, 'source', Source.ClientIP]));
                       end;
                     OPBinary:
                       begin
                         stream.Seek(0, soFromBeginning);
-                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', stream]));
+                        inst.TriggerInternalEvent(SO(['opcode', opcode, 'data', stream, 'source', Source.ClientIP]));
                         stream := TPooledMemoryStream.Create;
                       end;
                   end;
