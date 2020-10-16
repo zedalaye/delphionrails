@@ -98,11 +98,11 @@ type
 implementation
 
 var
-  UIBConnections: Integer = 0;
+  _UIBConnections: Integer = 0;
 
 function GetUIBConnections: Integer;
 begin
-  Result := UIBConnections;
+  Result := _UIBConnections;
 end;
 
 { TDBUIBConnection }
@@ -113,7 +113,7 @@ var
   option: string;
 begin
   inherited Create;
-  InterlockedIncrement(UIBConnections);
+  InterlockedIncrement(_UIBConnections);
   FDbHandle := nil;
   FLibrary := TUIBLibrary.Create;
 
@@ -150,7 +150,7 @@ begin
   if FDbHandle <> nil then
     FLibrary.DetachDatabase(FDbHandle);
   FLibrary.Free;
-  InterlockedDecrement(UIBConnections);
+  InterlockedDecrement(_UIBConnections);
   inherited;
 end;
 
