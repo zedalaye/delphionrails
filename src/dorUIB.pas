@@ -509,7 +509,7 @@ var
       case FSQLParams.FieldType[index] of
       {$IFDEF FB25_UP}
         uftNull:
-         FSQLParams.IsNull[index] := ObjectIsType(value, stNull);
+          FSQLParams.IsNull[index] := ObjectIsType(value, stNull);
       {$ENDIF}
 
         uftNumeric:
@@ -539,14 +539,21 @@ var
 
         uftDate, uftTime, uftTimestamp:
           case ObjectGetType(value) of
-            stInt: FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(value.AsInteger);
+            stInt:
+              FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(value.AsInteger);
+            stDouble:
+              FSQLParams.AsDateTime[index] := value.AsDouble;
             stString:
               if ISO8601DateToJavaDateTime(value.AsString, i) then
                 FSQLParams.AsDateTime[index] := JavaToDelphiDateTime(i)
               else if TryStrToDateTime(value.AsString, dt) then
                 FSQLParams.AsDateTime[index] := dt
               else
-                FSQLParams.IsNull[index] := true;
+                FSQLParams.IsNull[index] := True;
+            stNull:
+              FSQLParams.IsNull[index] := True;
+            else
+              raise Exception.CreateFmt('Date/Time parameter mapping from value type %d not supported', [Ord(ObjectGetType(value))]);
           end;
 
         uftInt64:
