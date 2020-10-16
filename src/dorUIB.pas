@@ -1,13 +1,17 @@
 unit dorUIB;
+
 {$I uib.inc}
 
 interface
+
 uses
 {$IFDEF MSWINDOWS}
-  windows,
+  Windows,
 {$ENDIF}
-  dorDB, uibase, uiblib, supertypes, superobject, superdate, syncobjs, dorUtils,
-  Generics.Collections;
+  SysUtils, SyncObjs, Generics.Collections,
+  uibase, uiblib,
+  supertypes, superobject, superdate,
+  dorDB, dorUtils;
 
 type
   TDBUIBConnectionPool = class(TInterfacedObject, IDBConnectionPool)
@@ -92,7 +96,6 @@ type
   function GetUIBConnections: Integer;
 
 implementation
-uses sysutils;
 
 var
   UIBConnections: Integer = 0;
@@ -532,7 +535,6 @@ var
 
         uftFloat:
           FSQLParams.AsSingle[index] := value.AsDouble;
-
 
         uftDoublePrecision:
           FSQLParams.AsDouble[index] := value.AsDouble;
