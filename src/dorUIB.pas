@@ -225,7 +225,7 @@ begin
       try
         dic.Add('consistency', tpConsistency);
         dic.Add('concurrency', tpConcurrency);
-      {$IFNDEF FB_21UP}
+      {$IFNDEF FB21_UP}
         dic.Add('shared', tpShared);
         dic.Add('protected', tpProtected);
         dic.Add('exclusive', tpExclusive);
