@@ -194,12 +194,12 @@ type
   TXMLNodeState = (xtOpen, xtClose, xtAttribute, xtText, xtCData);
   TXMLEvent = reference to function(node: TXMLNodeState; const name: RawByteString; const value: string): Boolean;
 
-  function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal = CP_ACP): Boolean;
-  function XMLParse(const reader: TXMLReader; const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False): IXMLNode;
-  function XMLParseStream(stream: TStream;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False): IXMLNode;
-  function XMLParseFile(const filename: TFileName;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False): IXMLNode;
-  function XMLParseString(const str: AnsiString; const root: IXMLNode = nil; stripNS: Boolean = False): IXMLNode; overload;
-  function XMLParseString(const str: string; const root: IXMLNode = nil; stripNS: Boolean = False): IXMLNode; overload;
+  function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal = CP_ACP; preserveSpaces: Boolean = False): Boolean;
+  function XMLParse(const reader: TXMLReader; const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False; preserveSpaces: Boolean = False): IXMLNode;
+  function XMLParseStream(stream: TStream;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False; preserveSpaces: Boolean = False): IXMLNode;
+  function XMLParseFile(const filename: TFileName;  const root: IXMLNode = nil; cp: Cardinal = CP_ACP; stripNS: Boolean = False; preserveSpaces: Boolean = False): IXMLNode;
+  function XMLParseString(const str: AnsiString; const root: IXMLNode = nil; stripNS: Boolean = False; preserveSpaces: Boolean = False): IXMLNode; overload;
+  function XMLParseString(const str: string; const root: IXMLNode = nil; stripNS: Boolean = False; preserveSpaces: Boolean = False): IXMLNode; overload;
 
   function XMLParseCP(const cp: PAnsiChar): Integer;
 
@@ -378,7 +378,7 @@ type
 (* XMLParseSAX                                                                *)
 (******************************************************************************)
 
-function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal): Boolean;
+function XMLParseSAX(const reader: TXMLReader; const event: TXMLEvent; cp: Cardinal; preserveSpaces: Boolean): Boolean;
 const
   spaces = [#32,#9,#10,#13];
   alphas = ['a'..'z', 'A'..'Z', '_', ':', #161..#255];
@@ -722,17 +722,23 @@ redo:
         xsElementString:
           begin
             case c of
-              '<': begin
-                     Value.TrimRight;
-                     if not event(xtText, '', Value.Push(cp)) then Exit(False);
-                     Stack^.state := xsTryCloseElement;
-                   end;
-              #13, #10:
+              '<':
                 begin
                   Value.TrimRight;
-                  Value.Append(XML_SPACE, 1);
-                  Stack^.state := xsEatSpaces;
-                  Stack^.savedstate := xsElementString;
+                  if not event(xtText, '', Value.Push(cp)) then Exit(False);
+                  Stack^.state := xsTryCloseElement;
+                end;
+              #13, #10:
+                begin
+                  if preserveSpaces then
+                    Value.Append(@c, 1)
+                  else
+                  begin
+                    Value.TrimRight;
+                    Value.Append(XML_SPACE, 1);
+                    Stack^.state := xsEatSpaces;
+                    Stack^.savedstate := xsElementString;
+                  end;
                 end;
               '&':
                 begin
@@ -1028,7 +1034,7 @@ redo:
   end;
 end;
 
-function XMLParse(const reader: TXMLReader; const root: IXMLNode; cp: Cardinal; stripNS: Boolean): IXMLNode;
+function XMLParse(const reader: TXMLReader; const root: IXMLNode; cp: Cardinal; stripNS, preserveSpaces: Boolean): IXMLNode;
 var
   stack: TStack<IXMLNode>;
   n: IXMLNode;
@@ -1083,43 +1089,51 @@ begin
           xtCData:
             stack.Peek.ChildNodes.Add(TXMLNodeCDATA.Create(value));
         end;
-      end, cp) then
-      begin
-        Assert(n <> nil);
-        Result := n;
-      end else
-        Result := nil;
+      end,
+      cp, preserveSpaces
+    )
+    then
+    begin
+      Assert(n <> nil);
+      Result := n;
+    end
+    else
+      Result := nil;
   finally
     stack.Free;
   end;
 end;
 
-function XMLParseStream(stream: TStream; const root: IXMLNode; cp: Cardinal; stripNS: Boolean): IXMLNode;
+function XMLParseStream(stream: TStream; const root: IXMLNode; cp: Cardinal; stripNS, preserveSpaces: Boolean): IXMLNode;
 begin
-  Result := XMLParse(function(var c: AnsiChar): Boolean
+  Result := XMLParse(
+    function(var c: AnsiChar): Boolean
     begin
       Result := stream.Read(c, 1) = 1
-    end, root, cp, stripNS);
+    end,
+    root, cp, stripNS, preserveSpaces
+  );
 end;
 
-function XMLParseFile(const filename: TFileName; const root: IXMLNode; cp: Cardinal; stripNS: Boolean): IXMLNode;
+function XMLParseFile(const filename: TFileName; const root: IXMLNode; cp: Cardinal; stripNS, preserveSpaces: Boolean): IXMLNode;
 var
   stream: TFileStream;
 begin
   stream := TFileStream.Create(filename, fmOpenRead or fmShareDenyNone);
   try
-    Result := XMLParseStream(stream, root, cp, stripNS);
+    Result := XMLParseStream(stream, root, cp, stripNS, preserveSpaces);
   finally
     stream.Free;
   end;
 end;
 
-function XMLParseString(const str: AnsiString; const root: IXMLNode; stripNS: Boolean): IXMLNode;
+function XMLParseString(const str: AnsiString; const root: IXMLNode; stripNS, preserveSpaces: Boolean): IXMLNode;
 var
   p: PAnsiChar;
 begin
   p := PAnsiChar(str);
-  Result := XMLParse(function(var c: AnsiChar): Boolean
+  Result := XMLParse(
+    function(var c: AnsiChar): Boolean
     begin
       if p^ <> #0 then
       begin
@@ -1128,12 +1142,14 @@ begin
         Result := True;
       end else
         Result := False;
-    end, root, StringCodePage(str), stripNS);
+    end,
+    root, StringCodePage(str), stripNS, preserveSpaces
+  );
 end;
 
-function XMLParseString(const str: string; const root: IXMLNode; stripNS: Boolean): IXMLNode;
+function XMLParseString(const str: string; const root: IXMLNode; stripNS, preserveSpaces: Boolean): IXMLNode;
 begin
-  Result := XMLParseString(AnsiString(UTF8String(str)), root, stripNS);
+  Result := XMLParseString(AnsiString(UTF8String(str)), root, stripNS, preserveSpaces);
 end;
 
 { TXMLNodeNull }
