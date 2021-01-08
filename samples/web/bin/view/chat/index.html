@@ -3,7 +3,7 @@
 <% end %>
 
 <% function content_for_body() %>
-<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.5.2/jquery.min.js" type="text/javascript"></script> 
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.2/jquery.min.js" type="text/javascript"></script> 
 
 <form onsubmit="return send()">
   <input type="text" id="msg"/>
@@ -14,25 +14,45 @@
 </div>
 
 <script> 
-  function append(msg){
-    d = new Date();
-    $("#log").prepend("[" + d.getHours() + ':' + d.getMinutes() + ':' + d.getSeconds() + "] " + msg + "<br />");
-  }
+  if ("MozWebSocket" in window) WebSocket = MozWebSocket;
+
   function send(){
     s.send($('#msg').val()); 
     $('#msg').select(); 
     return false;
   }
-  
-  if ("MozWebSocket" in window) WebSocket = MozWebSocket;
+
+  function connect() {
+    function append(msg){
+      d = new Date();
+      $("#log").prepend("[" + d.getHours() + ':' + d.getMinutes() + ':' + d.getSeconds() + "] " + msg + "<br />");
+    }
+
+    s = new WebSocket(((location.protocol == "https:") ? 'wss' : 'ws' ) + '://'+ location.host + '/chat')
+    
+    s.onopen = function () {
+      append("connected")
+    };
+    
+    s.onmessage = function (evt) {
+      append(evt.data)
+    };
+    
+    s.onclose = function () {
+      append("disconnected"); 
+      setTimeout(function() {
+        append("try reconnecting...");      
+        connect(); 
+      }, 1000);
+    };
+    
+    s.onerror = function(err) {
+      s.close();
+    }  
+  }
   
   $('#msg').select();
-  if (location.protocol == "https:")
-    {s = new WebSocket('wss://'+ location.host + '/chat')} else
-    {s = new WebSocket('ws://'+ location.host + '/chat')};
-  s.onopen = function () {append("connected")};
-  s.onmessage = function (evt) {append(evt.data)};
-  s.onclose = function () {append("disconnected")};
+  connect();
 </script> 
 <% end %>
 
