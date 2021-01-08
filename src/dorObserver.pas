@@ -7,7 +7,6 @@ uses
   dorSocketStub, superobject, dorUtils;
 
 type
-
   TDorObserver = class(TCustomObserver)
   private
     FEvent: ISuperObject;
