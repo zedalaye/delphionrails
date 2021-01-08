@@ -1,7 +1,11 @@
 unit ajax_controller;
 
 interface
-uses application_controller, superobject, mypool;
+
+uses
+  SysUtils, Math, dorDB,
+  superobject,
+  application_controller;
 
 type
   TAjaxController = class(TApplicationController)
@@ -11,7 +15,9 @@ type
   end;
 
 implementation
-uses SysUtils, Math, dorDB;
+
+uses
+   mypool;
 
 { TAjaxController }
 

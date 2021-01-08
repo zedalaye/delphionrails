@@ -1,7 +1,10 @@
 unit blog_controller;
 
 interface
-uses application_controller, superobject, mypool;
+
+uses
+  superobject,
+  application_controller, mypool;
 
 type
   TBlogController = class(TApplicationController)

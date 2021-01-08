@@ -1,7 +1,10 @@
 unit chat_websocket;
 
 interface
-uses application_websocket;
+
+uses
+  superobject,
+  application_websocket;
 
 type
   TChatWebsocket = class(TApplicationWebsocket)
@@ -11,7 +14,6 @@ type
   end;
 
 implementation
-uses superobject;
 
 { TChatWebsocket }
 

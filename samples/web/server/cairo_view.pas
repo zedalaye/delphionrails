@@ -1,7 +1,10 @@
 unit cairo_view;
 
 interface
-uses application_view, dorCairolib, dorCairo;
+
+uses
+  dorCairolib, dorCairo,
+  application_view;
 
 type
   TCairoView = class(TApplicationView)
@@ -15,7 +18,6 @@ type
   end;
 
 implementation
-
 
 procedure TCairoView.PaintImg(const ctx: ICairoContext);
 var

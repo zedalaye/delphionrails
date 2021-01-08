@@ -1,7 +1,9 @@
 unit cairo_controller;
 
 interface
-uses application_controller;
+
+uses
+  application_controller;
 
 type
   TCairoController = class(TApplicationController)

@@ -1,10 +1,14 @@
 unit mypool;
 
 interface
-uses dorDB, dorUIB, SuperObject;
+
+uses
+  SysUtils, Classes,
+  dorSocketStub, dorHTTPStub, dorUtils,
+  dorDB, dorUIB,
+  SuperObject;
 
 type
-
   TBlog = record
     id: Integer;
     title: string;
@@ -16,7 +20,6 @@ var
   pool: IDBConnectionPool;
 
 implementation
-uses SysUtils, dorSocketStub, dorHTTPStub, dorUtils, Classes;
 
 procedure init;
 var
@@ -38,7 +41,8 @@ begin
     with CurrentDorThread as THTTPStub do
       Return.S['errors[]'] := 'title must be less than 50 characters';
     Result := False;
-  end else
+  end
+  else
     Result := True;
 end;
 
