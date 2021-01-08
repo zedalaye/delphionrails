@@ -273,7 +273,7 @@ var
   uri: RawByteString;
   ssl: Boolean;
   port: Word;
-  host: PHostEnt;
+  host: WinSock2.PHostEnt;
   addr: TSockAddr;
   ReadTimeOut: Integer;
   dic: TDictionary<RawByteString, RawByteString>;
@@ -347,11 +347,10 @@ begin
 
     if ssl then
     begin
-      FCtx := SSL_CTX_new(SSLv23_method);
-    {$IFDEF NO_SSLV3}
-      SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3);
-    {$ENDIF}
-      SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
+      FCtx := SSL_CTX_new(TLS_client_method());
+      SSL_CTX_set_min_proto_version(FCtx, TLS1_2_VERSION);
+      SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3 or SSL_OP_NO_COMPRESSION);
+      SSL_CTX_set_cipher_list(FCtx, DOR_SSL_CIPHER_LIST);
 
       SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
       SSL_CTX_set_default_passwd_cb(FCtx, @SSLPasswordCallback);

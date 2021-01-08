@@ -1,2 +1,10 @@
+*.exe
 *.dcu
-/src/__history
+*.drc
+*.map
+*.rsm
+*.mes
+*.res
+*.dproj.local
+*.identCache
+__history

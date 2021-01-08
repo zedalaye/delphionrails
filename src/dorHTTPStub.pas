@@ -80,7 +80,7 @@ type
     function Run: Cardinal; override;
     function Upgrade: Cardinal; virtual;
     function WebSocket: Cardinal; virtual;
-    function GetPassPhrase: AnsiString; virtual;
+    procedure GetPassPhrase(var key, iv: PByte); virtual;
     function GetRootPath: string; virtual;
   public
     constructor CreateStub(AOwner: TSocketServer; const ASocket: IReadWrite); override;
@@ -105,13 +105,15 @@ implementation
 
 uses
 {$IFDEF MSWINDOWS}
- windows,
+  Windows,
 {$ENDIF}
-  SysUtils, StrUtils, superxmlparser, dorOpenSSL, dorLua,
-  dorActionController, dorActionView, dorActionWebsocket, dorHTTP, Rtti
+  SysUtils, StrUtils, Rtti,
+  superxmlparser,
+  dorOpenSSL, dorOpenSslHelpers, dorHTTP, dorLua,
+  dorActionController, dorActionView, dorActionWebsocket
   {$ifdef madExcept}, madexcept {$endif}
-{$IFDEF UNICODE}, AnsiStrings{$ENDIF}
-{$IFDEF UNIX}, baseunix{$ENDIF}
+  {$ifdef UNICODE}, AnsiStrings{$endif}
+  {$ifdef UNIX}, baseunix{$endif}
 ;
 
 const
@@ -286,7 +288,7 @@ begin
   end;
 end;
 
-function EncodeObject(const obj: ISuperObject; const pass: AnsiString): SOString;
+function EncodeObject(const obj: ISuperObject; const key, iv: PByte): SOString;
 var
   StreamA, streamB: TPooledMemoryStream;
 begin
@@ -302,7 +304,7 @@ begin
 
     // aes
     StreamA.Seek(0, soFromBeginning);
-    AesEncryptStream(StreamB, StreamA, PAnsiChar(pass), 128);
+    AesEncryptStream(StreamB, StreamA, key, iv);
     StreamA.Size := StreamA.Position;
 
     // base64
@@ -318,7 +320,7 @@ begin
   end;
 end;
 
-function DecodeObject(const str: SOString; const pass: AnsiString): ISuperObject;
+function DecodeObject(const str: SOString; const key, iv: PByte): ISuperObject;
 var
   StreamA, StreamB: TPooledMemoryStream;
 begin
@@ -330,7 +332,7 @@ begin
     streamA.Size := streamA.Position;
 
     // aes
-    AesDecryptStream(StreamA, StreamB, PAnsiChar(pass), 128);
+    AesDecryptStream(StreamA, StreamB, key, iv);
 
     // zlib
     StreamA.Seek(0, soFromBeginning);
@@ -1048,7 +1050,7 @@ end;
 procedure THTTPStub.doAfterProcessRequest;
 var
   ite: TSuperObjectIter;
-  pass: AnsiString;
+  key, iv: PByte;
   obj: ISuperObject;
 begin
   if FCompress then
@@ -1062,9 +1064,9 @@ begin
   FResponse.AsObject.S['Server'] := 'DOR 1.0';
   if not FIsStatic then
   begin
-    pass := GetPassPhrase;
-    if pass <> '' then
-      FResponse.S['Set-Cookie[]'] := COOKIE_NAME + '=' + EncodeObject(FSession, pass) + '; path=/';
+    GetPassPhrase(key, iv);
+    if (key <> nil) and (iv <> nil) then
+      FResponse.S['Set-Cookie[]'] := COOKIE_NAME + '=' + EncodeObject(FSession, key, iv) + '; path=/';
   end;
   WriteLine(HttpResponseStrings(FErrorCode));
   if ObjectFindFirst(Response, ite) then
@@ -1122,7 +1124,7 @@ procedure THTTPStub.doBeforeProcessRequest;
 
 var
   obj: ISuperObject;
-  pass: AnsiString;
+  key, iv: PByte;
   p: PSOChar;
   f: PChar;
 begin
@@ -1143,13 +1145,13 @@ begin
     O['accept'] := HTTPInterprete(PSOChar(Request.S['env.accept']), false, ',');
   end;
 
-  pass := GetPassPhrase;
-  if pass <> '' then
+  GetPassPhrase(key, iv);
+  if (key <> nil) and (iv <> nil) then
   begin
     obj := Request.AsObject['cookies'].AsObject[COOKIE_NAME];
     case ObjectGetType(obj) of
-      stString: FSession := DecodeObject(obj.AsString, pass);
-      stArray: FSession := DecodeObject(obj.AsArray.S[0], pass);
+      stString: FSession := DecodeObject(obj.AsString, key, iv);
+      stArray: FSession := DecodeObject(obj.AsArray.S[0], key, iv);
     else
       FSession := TSuperObject.Create(stObject);
     end;
@@ -1219,9 +1221,10 @@ begin
 {$ENDIF}
 end;
 
-function THTTPStub.GetPassPhrase: AnsiString;
+procedure THTTPStub.GetPassPhrase(var key, iv: PByte);
 begin
-  Result := '';
+  key := nil;
+  iv := nil;
 end;
 
 function THTTPStub.GetRootPath: string;

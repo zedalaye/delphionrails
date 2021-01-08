@@ -1061,7 +1061,7 @@ end;
 
 function THTTPRequest.TCPConnect(const domain: RawByteString; port: Word; ssl: Boolean): Boolean;
 var
-  host: PHostEnt;
+  host: WinSock2.PHostEnt;
   addr: TSockAddr;
 begin
   Result := True;
@@ -1087,12 +1087,10 @@ begin
 
   if ssl then
   begin
-    FCtx := SSL_CTX_new(SSLv23_method);
-    SSL_CTX_set_mode(FCtx, SSL_CTX_get_mode(FCtx) or SSL_MODE_AUTO_RETRY);
-  {$IFDEF NO_SSLV3}
-    SSL_CTX_set_options(FCtx, SSL_CTX_get_options(FCtx) or SSL_OP_NO_SSLv3);
-  {$ENDIF}
-    SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
+    FCtx := SSL_CTX_new(TLS_client_method());
+    SSL_CTX_set_min_proto_version(FCtx, TLS1_2_VERSION);
+    SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3 or SSL_OP_NO_COMPRESSION);
+    SSL_CTX_set_cipher_list(FCtx, DOR_SSL_CIPHER_LIST);
 
     SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
     SSL_CTX_set_default_passwd_cb(FCtx, @SSLPasswordCallback);
@@ -1113,6 +1111,7 @@ begin
         Exit(False);
 
     FSsl := SSL_new(FCtx);
+    SSL_set_mode(FSsl, SSL_get_mode(FSsl) or SSL_MODE_AUTO_RETRY);
     SSL_set_fd(FSsl, FSocket);
     if SSL_connect(FSsl) <> 1 then
       Exit(False);

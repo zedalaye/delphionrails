@@ -18,7 +18,7 @@ unit dorSocketStub;
 
 interface
 uses
-  Windows, Winsock2, dorOpenSSL,
+  Windows, Winsock2, dorOpenSSL, dorOpenSslHelpers,
   Generics.Collections,
   dorUtils, Classes, superobject;
 
@@ -172,7 +172,6 @@ type
     procedure Close;
   public
     constructor Create(Socket: TSocket; const ClientIP: AnsiString; Owned: Boolean); virtual;
-    destructor Destroy; override;
   end;
 
   TSSLRWSocket = class(TInterfacedObject, IReadWrite)
@@ -807,23 +806,6 @@ end;
 
 { TRWSocket }
 
-function TRWSocket.ClientIP: AnsiString;
-begin
-  Result := FClientIP;
-end;
-
-procedure TRWSocket.Close;
-begin
-  Flush;
-  if FOwned then
-  begin
-    shutdown(FSocket, SD_BOTH);
-    closesocket(FSocket);
-    Sleep(1);
-  end;
-  FSocket := INVALID_SOCKET;
-end;
-
 constructor TRWSocket.Create(Socket: TSocket; const ClientIP: AnsiString; Owned: Boolean);
 begin
   inherited Create;
@@ -835,19 +817,17 @@ begin
   FWriteTimeout := 0;
 end;
 
-destructor TRWSocket.Destroy;
+procedure TRWSocket.Close;
 begin
-  Close;
-  inherited;
+  Flush;
+  if FOwned then
+    closesocket(FSocket);
+  FSocket := INVALID_SOCKET;
 end;
 
-procedure TRWSocket.Flush;
+function TRWSocket.ClientIP: AnsiString;
 begin
-  if FBufferPos > 0 then
-  begin
-    Winsock2.send(FSocket, FBuffer, FBufferPos, 0);
-    FBufferPos := 0;
-  end;
+  Result := FClientIP;
 end;
 
 function TRWSocket.HavePeerCertificate: Boolean;
@@ -858,6 +838,16 @@ end;
 function TRWSocket.IsSSL: Boolean;
 begin
   Result := False;
+end;
+
+function TRWSocket.SSLIssuer(const key: AnsiString): AnsiString;
+begin
+  Result := '';
+end;
+
+function TRWSocket.SSLSubject(const key: AnsiString): AnsiString;
+begin
+  Result := '';
 end;
 
 function TRWSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
@@ -878,19 +868,9 @@ begin
       Dec(len, 1);
       Inc(p);
       Inc(Result);
-    end else
+    end
+    else
       Break;
-end;
-
-
-function TRWSocket.SSLIssuer(const key: AnsiString): AnsiString;
-begin
-  Result := '';
-end;
-
-function TRWSocket.SSLSubject(const key: AnsiString): AnsiString;
-begin
-  Result := '';
 end;
 
 function TRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
@@ -923,6 +903,15 @@ begin
       FBufferPos := 0;
     end;
     l := Min(len, BUFFER_SIZE - FBufferPos);
+  end;
+end;
+
+procedure TRWSocket.Flush;
+begin
+  if FBufferPos > 0 then
+  begin
+    Winsock2.send(FSocket, FBuffer, FBufferPos, 0);
+    FBufferPos := 0;
   end;
 end;
 
@@ -1032,11 +1021,13 @@ begin
     if (InputSocket <> INVALID_SOCKET) then
     begin
       if not Assigned(FOnSocketStub) then
-        Stub := FStubClass.CreateStub(Self, TRWSocket.Create(InputSocket, inet_ntoa(InputAddress.sin_addr), True)) else
+        Stub := FStubClass.CreateStub(Self, TRWSocket.Create(InputSocket, inet_ntoa(InputAddress.sin_addr), True))
+      else
         Stub := FStubClass.CreateStub(Self, FOnSocketStub(InputSocket, inet_ntoa(InputAddress.sin_addr)));
 
       if Stub <> nil then
-        Stub.Start else
+        Stub.Start
+      else
         closesocket(InputSocket);
     end;
   except
@@ -1124,7 +1115,64 @@ begin
   FSource := nil;
 end;
 
-{ TSSLRWSocket }
+{ SSL Error Handling }
+
+function SSLError(const Ssl: PSSL; const ReturnCode: Integer; const SSLMethod: string): Integer;
+
+  function SSLErrorMsg(const ErrorCode: Integer): string; inline;
+  begin
+    case ErrorCode of
+      SSL_ERROR_NONE:                 Result := 'NONE';
+      SSL_ERROR_SSL:                  Result := 'SSL';
+      SSL_ERROR_WANT_READ:            Result := 'WANT READ';
+      SSL_ERROR_WANT_WRITE:           Result := 'WANT WRITE';
+      SSL_ERROR_WANT_X509_LOOKUP:     Result := 'WANT X509 LOOKUP';
+      SSL_ERROR_SYSCALL:              Result := 'SYSCALL';
+      SSL_ERROR_ZERO_RETURN:          Result := 'ZERO_RETURN';
+      SSL_ERROR_WANT_CONNECT:         Result := 'CONNECT';
+      SSL_ERROR_WANT_ACCEPT:          Result := 'ACCEPT';
+      SSL_ERROR_WANT_ASYNC:           Result := 'ASYNC';
+      SSL_ERROR_WANT_ASYNC_JOB:       Result := 'ASYNC JOB';
+      SSL_ERROR_WANT_CLIENT_HELLO_CB: Result := 'CLIENT HELLO CB';
+    else
+      Result := Format('%d:UNKNOWN', [ErrorCode]);
+    end;
+  end;
+
+  procedure SSLExploreErrorStack(const SSLMethod: string; const ReturnCode, ErrorCode: Integer); inline;
+  const
+    ERROR_BUF_LEN = 512;
+  var
+    err: Integer;
+    err_buf: array[0..ERROR_BUF_LEN - 1] of Byte;
+    err_msg: string;
+  begin
+    err := ERR_get_error();
+    while err <> SSL_ERROR_NONE do
+    begin
+      ERR_error_string_n(err, @err_buf[0], ERROR_BUF_LEN);
+      err_msg := TEncoding.Default.GetString(err_buf);
+      OutputDebugString(PChar(Format('%s=%d, ssl_error=%d (%s) %s', [
+        SSLMethod, ReturnCode, ErrorCode, SSLErrorMsg(ErrorCode), err_msg
+      ])));
+      err := ERR_get_error();
+    end;
+  end;
+
+begin
+  Result := SSL_get_error(SSL, ReturnCode);
+  case Result of
+    SSL_ERROR_NONE: { allright ! do nothing };
+    SSL_ERROR_SSL, SSL_ERROR_SYSCALL:
+      SSLExploreErrorStack(SSLMethod, ReturnCode, Result);
+    else
+      OutputDebugString(PChar(Format('%s=%d, ssl_error: %d (%s)', [
+        SSLMethod, ReturnCode, Result, SSLErrorMsg(Result)
+      ])));
+  end;
+end;
+
+{ SSL Private Key Password Provider }
 
 function SSLPasswordCallback(buffer: PAnsiChar; size, rwflag: Integer;
   this: TSSLRWSocket): Integer; cdecl;
@@ -1138,43 +1186,7 @@ begin
   Move(PAnsiChar(password)^, buffer^, Result + 1);
 end;
 
-function TSSLRWSocket.ClientIP: AnsiString;
-begin
-  Result := FClientIP;
-end;
-
-procedure TSSLRWSocket.Close;
-begin
-  if FOwned then
-  begin
-    Flush;
-    shutdown(FSocket, SD_BOTH);
-    closesocket(FSocket);
-    Sleep(1);
-    CloseSSL;
-  end;
-  FSocket := INVALID_SOCKET;
-end;
-
-procedure TSSLRWSocket.CloseSSL;
-begin
-  FConnected := False;
-  if FX509 <> nil then
-  begin
-    X509_free(FX509);
-    FX509 := nil;
-  end;
-  if Fssl <> nil then
-  begin
-    SSL_free(FSsl);
-    FSsl := nil;
-  end;
-  if Fctx <> nil then
-  begin
-    SSL_CTX_free(FCtx);
-    FCtx := nil;
-  end;
-end;
+{ TSSLRWSocket }
 
 constructor TSSLRWSocket.Create(Socket: TSocket; const ClientIP: AnsiString;
   Owned: Boolean; Verify: Integer; const password, CertificateFile,
@@ -1195,12 +1207,11 @@ begin
   FConnected := False;
 
   FPassword := password;
-  FCtx := SSL_CTX_new(SSLv23_method);
-{$IFDEF NO_SSLV3}
-  SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3);
-{$ENDIF}
-//  SSL_CTX_set_options(FCtx, SSL_OP_NO_COMPRESSION);
-  SSL_CTX_set_cipher_list(FCtx, 'DEFAULT');
+  FCtx := SSL_CTX_new(TLS_method);
+  SSL_CTX_set_min_proto_version(FCtx, TLS1_2_VERSION);
+  SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3 or SSL_OP_NO_COMPRESSION);
+  SSL_CTX_set_cipher_list(FCtx, DOR_SSL_CIPHER_LIST);
+
   SSL_CTX_set_verify(FCtx, Verify, nil);
   SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
   SSL_CTX_set_default_passwd_cb(FCtx, @SSLPasswordCallback);
@@ -1224,32 +1235,62 @@ begin
   if FSsl = nil then
     goto error;
 
-  if SSL_set_fd(FSsl, FSocket) <> 1 then
+  ERR_clear_error;
+  if SSLError(FSsl, SSL_set_fd(FSsl, FSocket), 'SSL_set_fd') <> SSL_ERROR_NONE then
     goto error;
 
-  if SSL_accept(FSsl) <> 1 then
+  ERR_clear_error;
+  if SSLError(FSsl, SSL_accept(FSsl), 'SSL_accept') <> SSL_ERROR_NONE then
     goto error;
 
   FX509 := SSL_get_peer_certificate(FSsl);
 
   FConnected := True;
   Exit;
+
 error:
   CloseSSL;
 end;
 
 destructor TSSLRWSocket.Destroy;
 begin
-  Close;
+  CloseSSL;
+  OPENSSL_thread_stop;
   inherited;
 end;
 
-procedure TSSLRWSocket.Flush;
+function TSSLRWSocket.ClientIP: AnsiString;
 begin
-  if FBufferPos > 0 then
+  Result := FClientIP;
+end;
+
+procedure TSSLRWSocket.Close;
+begin
+  if FOwned then
   begin
-    SSL_write(FSsl, @FBuffer, FBufferPos);
-    FBufferPos := 0;
+    Flush;
+    closesocket(FSocket);
+  end;
+  FSocket := INVALID_SOCKET;
+end;
+
+procedure TSSLRWSocket.CloseSSL;
+begin
+  FConnected := False;
+  if FX509 <> nil then
+  begin
+    X509_free(FX509);
+    FX509 := nil;
+  end;
+  if FSsl <> nil then
+  begin
+    SSL_free(FSsl);
+    FSsl := nil;
+  end;
+  if FCtx <> nil then
+  begin
+    SSL_CTX_free(FCtx);
+    FCtx := nil;
   end;
 end;
 
@@ -1263,10 +1304,27 @@ begin
   Result := True;
 end;
 
+function TSSLRWSocket.SSLIssuer(const key: AnsiString): AnsiString;
+begin
+  if FX509 <> nil then
+    Result := X509NameFind(X509_get_issuer_name(FX509), key)
+  else
+    Result := '';
+end;
+
+function TSSLRWSocket.SSLSubject(const key: AnsiString): AnsiString;
+begin
+  if FX509 <> nil then
+    Result := X509NameFind(X509_get_subject_name(FX509), key)
+  else
+    Result := '';
+end;
+
 function TSSLRWSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
 var
- p: PByte;
+  p: PByte;
 begin
+  Result := 0;
   if FConnected then
   begin
     if (FReadTimeout <> Timeout) then
@@ -1275,33 +1333,25 @@ begin
       FReadTimeout := Timeout;
     end;
 
-    Result := 0;
     p := @Buf;
-
     while len > 0 do
-      if SSL_read(FSsl, p, 1) = 1 then
+    begin
+      if FSsl <> nil then
       begin
-        Dec(len, 1);
-        Inc(p);
-        Inc(Result);
-      end else
+        ERR_clear_error;
+        if SSLError(FSSl, SSL_read(FSsl, p, 1), '[Read] SSL_read') = SSL_ERROR_NONE then
+        begin
+          Dec(len);
+          Inc(p);
+          Inc(Result);
+        end
+        else
+          Break;
+      end
+      else
         Break;
-  end else
-    Result := 0;
-end;
-
-function TSSLRWSocket.SSLIssuer(const key: AnsiString): AnsiString;
-begin
-  if FX509 <> nil then
-    Result := X509NameFind(X509_get_issuer_name(FX509), key) else
-    Result := '';
-end;
-
-function TSSLRWSocket.SSLSubject(const key: AnsiString): AnsiString;
-begin
-  if FX509 <> nil then
-    Result := X509NameFind(X509_get_subject_name(FX509), key) else
-    Result := '';
+    end;
+  end;
 end;
 
 function TSSLRWSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
@@ -1332,14 +1382,33 @@ begin
 
       if FBufferPos = BUFFER_SIZE then
       begin
-        SSL_write(FSsl, @FBuffer, BUFFER_SIZE);
+        if FSsl <> nil then
+        begin
+          ERR_clear_error;
+          if SSLError(FSsl, SSL_write(FSsl, @FBuffer, BUFFER_SIZE), '[Write] SSL_write') <> SSL_ERROR_NONE then
+            Break;
+        end;
         FBufferPos := 0;
       end;
+
       l := Min(len, BUFFER_SIZE - FBufferPos);
     end;
-
-  end else
+  end
+  else
     Result := 0;
+end;
+
+procedure TSSLRWSocket.Flush;
+begin
+  if FBufferPos > 0 then
+  begin
+    if FSsl <> nil then
+    begin
+      ERR_clear_error;
+      SSLError(FSsl, SSL_write(FSsl, @FBuffer, FBufferPos), '[Flush] SSL_write');
+    end;
+    FBufferPos := 0;
+  end;
 end;
 
 { TNullSocket }
@@ -1369,11 +1438,6 @@ begin
   Result := False;
 end;
 
-function TNullSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
-begin
-  Result := 0;
-end;
-
 function TNullSocket.SSLIssuer(const key: AnsiString): AnsiString;
 begin
   Result := '';
@@ -1382,6 +1446,11 @@ end;
 function TNullSocket.SSLSubject(const key: AnsiString): AnsiString;
 begin
   Result := '';
+end;
+
+function TNullSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
+begin
+  Result := 0;
 end;
 
 function TNullSocket.Write(var buf; len, Timeout: Cardinal): Cardinal;
