@@ -1,7 +1,10 @@
 unit dorHTTP;
 
 interface
-uses WinSock2;
+
+uses
+  SysUtils, AnsiStrings,
+  WinSock2;
 
 type
   TOnHTTPReadWrite = reference to function(var Buf; len: Integer): Integer;
@@ -9,7 +12,6 @@ type
   TOnHTTPAddField = reference to procedure(const add: TOnHTTPField);
   TOnHTTPResponse = reference to function(code: Integer; const mesg: RawByteString): Boolean;
   TOnHTTPHeaderField = reference to function(group: Integer; const key: RawByteString; const value: RawByteString): Boolean;
-
 
 function HTTPParse(const receive: TOnHTTPReadWrite; const onResponse: TOnHTTPResponse;
   const onfield: TOnHTTPField): Boolean;
@@ -26,7 +28,9 @@ function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
 function HTMLEncode(const AStr: string): string;
 
 implementation
-uses SysUtils, AnsiStrings, dorPunyCode;
+
+uses
+  dorPunyCode;
 
 function HTTPParseURL(const uri: PChar; out protocol: string;
   out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
