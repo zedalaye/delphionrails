@@ -893,6 +893,12 @@ const
   SSL_OP_CRYPTOPRO_TLSEXT_BUG                     = $80000000;
 
 const
+(* NameType value from RFC3546 *)
+  TLSEXT_NAMETYPE_host_name = 0;
+(* status request value from RFC3546 *)
+  TLSEXT_STATUSTYPE_ocsp = 1;
+
+const
   SSL_ERROR_NONE                  = 0;
   SSL_ERROR_SSL                   = 1;
   SSL_ERROR_WANT_READ             = 2;
@@ -1035,6 +1041,8 @@ type
   function SSL_pending(const ssl: PSSL): Integer; cdecl; external LIB_SSL;
   function SSL_has_pending(const ssl: PSSL): Integer; cdecl; external LIB_SSL;
   function SSL_get_peer_certificate(ssl: PSSL): PX509; cdecl; external LIB_SSL;
+
+  function SSL_set_tlsext_host_name(ssl: PSSL; const hostname: PAnsiChar): Integer; inline;
 
   function SSL_set_mode(ctx: PSSL; mode: LongInt): LongInt; inline;
   function SSL_get_mode(ctx: PSSL): LongInt; inline;
@@ -1200,6 +1208,11 @@ end;
 function SSL_get_mode(ctx: PSSL): LongInt;
 begin
   Result := SSL_ctrl(ctx, SSL_CTRL_MODE, 0, nil);
+end;
+
+function SSL_set_tlsext_host_name(ssl: PSSL; const hostname: PAnsiChar): Integer; inline;
+begin
+  Result := SSL_ctrl(ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, hostname);
 end;
 
 (* EVP_CIPHER *)

@@ -152,6 +152,7 @@ type
     FCertificateFile: AnsiString;
     FPrivateKeyFile: AnsiString;
     FCertCAFile: AnsiString;
+    FTLSHostname: AnsiString;
 
     // Options
     FDownloadRate: Cardinal;
@@ -219,7 +220,8 @@ type
     procedure SetUploadRate(value: Cardinal);
   public
     constructor Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
-      const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = ''); virtual;
+      const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = '';
+      const TLSHostname: AnsiString = ''); virtual;
     destructor Destroy; override;
 
     function Open(const method: RawByteString; const url: string; async: Boolean;
@@ -264,34 +266,42 @@ begin
   FCookies.Clear;
 end;
 
-constructor THTTPRequest.Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
-  const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = '');
+constructor THTTPRequest.Create(const SSLPassword: AnsiString = '';
+  const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
+  const CertCAFile: AnsiString = ''; const TLSHostname: AnsiString = '');
 begin
+  FSocket := INVALID_SOCKET;
+  FPort := 80;
+
   FTimeout := 0;
   FDownloadRate := 0;
   FUploadRate := 0;
   FBufferPos := 0;
   FFollowRedirect := True;
   FResetDataStream := True;
+  FSynchronize := True;
 
-  FSocket := INVALID_SOCKET;
-  FPort := 80;
   FCtx := nil;
   FSsl := nil;
   FSSLPassword := SSLPassword;
   FCertificateFile := CertificateFile;
   FPrivateKeyFile := PrivateKeyFile;
   FCertCAFile := CertCAFile;
+  FTLSHostname := TLSHostname;
+
   FResponseData := nil;
   FResponseDataOwned := False;
-  FRequestHeaders := TDictionary<RawByteString, THTTPHeader>.Create;
+
+  FRequestHeaders  := TDictionary<RawByteString, THTTPHeader>.Create;
   FResponseHeaders := TDictionary<RawByteString, THTTPHeader>.Create;
+  FResponseEvents  := TDictionary<RawByteString, TOnHeaderEvent>.Create;
+
   FCookies := TDictionary<RawByteString, TCookie>.Create;
   FCharsets := TDictionary<RawByteString, Integer>.Create;
-  FSynchronize := True;
+
   LoadCharsets;
-  FResponseEvents := TDictionary<RawByteString, TOnHeaderEvent>.Create;
   LoadEvents;
+
   Abort; // reset
 end;
 
@@ -1059,10 +1069,70 @@ begin
   end;
 end;
 
+{$IFNDEF RELEASE}
+
+function SSLError(const Ssl: PSSL; const ReturnCode: Integer; const SSLMethod: string): Integer;
+
+  function SSLErrorMsg(const ErrorCode: Integer): string; inline;
+  begin
+    case ErrorCode of
+      SSL_ERROR_NONE:                 Result := 'NONE';
+      SSL_ERROR_SSL:                  Result := 'SSL';
+      SSL_ERROR_WANT_READ:            Result := 'WANT READ';
+      SSL_ERROR_WANT_WRITE:           Result := 'WANT WRITE';
+      SSL_ERROR_WANT_X509_LOOKUP:     Result := 'WANT X509 LOOKUP';
+      SSL_ERROR_SYSCALL:              Result := 'SYSCALL';
+      SSL_ERROR_ZERO_RETURN:          Result := 'ZERO_RETURN';
+      SSL_ERROR_WANT_CONNECT:         Result := 'CONNECT';
+      SSL_ERROR_WANT_ACCEPT:          Result := 'ACCEPT';
+      SSL_ERROR_WANT_ASYNC:           Result := 'ASYNC';
+      SSL_ERROR_WANT_ASYNC_JOB:       Result := 'ASYNC JOB';
+      SSL_ERROR_WANT_CLIENT_HELLO_CB: Result := 'CLIENT HELLO CB';
+    else
+      Result := Format('%d:UNKNOWN', [ErrorCode]);
+    end;
+  end;
+
+  procedure SSLExploreErrorStack(const SSLMethod: string; const ReturnCode, ErrorCode: Integer); inline;
+  const
+    ERROR_BUF_LEN = 512;
+  var
+    err: Integer;
+    err_buf: array[0..ERROR_BUF_LEN - 1] of Byte;
+    err_msg: string;
+  begin
+    err := ERR_get_error();
+    while err <> SSL_ERROR_NONE do
+    begin
+      ERR_error_string_n(err, @err_buf[0], ERROR_BUF_LEN);
+      err_msg := TEncoding.Default.GetString(err_buf);
+      OutputDebugString(PChar(Format('%s=%d, ssl_error=%d (%s) %s', [
+        SSLMethod, ReturnCode, ErrorCode, SSLErrorMsg(ErrorCode), err_msg
+      ])));
+      err := ERR_get_error();
+    end;
+  end;
+
+begin
+  Result := SSL_get_error(SSL, ReturnCode);
+  case Result of
+    SSL_ERROR_NONE: { allright ! do nothing };
+    SSL_ERROR_SSL, SSL_ERROR_SYSCALL:
+      SSLExploreErrorStack(SSLMethod, ReturnCode, Result);
+    else
+      OutputDebugString(PChar(Format('%s=%d, ssl_error: %d (%s)', [
+        SSLMethod, ReturnCode, Result, SSLErrorMsg(Result)
+      ])));
+  end;
+end;
+
+{$ENDIF}
+
 function THTTPRequest.TCPConnect(const domain: RawByteString; port: Word; ssl: Boolean): Boolean;
 var
   host: WinSock2.PHostEnt;
   addr: TSockAddr;
+  rc: Integer;
 begin
   Result := True;
   // find host
@@ -1113,8 +1183,19 @@ begin
     FSsl := SSL_new(FCtx);
     SSL_set_mode(FSsl, SSL_get_mode(FSsl) or SSL_MODE_AUTO_RETRY);
     SSL_set_fd(FSsl, FSocket);
-    if SSL_connect(FSsl) <> 1 then
+
+    if FTLSHostname <> '' then
+      SSL_set_tlsext_host_name(FSsl, PAnsichar(FTLSHostname));
+
+    ERR_clear_error;
+    rc := SSL_connect(FSsl);
+    if rc <> 1 then
+    begin
+    {$IFNDEF RELEASE}
+      SSLError(FSsl, rc, 'SSL_connect');
+    {$ENDIF}
       Exit(False);
+    end;
   end;
 end;
 
