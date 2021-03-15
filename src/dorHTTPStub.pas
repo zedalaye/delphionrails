@@ -73,9 +73,11 @@ type
     procedure RenderInternal;
     function RenderScript: Boolean;
     function DecodeContent: boolean; virtual;
+    function doAuthenticate(const AuthData: string; var User: string): Boolean; virtual;
     procedure doBeforeProcessRequest; virtual;
     procedure doAfterProcessRequest; virtual;
   protected
+    function BasicAuth(const User, Password: string): Boolean; virtual;
     function ProcessRequest: Boolean; virtual;
     function Run: Cardinal; override;
     function Upgrade: Cardinal; virtual;
@@ -1096,6 +1098,41 @@ begin
   Response.Clear(true);
 end;
 
+function THTTPStub.doAuthenticate(const AuthData: string;
+  var User: string): Boolean;
+var
+  P: Integer;
+  Kind, Data, Password: string;
+begin
+  Result := False;
+
+  P := Pos(' ', AuthData);
+  if P <= 1 then
+    Exit;
+
+  Kind := Copy(AuthData, 1, P - 1);
+  Data := Copy(AuthData, P + 1, MaxInt);
+
+  if SameText(Kind, 'basic') then
+  begin
+    Data := Base64ToStr(Data);
+
+    P := Pos(':', Data);
+    if P <= 1 then
+      Exit;
+
+    User := Copy(Data, 1, P - 1);
+    Password := Copy(Data, P + 1, MaxInt);
+
+    Result := BasicAuth(User, Password);
+  end;
+end;
+
+function THTTPStub.BasicAuth(const User, Password: string): Boolean;
+begin
+  Result := False;
+end;
+
 procedure THTTPStub.doBeforeProcessRequest;
 
   function interprete(v: PSOChar; const name: string; parse: boolean): boolean;
@@ -1258,12 +1295,17 @@ end;
 
 function THTTPStub.ProcessRequest: Boolean;
 var
-  path, str, ext: string;
+  path, str, ext, user: string;
   rec: TSearchRec;
   clazz: TRttiType;
   inst: TObject;
 begin
   Result := False;
+
+  user := '';
+  if doAuthenticate(FRequest.S['env.authorization'], user) then
+    FSession.S['user'] := user;
+
   with FParams.AsObject do
     if FFormats[S['format'] + '.charset'] <> nil then
       FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset']
@@ -1275,10 +1317,11 @@ begin
     begin
       // controller
       clazz := Context.Context.FindType(format('%s_controller.T%sController', [S['controller'], CamelCase(S['controller'])]));
-      if (clazz <> nil) and (clazz is  TRttiInstanceType)  then
+      if (clazz <> nil) and (clazz is TRttiInstanceType) then
       begin
         with TRttiInstanceType(clazz) do
           inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
+
         try
           if inst is TActionController then
           begin

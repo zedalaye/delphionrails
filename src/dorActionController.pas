@@ -16,18 +16,59 @@
 unit dorActionController;
 
 interface
-uses SysUtils, Classes, superobject, dorHTTPStub;
+
+uses
+  SysUtils, Classes, Rtti, superobject, dorHTTPStub;
 
 type
+  AuthRealmAttribute = class(TCustomAttribute)
+  private
+    FRealm: string;
+  public
+    constructor Create(Realm: string);
+    property Realm: string read FRealm;
+  end;
+
+  BasicAuthAttribute = class(TCustomAttribute)
+  private
+    FAuth: Boolean;
+    FUser: string;
+  public
+    constructor Create; overload;
+    constructor Create(Auth: Boolean); overload;
+    constructor Create(const User: string); overload;
+    property Auth: Boolean read FAuth;
+    property User: string read FUser;
+  end;
+
+  TAuthContext = record
+  type
+    TOptionalValue<T> = record
+      Value: T;
+      HasValue: Boolean;
+    end;
+  var
+    CheckAuth: TOptionalValue<Boolean>;
+    User: TOptionalValue<string>;
+    Realm: string;
+    function Valid: Boolean;
+    procedure Assign(Attributes: TArray<TCustomAttribute>); overload;
+    procedure Assign(Attr: AuthRealmAttribute); overload;
+    procedure Assign(Attr: BasicAuthAttribute); overload;
+  public
+    constructor Create(const ARealm: string);
+  end;
+
   TActionController = class
   private
     FEtag: Boolean;
     procedure CalcETag;
+    function CheckAuth(const method: string): Boolean;
   public
     type TInvokeTrace = (itBefore, itAfter, itError);
   protected
     // This empty method is called to force RTTI
-    // Could be used for somethingelse later
+    // Could be used for something else later
     class procedure Register;
     class function Params: ISuperObject; virtual;
     class function Return: ISuperObject; virtual;
@@ -52,19 +93,11 @@ type
   end;
 
 implementation
-uses dorSocketStub, dorOpenSSL;
+
+uses
+  dorSocketStub, dorOpenSSL;
 
 { TActionController }
-
-class function TActionController.Context: TSuperRttiContext;
-begin
-  Result := (CurrentDorThread as THTTPStub).Context;
-end;
-
-class function TActionController.ErrorCode: Integer;
-begin
-  Result := (CurrentDorThread as THTTPStub).ErrorCode;
-end;
 
 procedure TActionController.ETag;
 begin
@@ -95,18 +128,50 @@ begin
   end;
 end;
 
-class function TActionController.HavePeerCertificate: Boolean;
+function TActionController.CheckAuth(const method: string): Boolean;
+const
+  REALM = 'Private Zone';
+var
+  Auth: TAuthContext;
+  Klass: TClass;
+  Typ: TRttiType;
+  Meth: TRttiMethod;
 begin
-  Result := (CurrentDorThread as TClientStub).Source.HavePeerCertificate;
-end;
+  Auth := TAuthContext.Create(REALM);
 
-class function TActionController.HaveSLL: Boolean;
-begin
-  Result := (CurrentDorThread as TClientStub).Source.IsSSL;
+  var Ctx := (CurrentDorThread as THTTPStub).Context;
+
+  Klass := Self.ClassType;
+  Typ := Ctx.Context.GetType(Klass);
+
+  { Collect Auth Attributes from action method }
+  Meth := Typ.GetMethod(method);
+  if Meth <> nil then
+    Auth.Assign(Meth.GetAttributes);
+
+  { And walk the ancestor hierarchy up to TActionController }
+  repeat
+    Auth.Assign(Typ.GetAttributes);
+    Klass := Klass.ClassParent;
+    Typ := Ctx.Context.GetType(Klass);
+  until Klass = TActionController;
+
+  if Auth.Valid and Auth.CheckAuth.Value then
+    if Session.S['user'] = Auth.User.Value then
+      Result := True
+    else
+    begin
+      Response.AsObject.S['WWW-Authenticate'] := 'Basic realm="' + Auth.Realm + '"';
+      SetErrorCode(401);
+      Result := False;
+    end
+  else
+    Result := True;
 end;
 
 function TActionController.Invoke: Boolean;
 var
+  method: string;
   obj: ISuperObject;
   ctx: TSuperRttiContext;
   ite: TSuperAvlEntry;
@@ -118,9 +183,14 @@ begin
     if obj <> nil then
       obj.DataPtr := Pointer(1);
 
+  method := Params.AsObject.S['action'] + '_' + Request.AsObject.S['method'];
+
+  if not CheckAuth(method) then
+    Exit;
+
   TraceInvoke(itBefore, irSuccess);
 
-  case TrySOInvoke(ctx, Self, Params.AsObject.S['action'] + '_' + Request.AsObject.S['method'], Params, obj) of
+  case TrySOInvoke(ctx, Self, method, Params, obj) of
     irParamError:
       begin
         TraceInvoke(itError, irParamError);
@@ -158,6 +228,40 @@ begin
   { Just do nothing }
 end;
 
+class procedure TActionController.Send(stream: TStream);
+begin
+  with (CurrentDorThread as THTTPStub) do
+  begin
+    if stream <> nil then
+      Response.Content.LoadFromStream(stream);
+  end;
+end;
+
+class procedure TActionController.SendFile(const path: string);
+begin
+  (CurrentDorThread as THTTPStub).FileToSend := path;
+end;
+
+class function TActionController.Context: TSuperRttiContext;
+begin
+  Result := (CurrentDorThread as THTTPStub).Context;
+end;
+
+class function TActionController.ErrorCode: Integer;
+begin
+  Result := (CurrentDorThread as THTTPStub).ErrorCode;
+end;
+
+class function TActionController.HavePeerCertificate: Boolean;
+begin
+  Result := (CurrentDorThread as TClientStub).Source.HavePeerCertificate;
+end;
+
+class function TActionController.HaveSLL: Boolean;
+begin
+  Result := (CurrentDorThread as TClientStub).Source.IsSSL;
+end;
+
 class function TActionController.Params: ISuperObject;
 begin
   Result := (CurrentDorThread as THTTPStub).Params;
@@ -178,20 +282,6 @@ begin
   Result := (CurrentDorThread as THTTPStub).Return;
 end;
 
-class procedure TActionController.Send(stream: TStream);
-begin
-  with (CurrentDorThread as THTTPStub) do
-  begin
-    if stream <> nil then
-      Response.Content.LoadFromStream(stream);
-  end;
-end;
-
-class procedure TActionController.SendFile(const path: string);
-begin
-  (CurrentDorThread as THTTPStub).FileToSend := path;
-end;
-
 class function TActionController.Session: ISuperObject;
 begin
   Result := (CurrentDorThread as THTTPStub).Session;
@@ -207,11 +297,6 @@ begin
   (CurrentDorThread as THTTPStub).Redirect(controler, action, id);
 end;
 
-class procedure TActionController.Register;
-begin
-
-end;
-
 class procedure TActionController.SetErrorCode(code: Integer);
 begin
   (CurrentDorThread as THTTPStub).ErrorCode := code;
@@ -225,6 +310,84 @@ end;
 class function TActionController.SSLSubject(const key: AnsiString): AnsiString;
 begin
   Result := (CurrentDorThread as TClientStub).Source.SSLSubject(key);
+end;
+
+class procedure TActionController.Register;
+begin
+
+end;
+
+{ AuthRealmAttribute }
+
+constructor AuthRealmAttribute.Create(Realm: string);
+begin
+  inherited Create;
+  FRealm := Realm;
+end;
+
+{ BasicAuthAttribute }
+
+constructor BasicAuthAttribute.Create(const User: string);
+begin
+  inherited Create;
+  FUser := User;
+  FAuth := True;
+end;
+
+constructor BasicAuthAttribute.Create(Auth: Boolean);
+begin
+  inherited Create;
+  FAuth := Auth;
+end;
+
+constructor BasicAuthAttribute.Create;
+begin
+  Create(True);
+end;
+
+{ TAuthContext }
+
+constructor TAuthContext.Create(const ARealm: string);
+begin
+  Self.Realm := ARealm;
+  Self.User.Value := '';
+  Self.User.HasValue := False;
+  Self.CheckAuth.Value := False;
+  Self.CheckAuth.HasValue := False;
+end;
+
+function TAuthContext.Valid: Boolean;
+begin
+  Result := CheckAuth.HasValue and User.HasValue;
+end;
+
+procedure TAuthContext.Assign(Attributes: TArray<TCustomAttribute>);
+begin
+  for var A in Attributes do
+    if A is BasicAuthAttribute then
+      Assign(BasicAuthAttribute(A))
+    else if A is AuthRealmAttribute then
+      Assign(AuthRealmAttribute(A));
+end;
+
+procedure TAuthContext.Assign(Attr: BasicAuthAttribute);
+begin
+  if not CheckAuth.HasValue then
+  begin
+    CheckAuth.Value := Attr.Auth;
+    CheckAuth.HasValue := True;
+  end;
+
+  if (not User.HasValue) and (Attr.User <> '') then
+  begin
+    User.Value := Attr.User;
+    User.HasValue := True;
+  end;
+end;
+
+procedure TAuthContext.Assign(Attr: AuthRealmAttribute);
+begin
+  Realm := Attr.Realm;
 end;
 
 end.
