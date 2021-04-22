@@ -402,7 +402,8 @@ var
   str: string;
   ctx: IDBTransaction;
 
-  function getone: ISuperObject;
+  function GetOne: ISuperObject;
+
     procedure SetValue(index: Integer; const value: ISuperObject);
     var
       str: string;
@@ -424,7 +425,7 @@ var
 
     function GetValue(index: Integer): ISuperObject;
     var
-      blob: IDBBlob;
+      Blob: IDBBlob;
     begin
       if FSQLResult.IsNull[index] then
         Result := nil
@@ -457,9 +458,9 @@ var
             end
             else
             begin
-              blob := TDBBinary.Create;
-              FSQLResult.ReadBlob(index, blob.getData);
-              Result := blob as ISuperObject;
+              Blob := TDBBinary.Create;
+              FSQLResult.ReadBlob(index, Blob.getData);
+              Result := Blob as ISuperObject;
             end;
 
           uftTimestamp, uftDate, uftTime:
@@ -603,6 +604,7 @@ var
       begin
         if not NoCursor then
           DSQLSetCursorName(FStHandle, AnsiChar('C') + AnsiString(IntToStr(PtrInt(FStHandle))));
+
         try
           if (FStatementType = stExecProcedure) then
           begin
@@ -615,18 +617,18 @@ var
           if NoCursor then
           begin
             result.IsResult := True;
-            callback(getone, result);
+            callback(GetOne(), result);
           end
           else if not (qoSingleton in Options) then
           begin
             callback(nil, result); { prepare an empty result object, even if we fetch no data }
             while DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) do
-              callback(getone, result);
+              callback(GetOne(), result);
           end
           else if DSQLFetchWithBlobs(FDbHandle, FTrHandle, FStHandle, 3, FSQLResult) then
           begin
             result.IsResult := True;
-            callback(getone, result)
+            callback(GetOne(), result)
           end
           else
           begin
@@ -650,6 +652,7 @@ var
         callback(nil, result);
       end;
   end;
+
 var
   j: integer;
   f: TSuperObjectIter;
@@ -672,6 +675,7 @@ begin
 
             for j := 0 to Length - 1 do
               SetParam(j, O[j]);
+
             Process;
           end;
         stObject:
@@ -684,6 +688,7 @@ begin
               SetParam(FSQLParams.GetFieldIndex(AnsiString(f.key)), f.val);
             until not ObjectFindNext(f);
             ObjectFindClose(f);
+
             Process;
           end;
       else
