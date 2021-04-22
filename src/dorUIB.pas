@@ -606,7 +606,7 @@ var
         try
           if (FStatementType = stExecProcedure) then
           begin
-            DSQLExecute2(FTrHandle, FStHandle, 3, FSQLParams, FSQLResult);
+            DSQLExecute2(FDbHandle, FTrHandle, FStHandle, 3, FSQLParams, FSQLResult);
             Include(Options, qoSingleton);
           end
           else
