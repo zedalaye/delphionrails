@@ -188,11 +188,18 @@ var
   c: AnsiChar;
   st, pos: Integer;
   key, value: RawByteString;
+//{$if defined(DEBUG)}
+//  whole: RawByteString;
+//{$endif}
 begin
   st := 0;
   pos := 0;
   while receive(c, 1) = 1 do
   begin
+//  {$if defined(DEBUG)}
+//    whole := whole + c;
+//  {$endif}
+
     case st of
       // proto HTTP
       0:
@@ -206,7 +213,14 @@ begin
              5: if c <> '1' then Exit(False);
              6: if c <> '.' then Exit(False);
              7: if not (c in ['0', '1']) then Exit(False);
-             8: if (c = ' ') then begin st := 1; pos := 0; Continue; end else Exit(False);
+             8: if (c = ' ') then
+                begin
+                  st := 1;
+                  pos := 0;
+                  Continue;
+                end
+                else
+                  Exit(False);
            end;
            inc(pos);
          end;
@@ -254,7 +268,8 @@ begin
         end;
       5:
         begin
-          if c <> ' ' then Exit(False);
+          if c <> ' ' then
+            Exit(False);
           st := 6;
         end;
       6:
@@ -263,21 +278,25 @@ begin
         else
           value := value + c;
         end;
-      7: if c = #10 then
-         begin
-           st := 4;
-           if Assigned(onfield) then
-             if not onfield(key, value) then
-               Exit(False);
-           key := '';
-           value := '';
-         end else
-           Exit(False);
-      -1: Exit(c = #10);
+      7:
+        if c = #10 then
+        begin
+          st := 4;
+          if Assigned(onfield) then
+            if not onfield(key, value) then
+              Exit(False);
+          key := '';
+          value := '';
+        end
+        else
+          Exit(False);
+      -1:
+        Exit(c = #10);
     else
       Exit(False);
     end;
   end;
+
   Result := False;
 end;
 
