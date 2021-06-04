@@ -1,7 +1,11 @@
 unit dorWebsocket;
 
 interface
-uses SysUtils, WinSock2, Classes, SyncObjs, dorHTTP, dorOpenSSL;
+
+uses
+  WinSock2,
+  SysUtils, Classes, Math, AnsiStrings, Generics.Collections, SyncObjs,
+  dorHTTP, dorOpenSSL, dorUtils;
 
 type
   TWSMessage = reference to procedure(const msg: string);
@@ -10,8 +14,9 @@ type
 
   IWebSocket = interface
     ['{A9BC9CE6-7C13-4B02-BF66-033EB0BB943E}']
-    function GetReadyState: TWSReadyState;
-    procedure Send(const data: string);
+    procedure Send(const data: string); overload;
+    procedure Send(const data: TStream); overload;
+
     procedure Ping(const data: string);
     procedure Close;
     procedure Open(const url: string; autoPong: Boolean = True; const origin: RawByteString = 'null');
@@ -24,6 +29,8 @@ type
     function GetOnPong: TWSMessage;
     function GetOnBinaryData: TWSBinary;
     function GetOnAddField: TOnHTTPAddField;
+    function GetReadyState: TWSReadyState;
+    function GetThreadSync: Boolean;
 
     procedure SetOnOpen(const value: TProc);
     procedure SetOnClose(const value: TProc);
@@ -33,6 +40,7 @@ type
     procedure SetOnPong(const value: TWSMessage);
     procedure SetOnBinaryData(const value: TWSBinary);
     procedure SetOnAddField(const value: TOnHTTPAddField);
+    procedure SetThreadSync(const value: Boolean);
 
     property OnOpen: TProc read GetOnOpen write SetOnOpen;
     property OnClose: TProc read GetOnClose write SetOnClose;
@@ -44,7 +52,8 @@ type
 
     property OnAddField: TOnHTTPAddField read GetOnAddField write SetOnAddField;
 
-    property ReadyState: TWSReadyState read getReadyState;
+    property ReadyState: TWSReadyState read GetReadyState;
+    property ThreadSync: Boolean read GetThreadSync write SetThreadSync;
   end;
 
   TWebSocket = class(TInterfacedObject, IWebSocket)
@@ -60,6 +69,7 @@ type
     FOnBinaryData: TWSBinary;
     FOnAddField: TOnHTTPAddField;
     FReadyState: TWSReadyState;
+    FThreadSync: Boolean;
     FSocket: TSocket;
     FLockSend: TCriticalSection;
     FAutoPong: Boolean;
@@ -79,12 +89,20 @@ type
     procedure Flush();
     procedure Output(b: Byte; data: Pointer; len: Int64);
     procedure OutputString(b: Byte; const str: string);
+    { /!\ These methods are called within the Listen thread }
+    procedure HandlePing(payload: TPooledMemoryStream);
+    procedure HandlePong(payload: TPooledMemoryStream);
+    procedure HandleText(payload: TPooledMemoryStream);
+    procedure HandleBinary(var payload: TPooledMemoryStream);
   protected
-    function getReadyState: TWSReadyState; virtual;
-    procedure Send(const data: string);
-    procedure Ping(const data: string);
-    procedure Open(const url: string; autoPong: Boolean; const origin: RawByteString = 'null');
+    procedure Open(const url: string; autoPong: Boolean; const origin: RawByteString);
     procedure Close;
+
+    procedure Send(const data: string); overload;
+    procedure Send(const data: TStream); overload;
+
+    procedure Ping(const data: string);
+
     function GetOnOpen: TProc;
     function GetOnClose: TProc;
     function GetOnError: TWSMessage;
@@ -93,6 +111,8 @@ type
     function GetOnPong: TWSMessage;
     function GetOnBinaryData: TWSBinary;
     function GetOnAddField: TOnHTTPAddField;
+    function GetReadyState: TWSReadyState; virtual;
+    function GetThreadSync: Boolean;
     procedure SetOnOpen(const value: TProc);
     procedure SetOnClose(const value: TProc);
     procedure SetOnError(const value: TWSMessage);
@@ -101,6 +121,7 @@ type
     procedure SetOnPong(const value: TWSMessage);
     procedure SetOnBinaryData(const value: TWSBinary);
     procedure SetOnAddField(const value: TOnHTTPAddField);
+    procedure SetThreadSync(const value: Boolean);
   public
     constructor Create(const password: AnsiString = '';
       const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
@@ -111,8 +132,9 @@ type
   end;
 
 implementation
+
 uses
-  Math, AnsiStrings, dorMD5, dorPunyCode, Generics.Collections, dorUtils;
+  dorMD5, dorPunyCode;
 
 const
   // Non Control Frames
@@ -301,18 +323,19 @@ begin
     ssl := False;
     if port = 0 then
       port := 80;
-  end else
-    if protocol = 'wss' then
-    begin
-      ssl := True;
-      if port = 0 then
-        port := 443;
-    end else
-      begin
-        if Assigned(FOnError) then
-          FOnError('Invalid protocol');
-        Exit;
-      end;
+  end
+  else if protocol = 'wss' then
+  begin
+    ssl := True;
+    if port = 0 then
+      port := 443;
+  end
+  else
+  begin
+    if Assigned(FOnError) then
+      FOnError('Invalid protocol');
+    Exit;
+  end;
 
   // find host
   host := gethostbyname(PAnsiChar(domain));
@@ -408,10 +431,13 @@ begin
     key := RawByteString(BytesToBase64(@buffer, SizeOf(buffer)));
 
     if Assigned(FOnAddField) then
-      FOnAddField(function (const key: RawByteString; const value: RawByteString): Boolean begin
-        HTTPWriteLine(RawbyteString(key) + ': ' + value);
-        Result := True;
-      end);
+      FOnAddField(
+        function (const key: RawByteString; const value: RawByteString): Boolean
+        begin
+          HTTPWriteLine(RawbyteString(key) + ': ' + value);
+          Result := True;
+        end
+      );
     HTTPWriteLine('');
     Flush();
 
@@ -420,41 +446,44 @@ begin
       ReadTimeOut := 3000;
       setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
       if not HTTPParse(
-        function (var buf; len: Integer): Integer
-        begin
-          Result := SockRecv(buf, len, 0)
-        end,
-        function (code: Integer; const mesg: RawByteString): Boolean
-          begin
-            Result := code = 101;
-            if not Result and Assigned(FOnError) then
-              FOnError(Format('Invalid response code: %d %s', [code, mesg]));
-          end,
-        function (const key: RawByteString; const value: RawByteString): Boolean
-        begin
-          dic.AddOrSetValue(lowercase(key), value);
-          Result := True;
-        end) then
-          begin
-            if Assigned(FOnError) then
-              FOnError('Unexpected error when parsing HTTP header');
-            Exit;
-          end;
+               function (var buf; len: Integer): Integer
+               begin
+                 Result := SockRecv(buf, len, 0)
+               end,
+               function (code: Integer; const mesg: RawByteString): Boolean
+               begin
+                 Result := code = 101;
+                 if not Result and Assigned(FOnError) then
+                   FOnError(Format('Invalid response code: %d %s', [code, mesg]));
+               end,
+               function (const key: RawByteString; const value: RawByteString): Boolean
+               begin
+                 dic.AddOrSetValue(lowercase(key), value);
+                 Result := True;
+               end
+             )
+      then
+      begin
+        if Assigned(FOnError) then
+          FOnError('Unexpected error when parsing HTTP header');
+        Exit;
+      end;
 
       if not((dic.TryGetValue('upgrade', value) and (LowerCase(string(value)) = 'websocket')) and
-      (dic.TryGetValue('connection', value) and (LowerCase(string(value)) = 'upgrade'))) then
-        begin
-          if Assigned(FOnError) then
-            FOnError('Invalid upgrade header field');
-          Exit;
-        end;
+             (dic.TryGetValue('connection', value) and (LowerCase(string(value)) = 'upgrade')))
+      then
+      begin
+        if Assigned(FOnError) then
+          FOnError('Invalid upgrade header field');
+        Exit;
+      end;
 
       if not dic.TryGetValue('sec-websocket-accept', value) then
-        begin
-          if Assigned(FOnError) then
-            FOnError('Invalid Sec-WebSocket-Accept header field');
-          Exit;
-        end;
+      begin
+        if Assigned(FOnError) then
+          FOnError('Invalid Sec-WebSocket-Accept header field');
+        Exit;
+      end;
 
       if key <> value then
       begin
@@ -494,30 +523,32 @@ begin
   FLockSend.Enter;
   try
     SockSend(b, 1, 0);
+
     if len < 126 then
     begin
       b := len or $80;
       SockSend(b, 1, 0);
-    end else
-      if len < High(Word) then
-      begin
-        b := 126 or $80;
-        SockSend(b, 1, 0);
-        SockSend(lenarray[1], 1, 0);
-        SockSend(lenarray[0], 1, 0);
-      end else
-      begin
-        b := 127 or $80;
-        SockSend(b, 1, 0);
-        SockSend(lenarray[7], 1, 0);
-        SockSend(lenarray[6], 1, 0);
-        SockSend(lenarray[5], 1, 0);
-        SockSend(lenarray[4], 1, 0);
-        SockSend(lenarray[3], 1, 0);
-        SockSend(lenarray[2], 1, 0);
-        SockSend(lenarray[1], 1, 0);
-        SockSend(lenarray[0], 1, 0);
-      end;
+    end
+    else if len < High(Word) then
+    begin
+      b := 126 or $80;
+      SockSend(b, 1, 0);
+      SockSend(lenarray[1], 1, 0);
+      SockSend(lenarray[0], 1, 0);
+    end
+    else
+    begin
+      b := 127 or $80;
+      SockSend(b, 1, 0);
+      SockSend(lenarray[7], 1, 0);
+      SockSend(lenarray[6], 1, 0);
+      SockSend(lenarray[5], 1, 0);
+      SockSend(lenarray[4], 1, 0);
+      SockSend(lenarray[3], 1, 0);
+      SockSend(lenarray[2], 1, 0);
+      SockSend(lenarray[1], 1, 0);
+      SockSend(lenarray[0], 1, 0);
+    end;
 
     CreateGUID(g); // entropy
     SockSend(g.D1, SizeOf(g.D1), 0);
@@ -536,6 +567,7 @@ begin
       d := d xor g.D1;
       SockSend(d, len, 0);
     end;
+
     Flush;
   finally
     FLockSend.Leave;
@@ -583,6 +615,7 @@ begin
   FPrivateKeyFile := PrivateKeyFile;
   FCertCAFile := CertCAFile;
   FAutoPong := True;
+  FThreadSync := True;
 end;
 
 function TWebSocket.getReadyState: TWSReadyState;
@@ -590,9 +623,104 @@ begin
   Result := FReadyState;
 end;
 
+function TWebSocket.GetThreadSync: Boolean;
+begin
+  Result := FThreadSync;
+end;
+
+procedure TWebSocket.HandlePing(payload: TPooledMemoryStream);
+var
+  data: UTF8String;
+begin
+  SetLength(data, payload.Size);
+  payload.Seek(0, soFromBeginning);
+  payload.Read(PAnsiChar(data)^, payload.Size);
+
+  if FAutoPong then
+    Output($80 or OPPong, PAnsiChar(data), Length(data));
+
+  if FThreadSync then
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        if Assigned(FOnPing) then
+          FOnPing(string(data));
+      end
+    )
+  else if Assigned(FOnPing) then
+    FOnPing(string(data));
+end;
+
+procedure TWebSocket.HandlePong(payload: TPooledMemoryStream);
+var
+  data: UTF8String;
+begin
+  SetLength(data, payload.Size);
+  payload.Seek(0, soFromBeginning);
+  payload.Read(PAnsiChar(data)^, payload.Size);
+
+  if FThreadSync then
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        if Assigned(FOnPong) then
+          FOnPong(string(data));
+      end
+    )
+  else if Assigned(FOnPong) then
+    FOnPong(string(data));
+end;
+
+procedure TWebSocket.HandleText(payload: TPooledMemoryStream);
+var
+  data: UTF8String;
+begin
+  SetLength(data, payload.Size);
+  payload.Seek(0, soFromBeginning);
+  payload.Read(PAnsiChar(data)^, payload.Size);
+
+  if FThreadSync then
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        if Assigned(FOnMessage) then
+          FOnMessage(string(data));
+      end
+    )
+  else if Assigned(FOnMessage) then
+    FOnMessage(string(data));
+end;
+
+procedure TWebSocket.HandleBinary(var payload: TPooledMemoryStream);
+begin
+  payload.Seek(0, soBeginning);
+
+  if FThreadSync then
+  begin
+    var buffer := TPooledMemoryStream.Create;
+    buffer.CopyFrom(payload);
+    buffer.Seek(0, soBeginning);
+
+    TThread.Synchronize(nil,
+      procedure
+      begin
+        if Assigned(FOnBinaryData) then
+          FOnBinaryData(buffer);
+        buffer.Free;
+      end
+    );
+  end
+  else if Assigned(FOnBinaryData) then
+    FOnBinaryData(payload);
+
+  payload.Free;
+  payload := TPooledMemoryStream.Create
+end;
+
 procedure TWebSocket.Listen;
 begin
-  TThreadIt.Create(procedure
+  TThreadIt.Create(
+    procedure
     type
       TState = (stStart, stNext, stPayload16, stPayload64, stMask, stData);
     var
@@ -604,16 +732,25 @@ begin
       pos: Integer;
       mask: array[0..3] of Byte;
       stream: TPooledMemoryStream;
-      data: UTF8String;
+
       procedure EndMask;
       begin
         if payloadLength > 0 then
         begin
           state := stData;
           pos := 0;
-        end else
+        end
+        else
+        begin
+          if fin and (FReadyState = rsOpen) then
+            case opcode of
+              OPPing: HandlePing(stream);
+              OPPong: HandlePong(stream);
+            end;
           state := stStart;
+        end;
       end;
+
     begin
       state := stStart;
       pos := 0;
@@ -644,15 +781,17 @@ begin
                 if (payloadLength < 126) then
                 begin
                   if havemask then
-                    state := stMask else
+                    state := stMask
+                  else
                     EndMask;
                   pos := 0;
-                end else
-                if (payloadLength = 126) then
+                end
+                else if (payloadLength = 126) then
                 begin
                   pos := 0;
                   state := stPayload16;
-                end  else
+                end
+                else { payloadLength = 127 }
                 begin
                   pos := 0;
                   state := stPayload64;
@@ -666,7 +805,8 @@ begin
                     begin
                       payloadLength := payloadLength shl 8 or b;
                       if havemask then
-                        state := stMask else
+                        state := stMask
+                      else
                         EndMask;
                       pos := 0;
                       Continue;
@@ -683,7 +823,8 @@ begin
                     begin
                       payloadLength := payloadLength shl 8 or b;
                       if havemask then
-                        state := stMask else
+                        state := stMask
+                      else
                         EndMask;
                       pos := 0;
                       Continue
@@ -708,6 +849,7 @@ begin
               begin
                 if havemask then
                   b := b xor mask[pos mod 4];
+
                 case opcode of
                   OPClose: closecode := closecode shl 8 or b;
                 else
@@ -722,49 +864,11 @@ begin
                   if fin and (opcode <> OPContinuation) and (FReadyState = rsOpen) then
                   begin
                     case opcode of
-                      OPClose: Break;
-                      OPText:
-                        begin
-                          SetLength(data, stream.Size);
-                          stream.Seek(0, soFromBeginning);
-                          stream.Read(PAnsiChar(data)^, stream.Size);
-                          TThread.Synchronize(nil, procedure begin
-                            if Assigned(FOnMessage) then
-                              FOnMessage(string(data));
-                          end);
-                        end;
-                      OPPing:
-                        begin
-                          SetLength(data, stream.Size);
-                          stream.Seek(0, soFromBeginning);
-                          stream.Read(PAnsiChar(data)^, stream.Size);
-                          TThread.Synchronize(nil, procedure begin
-                            if FAutoPong then
-                              Output($80 or OPPong, PAnsiChar(data), Length(data));
-                            if Assigned(FOnPing) then
-                              FOnPing(string(data));
-                          end);
-                        end;
-                      OPPong:
-                        begin
-                          SetLength(data, stream.Size);
-                          stream.Seek(0, soFromBeginning);
-                          stream.Read(PAnsiChar(data)^, stream.Size);
-                          TThread.Synchronize(nil, procedure begin
-                            if Assigned(FOnPong) then
-                              FOnPong(string(data));
-                          end);
-                        end;
-                      OPBinary:
-                        begin
-                          stream.Seek(0, soFromBeginning);
-                          TThread.Synchronize(nil, procedure begin
-                            if Assigned(FOnBinaryData) then
-                              FOnBinaryData(stream);
-                            stream.Free;
-                          end);
-                          stream := TPooledMemoryStream.Create;
-                        end;
+                      OPClose:  Break;
+                      OPPing:   HandlePing(stream);
+                      OPPong:   HandlePong(stream);
+                      OPText:   HandleText(stream);
+                      OPBinary: HandleBinary(stream);
                     end;
                     stream.Size := 0;
                   end;
@@ -776,16 +880,33 @@ begin
       finally
         stream.Free;
       end;
+
       if FReadyState = rsOpen then // remotely closed
-        TThread.Synchronize(nil, procedure begin
+        if FThreadSync then
+          TThread.Synchronize(nil,
+            procedure
+            begin
+              Close;
+            end
+          )
+        else
           Close;
-        end);
-    end);
+    end
+  );
 end;
 
 procedure TWebSocket.Send(const data: string);
 begin
   OutputString($80 or OPText, data)
+end;
+
+procedure TWebSocket.Send(const data: TStream);
+var
+  B: TBytes;
+begin
+  SetLength(B, data.Size - data.Position);
+  data.Read(B[0], Length(B));
+  Output($80 or OPBinary, @B[0], Length(B));
 end;
 
 procedure TWebSocket.SetOnAddField(const value: TOnHTTPAddField);
@@ -826,6 +947,11 @@ end;
 procedure TWebSocket.SetOnPong(const value: TWSMessage);
 begin
   FOnPong := value;
+end;
+
+procedure TWebSocket.SetThreadSync(const value: Boolean);
+begin
+  FThreadSync := value;
 end;
 
 function TWebSocket.SockSend(var Buf; len, flags: Integer): Integer;
