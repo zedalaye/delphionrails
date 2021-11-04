@@ -1134,35 +1134,10 @@ begin
 end;
 
 procedure THTTPStub.doBeforeProcessRequest;
-
-  function interprete(v: PSOChar; const name: string; parse: boolean): boolean;
-  var
-    p: PChar;
-    str: string;
-  begin
-    str := trim(v);
-    if str <> '' then
-    begin
-      p := StrRScan(PChar(str), '.');
-      if p <> nil then
-      begin
-        FParams.AsObject.S['format'] := LowerCase(p + 1);
-        setlength(str, p - PChar(str));
-      end;
-      if parse then
-        FParams.AsObject.S[name] := LowerCase(str)
-      else
-        FParams.AsObject[name] := DecodeValue(PChar(str));
-      Result := true;
-    end
-    else
-      Result := false
-  end;
-
 var
   obj: ISuperObject;
   key, iv: PByte;
-  p: PSOChar;
+  // p: PSOChar;
   f: PChar;
 begin
   FErrorCode := 0;
@@ -1226,31 +1201,6 @@ begin
       end;
   end;
 
-  obj := HTTPInterprete(PSOChar(Request.S['uri']), false, '/', false, DEFAULT_CP);
-  begin
-    if interprete(PSOChar(obj.AsArray.S[1]), 'controller', true) then
-      if interprete(PSOChar(obj.AsArray.S[2]), 'action', true) then
-         interprete(PSOChar(obj.AsArray.S[3]), 'id', false);
-  end;
-
-  // default controller is application
-  if (FParams.AsObject['controller'] = nil) then
-    FParams.AsObject.S['controller'] := 'application';
-
-  // default action is index
-  if (FParams.AsObject['action'] = nil) then
-    (FParams.AsObject.S['action'] := 'index');
-
-  // detect format
-  if (FParams.AsObject['format'] = nil) then
-  begin
-    p := StrRScan(PSOChar(Request.S['uri']), '.');
-    if p <> nil then
-      FParams.AsObject.S['format'] := LowerCase(p + 1)
-    else
-      FParams.AsObject.S['format'] := 'html';
-  end;
-
 {$IFDEF CONSOLEAPP}
 {$IFDEF DEBUG}
   //Writeln(FParams.AsString);
@@ -1294,13 +1244,226 @@ begin
 end;
 
 function THTTPStub.ProcessRequest: Boolean;
+
+  function ResolveController(const Name: string; var Klass: TRttiInstanceType; var Namespace: string): Boolean;
+  begin
+    var K := Context.Context.FindType(Format('%s_controller.T%sController', [Name, CamelCase(Name)]));
+
+    if (K = nil) or not (K is TRttiInstanceType) then
+      Klass := nil
+    else
+      Klass := TRttiInstanceType(K);
+
+    { Check if Namespace matches }
+    if (Klass <> nil) and (Namespace <> '') then
+    begin
+      var NamespaceFound := False;
+
+      for var A in Klass.GetAttributes do
+        if A is NamespaceAttribute then
+          if (A as NamespaceAttribute).Namespace = Namespace then
+          begin
+            NamespaceFound := True;
+            Break;
+          end;
+
+      if not NamespaceFound then
+        Klass := nil;
+    end;
+
+    Result := Klass <> nil;
+  end;
+
+  procedure SetAction(const A, F: PSOChar; var Action, Format: string); inline;
+  begin
+    Assert(F > A);
+
+    var S := '';
+    SetString(S, A, F - A);
+
+    Action := LowerCase(S);
+    Format := LowerCase(F + 1);
+  end;
+
+  function HasAction(Klass: TRttiInstanceType; const Action, Method: string): Boolean; overload; inline;
+  begin
+    if Klass <> nil then
+      Result := Klass.GetMethod(Action + '_' + Method) <> nil
+    else
+      Result := False;
+  end;
+
+  function HasAction(Klass: TRttiInstanceType; const Action: string): Boolean; overload;
+  begin
+    Result := HasAction(Klass, Action, FRequest.AsObject.S['method']);
+  end;
+
 var
+  uri: ISuperObject;
   path, str, ext, user: string;
   rec: TSearchRec;
-  clazz: TRttiType;
-  inst: TObject;
+
+  Namespace, Controller, Action, Format: string;
+  Klass: TRttiInstanceType;
+  Inst: TObject;
 begin
   Result := False;
+
+  Namespace  := '';
+  Controller := '';
+  Action     := '';
+  Format     := '';
+
+  uri := HTTPInterprete(PSOChar(Request.S['uri']), False, '/', False, DEFAULT_CP);
+
+  { obj[0] is always empty, obj[1] = '' if uri = '' }
+  if (uri.AsArray.Length = 2) and (uri.AsArray.S[1] <> '') then
+  begin
+    // Should match
+    // * /:controller
+    // * /:action(.:format)
+
+    var S := Trim(uri.AsArray.S[1]);
+    var P := PSOChar(S);
+    var F := StrRScan(P, '.');
+
+    if F = nil then
+    begin
+      S := LowerCase(S);
+      if ResolveController(S, Klass, Namespace) then
+        Controller := S
+      else
+        Action := S;
+    end
+    else
+      SetAction(P, F, Action, Format);
+  end
+  else if uri.AsArray.Length > 2 then
+  begin
+    // (/:namespace/...)/:controller(/:action.:format)(/:id)
+    //
+    // Should match
+    // * :controller + :action(.format)
+    // * :controller + :action(.format) + :id
+    // * :namespace + :controller
+    // * :namespace + :controller + :action(.format)
+    // * :namespace + :controller + :action(.format) + :id
+
+    var LastNamespace  := '';
+    var LastController := '';
+    var LastAction     := '';
+
+    for var I := 1 to uri.AsArray.Length - 1 do
+    begin
+      var S := Trim(uri.AsArray.S[I]);
+      var P := PSOChar(S);
+      var F := StrRScan(P, '.');
+
+      if (Klass = nil) and (F = nil) then
+      begin
+        S := LowerCase(S);
+        if ResolveController(S, Klass, Namespace) then
+          Controller := S
+        else
+        begin
+          { Keep URI path history }
+          if LastController <> '' then
+            LastNamespace := LastNamespace + '/' + LastController;
+          LastController := LastAction;
+          LastAction := S;
+
+          Namespace := Namespace + '/' + S;
+        end;
+      end
+      else if F = nil then { Klass <> nil }
+      begin
+        Assert(Klass <> nil);
+
+        var O: ISuperObject := DecodeValue(P);
+        if ObjectIsType(O, stString) then
+        begin
+          var A := LowerCase(O.AsString);
+          if HasAction(Klass, A) then
+            Action := A;
+        end
+        else
+          FParams.AsObject['id'] := O;
+
+        Break;
+      end
+      else { F <> nil }
+        SetAction(P, F, Action, Format);
+    end;
+
+    { No controller found }
+    if Klass = nil then
+    begin
+      Namespace  := LastNamespace;
+      Controller := LastController;
+      Action     := LastAction;
+    end;
+  end;
+
+  // default controller is application
+  if Controller = '' then
+    Controller := 'application';
+
+  // default action matches ruby on rails conventions
+  if Action = '' then
+  begin
+    var Method := UpperCase(FRequest.AsObject.S['method']);
+    var HasId := FParams.AsObject['id'] <> nil;
+
+    if HasId then
+    begin
+      if Method = 'GET' then
+        Action := 'show'
+      else if (Method = 'PUT') or (Method = 'PATCH') then
+      begin
+        Action := 'update';
+        FRequest.AsObject.S['method'] := 'POST'; // overrides request method
+      end
+      else if Method = 'DELETE' then
+      begin
+        Action := 'delete';
+        FRequest.AsObject.S['method'] := 'POST'; // overrides request method
+      end;
+    end
+    else if Method = 'POST' then
+      Action := 'create';
+  end;
+
+  if Action = '' then
+    Action := 'index';
+
+  // detect current formats
+  if Format = '' then
+  begin
+    var Accept := FRequest.AsObject['accept'];
+    if ObjectIsType(Accept, stArray) and (Accept.AsArray.Length > 1) then
+    begin
+      var A := Accept.AsArray.S[0];
+      if A = FFormats.S['json.content'] then      // application/json
+        Format := 'json'
+      else if A = FFormats.S['xml.content'] then  // text/xml
+        Format := 'xml'
+      else if A = FFormats.S['html.content'] then // text/html
+        Format := 'html';
+    end
+  end;
+
+  // default format is html
+  if Format = '' then
+    Format := 'html';
+
+  // store action context
+  with FParams.AsObject do
+  begin
+    S['namespace']  := Namespace;
+    S['controller'] := Controller;
+    S['action']     := Action;
+    S['format']     := Format;
+  end;
 
   user := '';
   if doAuthenticate(FRequest.S['env.authorization'], user) then
@@ -1312,67 +1475,65 @@ begin
     else
       FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'];
 
-  if FParams.AsObject['controller'] <> nil then
-    with FParams.AsObject do
-    begin
-      // controller
-      clazz := Context.Context.FindType(format('%s_controller.T%sController', [S['controller'], CamelCase(S['controller'])]));
-      if (clazz <> nil) and (clazz is TRttiInstanceType) then
+  { If controller has not already been found, that means we are looking for
+    the application controller that is not namespaced.
+    Optimization: If the method with aim to call does not exist, do not
+    instanciate the controller. }
+  Namespace := '';
+  if ((Klass <> nil) or ResolveController(Controller, Klass, Namespace)) and HasAction(Klass, Action) then
+  begin
+    with Klass do
+      inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
+    try
+      if inst is TActionController then
       begin
-        with TRttiInstanceType(clazz) do
-          inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
-
-        try
-          if inst is TActionController then
-          begin
-            if TActionController(inst).Invoke then
-              Result := True;
-          end;
-        finally
-          inst.Free;
-        end;
-      end;
-
-      if Stopped or (Response.FContent.Size > 0) or (FErrorCode >= 300) or (FErrorCode = 204) then
-        Exit;
-
-      if (Request.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
-        Exit;
-
-      // file ?
-      if (FSendFile <> '') then
-      begin
-        ext := LowerCase(ExtractFileExt(FSendFile));
-        System.Delete(ext, 1, 1);
-        FResponse.AsObject.S['Content-Type'] := FFormats.S[ext + '.content'];
-        if FResponse.AsObject.S['Content-Type'] = '' then
-          FResponse.AsObject.S['Content-Type'] := 'application/binary';
-        Compress := FFormats.B[ext + '.istext'];
-
-        if FileExists(FSendFile) then
-        begin
-          FErrorCode := 200;
+        if TActionController(inst).Invoke then
           Result := True;
-          FResponse.AsObject.S['Content-Disposition'] := 'attachment; filename=' + ExtractFileName(FSendFile);
-          FResponse.AsObject.S['Content-Transfer-Encoding'] := 'binary';
-        end
-        else
-          FErrorCode := 404;
-        Exit;
       end;
-
-      // view ?
-      RenderInternal;
-      if not (FErrorCode in [200..207]) then
-        if RenderScript then
-          Result := True;
-      if FErrorCode in [200..207] then
-      begin
-        FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
-        Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
-        Exit;
-      end;
+    finally
+      inst.Free;
     end;
+  end;
+
+  if Stopped or (Response.FContent.Size > 0) or (FErrorCode >= 300) or (FErrorCode = 204) then
+    Exit;
+
+  if (FRequest.AsObject.S['method'] <> 'GET') and (Request.AsObject.S['method'] <> 'POST') then
+    Exit;
+
+  // file ?
+  if (FSendFile <> '') then
+  begin
+    ext := LowerCase(ExtractFileExt(FSendFile));
+    System.Delete(ext, 1, 1);
+    FResponse.AsObject.S['Content-Type'] := FFormats.S[ext + '.content'];
+    if FResponse.AsObject.S['Content-Type'] = '' then
+      FResponse.AsObject.S['Content-Type'] := 'application/binary';
+    Compress := FFormats.B[ext + '.istext'];
+
+    if FileExists(FSendFile) then
+    begin
+      FErrorCode := 200;
+      Result := True;
+      FResponse.AsObject.S['Content-Disposition'] := 'attachment; filename=' + ExtractFileName(FSendFile);
+      FResponse.AsObject.S['Content-Transfer-Encoding'] := 'binary';
+    end
+    else
+      FErrorCode := 404;
+    Exit;
+  end;
+
+  // view ?
+  RenderInternal;
+  if not (FErrorCode in [200..207]) then
+    if RenderScript then
+      Result := True;
+  if FErrorCode in [200..207] then
+  begin
+    FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
+    Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
+    Exit;
+  end;
 
   // static ?
   str := Request.S['uri'];

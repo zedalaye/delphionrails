@@ -21,6 +21,14 @@ uses
   SysUtils, Classes, Rtti, superobject, dorHTTPStub;
 
 type
+  NamespaceAttribute = class(TCustomAttribute)
+  private
+    FNamespace: string;
+  public
+    constructor Create(Namespace: string);
+    property Namespace: string read FNamespace;
+  end;
+
   AuthRealmAttribute = class(TCustomAttribute)
   private
     FRealm: string;
@@ -315,6 +323,14 @@ end;
 class procedure TActionController.Register;
 begin
 
+end;
+
+{ NamespaceAttribute }
+
+constructor NamespaceAttribute.Create(Namespace: string);
+begin
+  inherited Create;
+  FNamespace := LowerCase(Namespace);
 end;
 
 { AuthRealmAttribute }
