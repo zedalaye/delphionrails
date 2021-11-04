@@ -12,6 +12,7 @@ type
     class function Return: ISuperoBject;
     class function Response: THTTPMessage; virtual;
     class function Request: THTTPMessage; virtual;
+    class function Params: ISuperObject; virtual;
     class procedure Render(const obj: ISuperObject; format: boolean = false); overload;
     class procedure Render(const str: string); overload;
     class function ErrorCode: Integer; virtual;
@@ -65,6 +66,11 @@ begin
     else
       SetErrorCode(500);
     end;
+end;
+
+class function TActionView.Params: ISuperObject;
+begin
+  Result := (CurrentDorThread as THTTPStub).Params;
 end;
 
 class procedure TActionView.Register;
