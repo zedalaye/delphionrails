@@ -52,6 +52,7 @@ type
     function ChildIndexOf(Item: TDORThread): Integer;
     function GetChildCount: Integer;
     function GetStopped: boolean;
+    function GetThreadId: Cardinal;
   protected
     function Run: Cardinal; virtual;
     procedure Stop; virtual;
@@ -76,6 +77,8 @@ type
     property ChildCount: Integer read GetChildCount;
     property ChildItems[Index: Integer]: TDORThread read ChildGet; default;
     property Stopped: boolean read GetStopped;
+
+    property ThreadId: Cardinal read GetThreadId;
   end;
 
   TCustomObserver = class(TDORThread)
@@ -415,7 +418,8 @@ end;
 
 procedure TDORThread.ChildDelete(Index: Integer);
 begin
-  if (Index < 0) or (Index >= FChildCount) then exit;
+  if (Index < 0) or (Index >= FChildCount) then
+    Exit;
 
   with ChildGet(Index) do
     if InterlockedDecrement(FThreadRefCount) = 0 then
@@ -522,8 +526,17 @@ end;
 function TDORThread.GetStopped: boolean;
 begin
   if FThread <> nil then
-    Result := TThreadRun(FThread).Terminated else
+    Result := TThreadRun(FThread).Terminated
+  else
     Result := True;
+end;
+
+function TDORThread.GetThreadId: Cardinal;
+begin
+  if FThread <> nil then
+    Result := FThread.ThreadID
+  else
+    Result := 0;
 end;
 
 class function TDORThread.ThreadCount: integer;
@@ -681,8 +694,14 @@ begin
           AsObject[name] := l;
         end;
         if Assigned(proc) then
-          FEventProc.AddOrSetValue(name, proc) else
-          FEventProc.AddOrSetValue(name, procedure(const event: ISuperObject) begin doOnEvent(event) end);
+          FEventProc.AddOrSetValue(name, proc)
+        else
+          FEventProc.AddOrSetValue(name,
+            procedure(const event: ISuperObject)
+            begin
+              doOnEvent(event)
+            end
+          );
         l.AsArray.Add(FEvents);
       finally
         Unlock;
@@ -732,7 +751,8 @@ begin
   FEvents.Lock;
   try
     if FEvents.AsArray.Length > 0 then
-      Result := FEvents.Extract else
+      Result := FEvents.Extract
+    else
       Result := nil;
   finally
     FEvents.Unlock;
@@ -743,6 +763,7 @@ procedure TCustomObserver.TEventStorage.Trigger(const Event: ISuperObject);
 begin
   FEvents.Lock;
   try
+//    OutputDebugString(PChar(Format('[EVENT] [%d] %s', [FEvents.AsArray.Length, Event.AsString])));
     FEvents.AsArray.Add(Event);
   finally
     FEvents.Unlock;
@@ -764,38 +785,38 @@ begin
     events := EventStorage.Empty;
     if events <> nil then
       for event in events do
-      if event <> nil then
-      begin
-        EventStorage.FIntercept.Lock;
-        try
-          for box in EventStorage.FIntercept do
-          begin
-            ISOCriticalObject(box).Lock;
-            try
-              box.AsArray.Add(event.Clone);
-            finally
-              ISOCriticalObject(box).Unlock;
+        if event <> nil then
+        begin
+          EventStorage.FIntercept.Lock;
+          try
+            for box in EventStorage.FIntercept do
+            begin
+              ISOCriticalObject(box).Lock;
+              try
+                box.AsArray.Add(event.Clone);
+              finally
+                ISOCriticalObject(box).Unlock;
+              end;
             end;
+          finally
+            EventStorage.FIntercept.Unlock;
           end;
-        finally
-          EventStorage.FIntercept.Unlock;
-        end;
 
-        EventStorage.FObservers.Lock;
-        try
-          for box in EventStorage.FObservers.N[event.AsObject.S['event']] do
-          begin
-            ISOCriticalObject(box).Lock;
-            try
-              box.AsArray.Add(event.Clone);
-            finally
-              ISOCriticalObject(box).Unlock;
+          EventStorage.FObservers.Lock;
+          try
+            for box in EventStorage.FObservers.N[event.AsObject.S['event']] do
+            begin
+              ISOCriticalObject(box).Lock;
+              try
+                box.AsArray.Add(event.Clone);
+              finally
+                ISOCriticalObject(box).Unlock;
+              end;
             end;
+          finally
+            EventStorage.FObservers.Unlock;
           end;
-        finally
-          EventStorage.FObservers.Unlock;
         end;
-      end;
 {$IFDEF SWITCHTOTHREAD}
     if not SwitchToThread then
 {$ENDIF}
