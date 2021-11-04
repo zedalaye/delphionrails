@@ -29,6 +29,7 @@ type
     FCriticalSection: TRTLCriticalSection;
     FParams: ISuperObject;
     FSession: ISuperObject;
+    FRequest: THTTPMessage;
     FWebSocketVersion: Integer;
     procedure Output(b: Byte; data: Pointer; len: Int64);
     procedure OutputString(b: Byte; const str: string);
@@ -54,6 +55,7 @@ type
 
     property Params: ISuperObject read FParams;
     property Session: ISuperObject read FSession;
+    property Request: THTTPMessage read FRequest;
     property WebSocketVersion: Integer read FWebSocketVersion;
   end;
 
@@ -67,9 +69,12 @@ constructor TActionWebsocket.Create(Version: Integer);
 begin
   FWebSocketVersion := Version;
   InitializeCriticalSection(FCriticalSection);
+
   FStub := (CurrentDorThread as THTTPStub);
-  FParams := (CurrentDorThread as THTTPStub).Params;
-  FSession := (CurrentDorThread as THTTPStub).Session;
+  FRequest := FStub.Request;
+  FParams  := FStub.Params;
+  FSession := FStub.Session;
+
   inherited Create(CurrentDorThread);
 end;
 
