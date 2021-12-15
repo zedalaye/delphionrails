@@ -16,8 +16,14 @@
 unit dorHTTPStub;
 
 interface
+
 uses
-  dorSocketStub, dorUtils, classes, supertypes, superobject;
+{$IFDEF MSWINDOWS}
+  Windows,
+{$ENDIF}
+  SysUtils, StrUtils, Classes, Rtti,
+  supertypes, superobject,
+  dorSocketStub, dorUtils;
 
 type
   THTTPMessage = class(TSuperObject)
@@ -74,6 +80,7 @@ type
     function RenderScript: Boolean;
     function DecodeContent: boolean; virtual;
     function doAuthenticate(const AuthData: string; var User: string): Boolean; virtual;
+    procedure doProcessRoute(IsWebSocket: Boolean; var Klass: TRttiInstanceType);
     procedure doBeforeProcessRequest; virtual;
     procedure doAfterProcessRequest; virtual;
   protected
@@ -106,10 +113,6 @@ type
 implementation
 
 uses
-{$IFDEF MSWINDOWS}
-  Windows,
-{$ENDIF}
-  SysUtils, StrUtils, Rtti,
   superxmlparser,
   dorOpenSSL, dorOpenSslHelpers, dorHTTP, dorLua,
   dorActionController, dorActionView, dorActionWebsocket
@@ -1208,51 +1211,47 @@ begin
 {$ENDIF}
 end;
 
-procedure THTTPStub.GetPassPhrase(var key, iv: PByte);
-begin
-  key := nil;
-  iv := nil;
-end;
+procedure THTTPStub.doProcessRoute(IsWebSocket: Boolean; var Klass: TRttiInstanceType);
 
-function THTTPStub.GetRootPath: string;
-begin
-  Result := ExtractFilePath(ParamStr(0));
-end;
+  function KindUnitName: string;
+  begin
+    if IsWebSocket then
+      Result := 'websocket'
+    else
+      Result := 'controller';
+  end;
 
-procedure THTTPStub.Render(const obj: ISuperObject; format: boolean);
-begin
-  obj.SaveTo(Response.Content, format);
-end;
+  function KindClassName: string;
+  begin
+    if IsWebSocket then
+      Result := 'Websocket'
+    else
+      Result := 'Controller';
+  end;
 
-procedure THTTPStub.Redirect(const controler, action: string; const id: string);
-begin
-  if id = '' then
-    Redirect('/' + controler + '/' + action + '.' +  FParams.S['format'])
-  else
-    Redirect('/' + controler + '/' + action + '/' + id + '.' +  FParams.S['format']);
-end;
-
-procedure THTTPStub.Render(const str: string);
-begin
-  Response.Content.WriteString(str, false, DEFAULT_CP);
-end;
-
-procedure THTTPStub.Redirect(const location: string);
-begin
-  FErrorCode := 302;
-  FResponse.AsObject.S['Location'] := Location;
-end;
-
-function THTTPStub.ProcessRequest: Boolean;
+  function KindClass: TClass;
+  begin
+    if IsWebSocket then
+      Result := TActionWebsocket
+    else
+      Result := TActionController;
+  end;
 
   function ResolveController(const Name: string; var Klass: TRttiInstanceType; var Namespace: string): Boolean;
   begin
-    var K := Context.Context.FindType(Format('%s_controller.T%sController', [Name, CamelCase(Name)]));
+    (* {name}_{controller_or_websocket}.T{Name}{ControllerOrWebsocket} *)
+    var QualifiedClassName := Format('%s_%s.T%s%s', [Name, KindUnitName, CamelCase(Name), KindClassName]);
+
+    var K := Context.Context.FindType(QualifiedClassName);
 
     if (K = nil) or not (K is TRttiInstanceType) then
       Klass := nil
     else
       Klass := TRttiInstanceType(K);
+
+    { Check if Ancestor matches }
+    if (Klass <> nil) and not Klass.MetaclassType.InheritsFrom(KindClass) then
+      Klass := nil;
 
     { Check if Namespace matches }
     if (Klass <> nil) and (Namespace <> '') then
@@ -1285,9 +1284,10 @@ function THTTPStub.ProcessRequest: Boolean;
     Format := LowerCase(F + 1);
   end;
 
-  function HasAction(Klass: TRttiInstanceType; const Action, Method: string): Boolean; overload; inline;
+  function HasAction(Klass: TRttiInstanceType; const Action, Method: string): Boolean; overload;
   begin
-    if Klass <> nil then
+    { Websockets don't have actions }
+    if not IsWebSocket and (Klass <> nil) then
       Result := Klass.GetMethod(Action + '_' + Method) <> nil
     else
       Result := False;
@@ -1299,16 +1299,9 @@ function THTTPStub.ProcessRequest: Boolean;
   end;
 
 var
-  uri: ISuperObject;
-  path, str, ext, user: string;
-  rec: TSearchRec;
-
   Namespace, Controller, Action, Format: string;
-  Klass: TRttiInstanceType;
-  Inst: TObject;
+  uri: ISuperObject;
 begin
-  Result := False;
-
   Namespace  := '';
   Controller := '';
   Action     := '';
@@ -1320,8 +1313,8 @@ begin
   if (uri.AsArray.Length = 2) and (uri.AsArray.S[1] <> '') then
   begin
     // Should match
-    // * /:controller
-    // * /:action(.:format)
+    // * /:controller_or_websocket
+    // * /:action(.:format) [ controller only ]
 
     var S := Trim(uri.AsArray.S[1]);
     var P := PSOChar(S);
@@ -1330,7 +1323,7 @@ begin
     if F = nil then
     begin
       S := LowerCase(S);
-      if ResolveController(S, Klass, Namespace) then
+      if ResolveController(S, Klass, Namespace) or IsWebSocket then
         Controller := S
       else
         Action := S;
@@ -1409,52 +1402,65 @@ begin
     Controller := 'application';
 
   // default action matches ruby on rails conventions
-  if Action = '' then
+  if IsWebSocket then
   begin
-    var Method := UpperCase(FRequest.AsObject.S['method']);
-    var HasId := FParams.AsObject['id'] <> nil;
-
-    if HasId then
+    Action := '';
+    Format := '';
+  end
+  else
+  begin
+    if Action = '' then
     begin
-      if Method = 'GET' then
-        Action := 'show'
-      else if (Method = 'PUT') or (Method = 'PATCH') then
+      var Method := UpperCase(FRequest.AsObject.S['method']);
+      var HasId := FParams.AsObject['id'] <> nil;
+
+      if HasId then
       begin
-        Action := 'update';
-        FRequest.AsObject.S['method'] := 'POST'; // overrides request method
+        if Method = 'GET' then
+          Action := 'show'
+        else if (Method = 'PUT') or (Method = 'PATCH') then
+        begin
+          Action := 'update';
+          FRequest.AsObject.S['method'] := 'POST'; // overrides request method
+        end
+        else if Method = 'DELETE' then
+        begin
+          Action := 'delete';
+          FRequest.AsObject.S['method'] := 'POST'; // overrides request method
+        end;
       end
-      else if Method = 'DELETE' then
-      begin
-        Action := 'delete';
-        FRequest.AsObject.S['method'] := 'POST'; // overrides request method
-      end;
-    end
-    else if Method = 'POST' then
-      Action := 'create';
-  end;
+      else if Method = 'POST' then
+        Action := 'create';
+    end;
 
-  if Action = '' then
-    Action := 'index';
+    if Action = '' then
+      Action := 'index';
 
-  // detect current formats
-  if Format = '' then
-  begin
-    var Accept := FRequest.AsObject['accept'];
-    if ObjectIsType(Accept, stArray) and (Accept.AsArray.Length > 1) then
+    // detect current formats
+    if Format = '' then
     begin
-      var A := Accept.AsArray.S[0];
-      if A = FFormats.S['json.content'] then      // application/json
-        Format := 'json'
-      else if A = FFormats.S['xml.content'] then  // text/xml
-        Format := 'xml'
-      else if A = FFormats.S['html.content'] then // text/html
-        Format := 'html';
-    end
+      var Accept := FRequest.AsObject['accept'];
+      if ObjectIsType(Accept, stArray) and (Accept.AsArray.Length > 1) then
+      begin
+        var A := Accept.AsArray.S[0];
+        if A = FFormats.S['json.content'] then      // application/json
+          Format := 'json'
+        else if A = FFormats.S['xml.content'] then  // text/xml
+          Format := 'xml'
+        else if A = FFormats.S['html.content'] then // text/html
+          Format := 'html';
+      end
+    end;
+
+    // default format is html
+    if Format = '' then
+      Format := 'html';
   end;
 
-  // default format is html
-  if Format = '' then
-    Format := 'html';
+  // Klass is still nil but we now have defaults to search for a controller
+  if (Klass = nil) and not IsWebSocket then
+    if not (ResolveController(Controller, Klass, Namespace) and HasAction(Klass, Action)) then
+      Klass := nil;
 
   // store action context
   with FParams.AsObject do
@@ -1464,6 +1470,55 @@ begin
     S['action']     := Action;
     S['format']     := Format;
   end;
+end;
+
+procedure THTTPStub.GetPassPhrase(var key, iv: PByte);
+begin
+  key := nil;
+  iv := nil;
+end;
+
+function THTTPStub.GetRootPath: string;
+begin
+  Result := ExtractFilePath(ParamStr(0));
+end;
+
+procedure THTTPStub.Render(const obj: ISuperObject; format: boolean);
+begin
+  obj.SaveTo(Response.Content, format);
+end;
+
+procedure THTTPStub.Redirect(const controler, action: string; const id: string);
+begin
+  if id = '' then
+    Redirect('/' + controler + '/' + action + '.' +  FParams.S['format'])
+  else
+    Redirect('/' + controler + '/' + action + '/' + id + '.' +  FParams.S['format']);
+end;
+
+procedure THTTPStub.Render(const str: string);
+begin
+  Response.Content.WriteString(str, false, DEFAULT_CP);
+end;
+
+procedure THTTPStub.Redirect(const location: string);
+begin
+  FErrorCode := 302;
+  FResponse.AsObject.S['Location'] := Location;
+end;
+
+function THTTPStub.ProcessRequest: Boolean;
+var
+  path, str, ext, user: string;
+  rec: TSearchRec;
+  // references the controller class through Rtti
+  Klass: TRttiInstanceType;
+  Inst: TObject;
+begin
+  Result := False;
+
+  { Decode the current route in the context of a controller action }
+  doProcessRoute(False, Klass);
 
   user := '';
   if doAuthenticate(FRequest.S['env.authorization'], user) then
@@ -1475,23 +1530,23 @@ begin
     else
       FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'];
 
-  { If controller has not already been found, that means we are looking for
-    the application controller that is not namespaced.
-    Optimization: If the method with aim to call does not exist, do not
-    instanciate the controller. }
-  Namespace := '';
-  if ((Klass <> nil) or ResolveController(Controller, Klass, Namespace)) and HasAction(Klass, Action) then
+  if Klass <> nil then
   begin
-    with Klass do
-      inst := GetMethod('create').Invoke(MetaclassType, []).AsObject;
+    // double check
+    Assert(Klass.MetaclassType.InheritsFrom(TActionController));
+
+    { create controller instance - old way }
+    // Inst := Klass.GetMethod('create').Invoke(Klass.MetaclassType, []).AsObject;
+
+    { more direct way }
+    Inst := TActionControllerClass(Klass.MetaclassType).Create;
     try
-      if inst is TActionController then
-      begin
-        if TActionController(inst).Invoke then
-          Result := True;
-      end;
+      // double check;
+      Assert(inst is TActionController);
+      if TActionController(inst).Invoke then
+        Result := True;
     finally
-      inst.Free;
+      Inst.Free;
     end;
   end;
 
@@ -1615,7 +1670,7 @@ var
   stream: TPooledMemoryStream;
   state: TState;
   data: UTF8String;
-  t: TRttiType;
+  klass: TRttiInstanceType;
   inst: TActionWebsocket;
 
   fin: Boolean;
@@ -1632,23 +1687,20 @@ begin
   fin := False;
   closecode := 0;
 
-  if FParams.AsObject['controller'] <> nil then
-    with FParams.AsObject do
-    begin
-      // controller
-      t := Context.Context.FindType(format('%s_websocket.T%sWebsocket', [S['controller'], CamelCase(S['controller'])]));
-      if (t <> nil) and (t is  TRttiInstanceType) then
-      begin
-        if TRttiInstanceType(t).MetaclassType.InheritsFrom(TActionWebsocket) then
-          inst := TActionWebsocketClass(TRttiInstanceType(t).MetaclassType).Create(FWebSocketVersion)
-        else
-          Exit;
-      end
-      else
-        Exit;
-    end
-    else
-      Exit;
+  doProcessRoute(True, klass);
+
+  if (klass <> nil) then
+  begin
+    // double check
+    Assert(klass.MetaclassType.InheritsFrom(TActionWebsocket));
+    // build WebSocket instance
+    inst := TActionWebsocketClass(klass.MetaclassType).Create(FWebSocketVersion);
+    // double check
+    Assert(inst is TActionWebsocket);
+  end
+  else
+    Exit;
+
   inst.Start;
 
   if FWebSocketVersion = 0 then

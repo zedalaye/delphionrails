@@ -100,6 +100,8 @@ type
     function Invoke: Boolean; virtual;
   end;
 
+  TActionControllerClass = class of TActionController;
+
 implementation
 
 uses
