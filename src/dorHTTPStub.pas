@@ -30,9 +30,11 @@ type
   private
     FContent: TPooledMemoryStream;
     function GetContentString: SOString;
+    function GetContentObject: ISuperObject;
   public
     property Content: TPooledMemoryStream read FContent;
     property ContentString: SOString read GetContentString;
+    property ContentObject: ISuperObject read GetContentObject;
     constructor Create(jt: TSuperType = stObject); override;
     destructor Destroy; override;
     procedure Clear(all: boolean = false); override;
@@ -407,6 +409,12 @@ destructor THTTPMessage.Destroy;
 begin
   inherited;
   FContent.Free;
+end;
+
+function THTTPMessage.GetContentObject: ISuperObject;
+begin
+  FContent.Seek(0, soFromBeginning);
+  Result := TSuperObject.ParseStream(FContent, False);
 end;
 
 function THTTPMessage.GetContentString: SOString;
@@ -1184,7 +1192,7 @@ begin
     if f <> nil then
       if(f = '/json') then
       begin
-        FParams.Merge(Request.ContentString);
+        FParams.Merge(Request.ContentObject);
         FParams.AsObject.S['format'] := 'json';
       end else
       if (f = '/xml') then
