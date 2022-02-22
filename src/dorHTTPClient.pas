@@ -18,6 +18,7 @@ type
     rsLoaded);
 
   TOnReadyStateChange = reference to procedure(const request: IHTTPRequest);
+  TOnProgress = reference to procedure(const request: IHTTPRequest; Current, Size: Int64);
 
   THTTPHeader = record
     name, value: RawByteString;
@@ -65,6 +66,7 @@ type
     function GetSynchronize: Boolean;
     function GetTimeout: Cardinal;
     function GetUploadRate: Cardinal;
+    function GetOnProgress: TOnProgress;
 
     procedure SetCookie(const Name: RawByteString; Value: TCookie);
     procedure SetDownloadRate(value: Cardinal);
@@ -76,6 +78,7 @@ type
     procedure SetSynchronize(value: Boolean);
     procedure SetTimeout(value: Cardinal);
     procedure SetUploadRate(value: Cardinal);
+    procedure SetOnProgress(const progress: TOnProgress);
 
     property Cookie[const name: RawByteString]: TCookie read GetCookie write SetCookie;
     property DownloadRate: Cardinal read GetDownloadRate write SetDownloadRate;
@@ -92,6 +95,7 @@ type
     property Synchronize: Boolean read GetSynchronize write SetSynchronize;
     property Timeout: Cardinal read GetTimeout write SetTimeout;
     property UploadRate: Cardinal read GetUploadRate write SetUploadRate;
+    property OnProgress: TOnProgress read GetOnProgress write SetOnProgress;
   end;
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
@@ -142,6 +146,7 @@ type
     FReadError: Boolean;
     FWriteError: Boolean;
     FRedirectCount: Integer;
+    FOnProgress: TOnProgress;
 
     FSynchronize: Boolean;
 
@@ -207,6 +212,7 @@ type
     function GetSynchronize: Boolean;
     function GetTimeout: Cardinal;
     function GetUploadRate: Cardinal;
+    function GetOnProgress: TOnProgress;
 
     procedure SetCookie(const Name: RawByteString; Value: TCookie);
     procedure SetDownloadRate(value: Cardinal);
@@ -218,6 +224,7 @@ type
     procedure SetSynchronize(value: Boolean);
     procedure SetTimeout(value: Cardinal);
     procedure SetUploadRate(value: Cardinal);
+    procedure SetOnProgress(const progress: TOnProgress);
   public
     constructor Create(const SSLPassword: AnsiString = ''; const CertificateFile: AnsiString = '';
       const PrivateKeyFile: AnsiString = ''; const CertCAFile: AnsiString = '';
@@ -339,6 +346,11 @@ end;
 function THTTPRequest.GetFollowRedirect: Boolean;
 begin
   Result := FFollowRedirect;
+end;
+
+function THTTPRequest.GetOnProgress: TOnProgress;
+begin
+  Result := FOnProgress;
 end;
 
 function THTTPRequest.GetOnReadyStateChange: TOnReadyStateChange;
@@ -803,6 +815,7 @@ var
   encoding: string;
   compressed: TPooledMemoryStream;
   Total, Rate, Start, Curr, Freq: Int64;
+  SendSize, SendPosition: Int64;
 begin
   FWriteError := False;
   HTTPWriteLine(FMethod + ' ' + FPath + ' HTTP/1.1');
@@ -856,7 +869,10 @@ begin
     else
       compressed := nil;
 
-    HTTPWriteLine('Content-Length: ' + RawByteString(IntToStr(data.Size - data.Position)));
+    SendSize := data.Size - data.Position;
+    SendPosition := 0;
+
+    HTTPWriteLine('Content-Length: ' + RawByteString(IntToStr(SendSize)));
     HTTPWriteLine('');
 
     Total := 0;
@@ -886,6 +902,10 @@ begin
         SockSend(buffer, read);
         if FWriteError then
           Exit;
+
+        Inc(SendPosition, read);
+        if Assigned(FOnProgress) then
+          FOnProgress(self, SendPosition, SendSize);
       end;
     until read = 0;
 
@@ -932,6 +952,11 @@ end;
 procedure THTTPRequest.SetFollowRedirect(value: Boolean);
 begin
   FFollowRedirect := value;
+end;
+
+procedure THTTPRequest.SetOnProgress(const progress: TOnProgress);
+begin
+  FOnProgress := progress;
 end;
 
 procedure THTTPRequest.SetOnReadyStateChange(const ready: TOnReadyStateChange);
