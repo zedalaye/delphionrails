@@ -100,7 +100,7 @@ type
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
   private
-    const BUFFER_SIZE = 1024;
+    const BUFFER_SIZE = 8192;
   private
   type
     TOnHeaderEvent = reference to function(const value: RawByteString): Boolean;
@@ -606,8 +606,9 @@ end;
 function THTTPRequest.Receive(TimeOut, DownloadRate: Cardinal): Boolean;
 var
   str: THTTPHeader;
-  len, rcv: Integer;
-  buff: array[0..1023] of AnsiChar;
+  Len, ReceiveSize, ReceivePosition: Int64;
+  buff: array[0..BUFFER_SIZE - 1] of AnsiChar;
+  rcv: Integer;
   strm: TStream;
   encoding: TContentEncoding;
   t: DWORD; // linux: timeval
@@ -623,7 +624,7 @@ begin
               while True do
               begin
                 QueryPerformanceCounter(Curr);
-                Rate := Round((Total / 1024) / ((Curr - Start) / Freq));
+                Rate := Round((Total / BUFFER_SIZE) / ((Curr - Start) / Freq));
                 if Rate < DownloadRate then
                   Break
                 else
@@ -710,8 +711,11 @@ begin
         Exit(False);
     end
     else if FResponseHeaders.TryGetValue('content-length', str) and
-      TryStrToInt(string(str.value), len) and (len > 0) then
+      TryStrToInt64(string(str.value), len) and (len > 0) then
     begin
+      ReceivePosition := 0;
+      ReceiveSize := len;
+
       while len > 0 do
       begin
         SetReadyState(rsReceiving);
@@ -731,6 +735,10 @@ begin
         end;
         strm.Write(buff, rcv);
         Dec(len, rcv);
+
+        Inc(ReceivePosition, rcv);
+        if Assigned(FOnProgress) then
+          FOnProgress(self, ReceivePosition, ReceiveSize);
       end;
     end
     else if FResponseHeaders.TryGetValue('connection', str) and (string(str.value) = 'close') then
