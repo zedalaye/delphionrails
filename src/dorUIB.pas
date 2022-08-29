@@ -907,7 +907,7 @@ begin
           if k = 3 then
           begin
             Result := cnx;
-            OutputDebugString(PChar(Format('%s.Connection: DbHandle=%p', [FPoolName, TDBUIBConnection(Result).FDbHandle])));
+            // OutputDebugString(PChar(Format('%s.Connection: DbHandle=%p', [FPoolName, TDBUIBConnection(Result).FDbHandle])));
             Exit;
           end;
         finally
