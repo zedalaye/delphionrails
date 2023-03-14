@@ -100,6 +100,7 @@ type
 
   THTTPRequest = class(TInterfacedObject, IHTTPRequest)
   private
+    const DEFAULT_TIMEOUT = 10; { seconds ! }
     const BUFFER_SIZE = 8192;
   private
   type
@@ -280,7 +281,7 @@ begin
   FSocket := INVALID_SOCKET;
   FPort := 80;
 
-  FTimeout := 0;
+  FTimeout := DEFAULT_TIMEOUT;
   FDownloadRate := 0;
   FUploadRate := 0;
   FBufferPos := 0;
@@ -1161,13 +1162,27 @@ end;
 
 {$ENDIF}
 
+{ Asynchronous connect with timeout ported from this answer
+  https://stackoverflow.com/a/46062474 }
+
 function THTTPRequest.TCPConnect(const domain: RawByteString; port: Word; ssl: Boolean): Boolean;
+
+  procedure closesock(var S: TSocket);
+  begin
+    // preserve current error code
+    var err := WSAGetLastError();
+    closesocket(S);
+    S := INVALID_SOCKET;
+    WSASetLastError(err);
+  end;
+
 var
   host: WinSock2.PHostEnt;
   addr: TSockAddr;
   rc: Integer;
 begin
   Result := True;
+
   // find host
   host := gethostbyname(PAnsiChar(Domain));
   if host = nil then
@@ -1182,9 +1197,66 @@ begin
   FillChar(addr, SizeOf(addr), 0);
   PSockAddrIn(@addr).sin_family := AF_INET;
   PSockAddrIn(@addr).sin_port := htons(Port);
-  PSockAddrIn(@addr).sin_addr.S_addr := PInteger(host.h_addr^)^;
-  if connect(FSocket, addr, SizeOf(addr)) <> 0 then
+  PSockAddrIn(@addr).sin_addr.S_addr := PCardinal(host.h_addr^)^;
+
+  // put socked in non-blocking mode...
+  var block: Cardinal := 1;
+  if ioctlsocket(FSocket, Integer(FIONBIO), block) = SOCKET_ERROR then
+  begin
+    closesock(FSocket);
     Exit(False);
+  end;
+
+  if connect(FSocket, addr, SizeOf(addr)) = SOCKET_ERROR then
+  begin
+    if WSAGetLastError <> WSAEWOULDBLOCK then
+    begin
+      closesock(FSocket);
+      Exit(False);
+    end;
+
+    var setW, setE: TFdSet;
+
+    FD_ZERO(setW);
+    _FD_SET(FSocket, setW);
+    FD_ZERO(setE);
+    _FD_SET(FSocket, setE);
+
+    var time_out: TTimeVal;
+    time_out.tv_sec := FTimeout;
+    time_out.tv_usec := 0;
+
+    var ret := select(0, nil, @setW, @setE, @time_out);
+    if ret <= 0 then
+    begin
+      // select() failed or connection timed out
+      closesock(FSocket);
+      if ret = 0 then
+        WSASetLastError(WSAETIMEDOUT);
+      Exit(False);
+    end;
+
+    if FD_ISSET(FSocket, setE) then
+    begin
+      // connection failed
+      var err: Integer := 0;
+      var optlen: Integer := SizeOf(err);
+      getsockopt(FSocket, SOL_SOCKET, SO_ERROR, PAnsiChar(@err), optlen);
+      closesock(FSocket);
+      WSASetLastError(err);
+      Exit(False);
+    end;
+  end;
+
+  // connection successful
+
+  // put socked in blocking mode...
+  block := 0;
+  if ioctlsocket(FSocket, Integer(FIONBIO), block) = SOCKET_ERROR then
+  begin
+    closesock(FSocket);
+    Exit(False);
+  end;
 
   SocketTuneSendBuffer(FSocket);
 
