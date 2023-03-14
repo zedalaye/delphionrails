@@ -47,6 +47,9 @@ type
     function SendText(const data: string; encoding: TEncoding = nil): Boolean;
     function SendFile(const FileName: string): Boolean;
 
+    function SendFileAsMultiPart(const FileName: string; const ContentType: string = ''): Boolean;
+    function SendAsMultiPart(data: TStream; const Name: string = ''; const ContentType: string = ''): Boolean;
+
     procedure ClearRequestHeaders;
 
     function GetCookie(const Name: RawByteString): TCookie;
@@ -241,6 +244,8 @@ type
     function Send(data: TStream): Boolean;
     function SendText(const data: string; encoding: TEncoding): Boolean;
     function SendFile(const FileName: string): Boolean;
+    function SendFileAsMultiPart(const FileName: string; const ContentType: string = ''): Boolean;
+    function SendAsMultiPart(data: TStream; const Name: string = ''; const ContentType: string = ''): Boolean;
   end;
 
 implementation
@@ -810,6 +815,85 @@ begin
     Result := Send(stream);
   finally
     stream.Free;
+  end;
+end;
+
+function THTTPRequest.SendFileAsMultiPart(const FileName, ContentType: string): Boolean;
+var
+  F: TFileStream;
+begin
+  F := TFileStream.Create(FileName, fmOpenRead);
+  try
+    Result := SendAsMultiPart(F, ExtractFileName(FileName), ContentType);
+  finally
+    F.Free;
+  end;
+end;
+
+function THTTPRequest.SendAsMultiPart(data: TStream; const Name,
+  ContentType: string): Boolean;
+
+  function MakeBoundary: string;
+  var
+    UID: TGUID;
+  begin
+    UID := TGUID.NewGuid;
+    { From superobject.UUIDToString() }
+    Result := LowerCase(Format('%.8x%.4x%.4x%.2x%.2x%.2x%.2x%.2x%.2x%.2x%.2x', [
+      UID.D1, UID.D2, UID.D3,
+      UID.D4[0], UID.D4[1], UID.D4[2],
+      UID.D4[3], UID.D4[4], UID.D4[5],
+      UID.D4[6], UID.D4[7]
+    ]));
+  end;
+
+  procedure WriteString(S: TPooledMemoryStream; const Str: string);
+  var
+    B: TBytes;
+  begin
+    B := TEncoding.ASCII.GetBytes(Str);
+    S.Write(B[0], Length(B));
+  end;
+
+  procedure EmbedData(S: TPooledMemoryStream; data: TStream; const Boundary, Name, ContentType: string);
+  begin
+    WriteString(S, '--' + Boundary + #13#10);
+
+    { Mandatory Content-Disposition }
+    WriteString(S, 'Content-Disposition: form-data; name="file"');
+    if Name <> '' then
+       WriteString(S, '; filename="' + Name + '"');
+    WriteString(S, #13#10);
+
+    { Optional Content-Type }
+    if ContentType <> '' then
+      WriteString(S, 'Content-Type: ' + ContentType + #13#10);
+
+    { End of embedded headers }
+    WriteString(S, #13#10);
+
+    S.CopyFrom(data);
+
+    WriteString(S, #13#10);
+  end;
+
+var
+  Boundary: string;
+  BoundingStream: TPooledMemoryStream;
+begin
+  Boundary := MakeBoundary;
+  SetRequestHeader('Content-Type', RawByteString('multipart/form-data; boundary="' + Boundary + '"'));
+  BoundingStream := TPooledMemoryStream.Create;
+  try
+    EmbedData(BoundingStream, data, Boundary, Name, ContentType);
+
+    { Write Last Boundary }
+    WriteString(BoundingStream, '--' + Boundary + '--' + #13#10);
+
+    BoundingStream.Seek(0, soFromBeginning);
+    Result := Send(BoundingStream);
+  finally
+    BoundingStream.Free;
   end;
 end;
 
