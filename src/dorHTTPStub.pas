@@ -1622,7 +1622,7 @@ begin
       FindClose(rec);
       Exit;
     end;
-    FResponse.AsObject.S['Cache-Control'] := 'public, max-age=3600';
+    FResponse.AsObject.S['Cache-Control'] := 'public, no-cache';
     FResponse.AsObject.S['ETag'] := IntToStr(rec.Time) + '-' + IntToStr(rec.Size);
     FSendFile := path + str;
     Compress := FFormats.B[Params.AsObject.S['format'] + '.istext'];
