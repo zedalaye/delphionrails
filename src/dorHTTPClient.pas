@@ -651,6 +651,14 @@ begin
       FResponseData.Size := 0;
     FResponseHeaders.Clear;
 
+    Total := 0;
+    if DownloadRate > 0 then
+    begin
+      QueryPerformanceFrequency(Freq);
+      QueryPerformanceCounter(Start);
+    end;
+
+    { Upload finished, set receive timeout }
     t := TimeOut * 1000;
     setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @t, SizeOf(t));
 
@@ -692,13 +700,6 @@ begin
       strm := FResponseData
     else
       strm := TPooledMemoryStream.Create;
-
-    Total := 0;
-    if DownloadRate > 0 then
-    begin
-      QueryPerformanceFrequency(Freq);
-      QueryPerformanceCounter(Start);
-    end;
 
     if FResponseHeaders.TryGetValue('transfer-encoding', str) and AnsiStrings.SameText(str.value, 'chunked') then
     begin
@@ -783,6 +784,7 @@ begin
           end;
       end;
     FResponseData.Seek(0, soFromBeginning);
+
     Result := True;
   finally
     wait := nil;
