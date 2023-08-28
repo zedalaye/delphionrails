@@ -860,17 +860,18 @@ const
  *}
   SSL_OP_TLS_ROLLBACK_BUG                         = $00800000;
 
-  SSL_OP_NO_SSLv2                                 = $01000000;
   SSL_OP_NO_SSLv3                                 = $02000000;
   SSL_OP_NO_TLSv1                                 = $04000000;
   SSL_OP_NO_TLSv1_2                               = $08000000;
   SSL_OP_NO_TLSv1_1                               = $10000000;
+  SSL_OP_NO_TLSv1_3                               = $20000000;
 
   SSL_OP_NO_DTLSv1                                = $04000000;
   SSL_OP_NO_DTLSv1_2                              = $08000000;
 
-  SSL_OP_NO_SSL_MASK = SSL_OP_NO_SSLv2 + SSL_OP_NO_SSLv3
-                     + SSL_OP_NO_TLSv1 + SSL_OP_NO_TLSv1_1 + SSL_OP_NO_TLSv1_2;
+  SSL_OP_NO_SSL_MASK  = SSL_OP_NO_SSLv3 +
+    SSL_OP_NO_TLSv1 + SSL_OP_NO_TLSv1_1 + SSL_OP_NO_TLSv1_2 + SSL_OP_NO_TLSv1_3;
+  SSL_OP_NO_DTLS_MASK = SSL_OP_NO_DTLSv1 + SSL_OP_NO_DTLSv1_2;
 
 {*
  * These next two were never actually used for anything since SSLeay zap so
@@ -1044,8 +1045,21 @@ type
 
   function SSL_set_tlsext_host_name(ssl: PSSL; const hostname: PAnsiChar): Integer; inline;
 
-  function SSL_set_mode(ctx: PSSL; mode: LongInt): LongInt; inline;
-  function SSL_get_mode(ctx: PSSL): LongInt; inline;
+  function SSL_set_mode(ssl: PSSL; mode: LongInt): LongInt; inline;
+  function SSL_get_mode(ssl: PSSL): LongInt; inline;
+
+  procedure SSL_set_connect_state(ssl: PSSL); cdecl; external LIB_SSL;
+  procedure SSL_set_accept_state(ssl: PSSL); cdecl; external LIB_SSL;
+  function SSL_is_server(const ssl: PSSL): Integer; cdecl; external LIB_SSL;
+
+  function SSL_in_init(const ssl: PSSL): Integer; cdecl; external LIB_SSL;
+  function SSL_in_before(const ssl: PSSL): Integer; cdecl; external LIB_SSL;
+  function SSL_is_init_finished(const ssl: PSSL): Integer; cdecl; external LIB_SSL;
+
+  function SSL_in_connect_init(ssl: PSSL): Integer; cdecl; external LIB_SSL;
+  function SSL_in_accept_init(ssl: PSSL): Integer; cdecl; external LIB_SSL;
+
+  function SSL_get_state(const ssl: PSSL): Integer; cdecl; external LIB_SSL;
 
   procedure X509_free(x509: PX509); cdecl; external LIB_CRYPTO;
   function X509_NAME_oneline(name: PX509_NAME; buf: PAnsiChar; size: Integer): PAnsiChar; cdecl; external LIB_CRYPTO;
@@ -1065,6 +1079,12 @@ const
   function SSL_CTX_set_max_proto_version(ctx: PSSL_CTX; version: Integer): Integer; inline;
   function SSL_CTX_get_min_proto_version(ctx: PSSL_CTX): Integer; inline;
   function SSL_CTX_get_max_proto_version(ctx: PSSL_CTX): Integer; inline;
+
+type
+  SSL_CTX_keylog_cb_func = procedure(const ssl: PSSL; const line: PAnsiChar); cdecl;
+  TSSLKeylogCallbackProc = SSL_CTX_keylog_cb_func;
+  procedure SSL_CTX_set_keylog_callback(ctx: PSSL_CTX; cb: TSSLKeylogCallbackProc); cdecl; external LIB_SSL;
+  function SSL_CTX_get_keylog_callback(const ctx: PSSL_CTX): TSSLKeylogCallbackProc; cdecl; external LIB_SSL;
 
 (******************************************************************************
  * PEM
@@ -1200,14 +1220,14 @@ end;
 
 (* SSL *)
 
-function SSL_set_mode(ctx: PSSL; mode: LongInt): LongInt;
+function SSL_set_mode(ssl: PSSL; mode: LongInt): LongInt;
 begin
-  Result := SSL_ctrl(ctx, SSL_CTRL_MODE, mode, nil);
+  Result := SSL_ctrl(ssl, SSL_CTRL_MODE, mode, nil);
 end;
 
-function SSL_get_mode(ctx: PSSL): LongInt;
+function SSL_get_mode(ssl: PSSL): LongInt;
 begin
-  Result := SSL_ctrl(ctx, SSL_CTRL_MODE, 0, nil);
+  Result := SSL_ctrl(ssl, SSL_CTRL_MODE, 0, nil);
 end;
 
 function SSL_set_tlsext_host_name(ssl: PSSL; const hostname: PAnsiChar): Integer; inline;
@@ -1366,5 +1386,5 @@ end;
 initialization
   OPENSSL_init_crypto(OPENSSL_INIT_CRYPTO_DEFAULT, nil);
   OPENSSL_init_ssl(OPENSSL_INIT_SSL_DEFAULT, nil);
-
+  
 end.
