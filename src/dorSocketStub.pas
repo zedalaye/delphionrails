@@ -294,9 +294,9 @@ begin
     CurrentDorThread.Run;
   finally
     if InterlockedDecrement(CurrentDorThread.FThreadRefCount) = 0 then
-      CurrentDorThread.Free else
-      if CurrentDorThread.FOwner <> nil then
-        CurrentDorThread.FOwner.ChildRemove(CurrentDorThread);
+      CurrentDorThread.Free
+    else if CurrentDorThread.FOwner <> nil then
+      CurrentDorThread.FOwner.ChildRemove(CurrentDorThread);
     CurrentDorThread := nil;
   end;
 end;
