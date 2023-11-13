@@ -327,11 +327,12 @@ type
     constructor CreateFromBase64(const base64: string);
     destructor Destroy; override;
     function Clone: ISuperObject; override;
-    function Write(writer: TSuperWriter; format: boolean; escape: boolean; level: integer): Integer; override;
-    function getData: TStream;
+    function Write(writer: TSuperWriter; _format: boolean; _escape: boolean; _level: integer): Integer; override;
+    function GetData: TStream;
 
     function AsBoolean: Boolean; override; // true if length > 0
     function AsInteger: SuperInt; override; // stream length
+    function AsString: string; override; // base64
   end;
 
   TDBDateTime = class(TSuperObject, IDBDateTime)
@@ -738,6 +739,22 @@ begin
   Result := FStream.Size;
 end;
 
+function TDBBinary.AsString: string;
+var
+  WS: TSuperWriterString;
+begin
+  WS := TSuperWriterString.Create;
+  try
+    Write(WS, False, False, 0);
+    Result := WS.GetString;
+    // Remote quotes
+    System.Delete(Result, Length(Result), 1);
+    System.Delete(Result, 1, 1);
+  finally
+    WS.Free;
+  end;
+end;
+
 function TDBBinary.Clone: ISuperObject;
 var
   blob: TDBBinary;
@@ -800,13 +817,13 @@ begin
   inherited;
 end;
 
-function TDBBinary.getData: TStream;
+function TDBBinary.GetData: TStream;
 begin
   Result := FStream;
 end;
 
-function TDBBinary.Write(writer: TSuperWriter; format: boolean; escape: boolean;
-  level: integer): Integer;
+function TDBBinary.Write(writer: TSuperWriter; _format: boolean; _escape: boolean;
+  _level: integer): Integer;
 const
   Base64Code: PSOChar = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   QUOTE: SOChar = '"';
