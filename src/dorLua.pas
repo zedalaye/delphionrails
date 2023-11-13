@@ -43,9 +43,9 @@ type
 
 const
 {$IFDEF UNIX}
-  LUA_LIB = 'liblua5.4.3.so';
+  LUA_LIB = 'liblua5.4.6.so';
 {$ELSE}
-  LUA_LIB = 'lua5.4.3.dll';
+  LUA_LIB = 'lua5.4.6.dll';
 {$ENDIF}
 
 const
@@ -65,9 +65,9 @@ const
 
 const
   LUA_VERSION = 'Lua 5.4';
-  LUA_RELEASE = 'Lua 5.4.3';
+  LUA_RELEASE = 'Lua 5.4.6';
   LUA_VERSION_NUM = 504;
-  LUA_COPYRIGHT = 'Copyright (C) 1994-2021 Lua.org, PUC-Rio';
+  LUA_COPYRIGHT = 'Copyright (C) 1994-2023 Lua.org, PUC-Rio';
   LUA_AUTHORS  = 'R. Ierusalimschy, L. H. de Figueiredo, W. Celes';
 
 
@@ -180,7 +180,8 @@ type
 function lua_newstate(f: lua_Alloc; ud: Pointer): Plua_State; cdecl; external LUA_LIB name 'lua_newstate';
 procedure lua_close(L: Plua_State); cdecl; external LUA_LIB name 'lua_close';
 function lua_newthread(L: Plua_State): Plua_State; cdecl; external LUA_LIB name 'lua_newthread';
- function lua_resetthread(L: Plua_State): Integer; cdecl; external LUA_LIB name 'lua_resetthread';
+function lua_closethread(L: Plua_State; from: Plua_State): Integer; cdecl; external LUA_LIB name 'lua_closethread';
+function lua_resetthread(L: Plua_State): Integer; cdecl; external LUA_LIB name 'lua_resetthread';
 
 function lua_atpanic(L: Plua_State; panicf: lua_CFunction): lua_CFunction; cdecl; external LUA_LIB name 'lua_atpanic';
 
