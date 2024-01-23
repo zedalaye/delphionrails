@@ -290,6 +290,8 @@ end;
 
 procedure TWebSocket.Open(const url: string; autoPong: Boolean; const origin: RawByteString);
 var
+  local_url: string;
+  follow_redirect: Integer;
   domain: AnsiString;
   protocol: string;
   uri: RawByteString;
@@ -299,6 +301,8 @@ var
   addr: TSockAddr;
   ReadTimeOut: Integer;
   dic: TDictionary<RawByteString, RawByteString>;
+  http_code: Integer;
+  http_msg: string;
   value: RawByteString;
   key: RawByteString;
   guid: TGUID;
@@ -309,207 +313,227 @@ begin
   if FReadyState <> rsClosed then
     Exit;
 
-  FReadyState := rsConnecting;
-  // parse
-  if not HTTPParseURL(PChar(url), protocol, domain, port, uri, True) then
-  begin
-    if Assigned(FOnError) then
-      FOnError(Format('Can''t parse url: %s', [url]));
-    Exit;
-  end;
+  local_url := url;
+  follow_redirect := 0;
 
-  if protocol = 'ws' then
+  while (FReadyState = rsClosed) and (follow_redirect < 10) do
   begin
-    ssl := False;
-    if port = 0 then
-      port := 80;
-  end
-  else if protocol = 'wss' then
-  begin
-    ssl := True;
-    if port = 0 then
-      port := 443;
-  end
-  else
-  begin
-    if Assigned(FOnError) then
-      FOnError('Invalid protocol');
-    Exit;
-  end;
+    FReadyState := rsConnecting;
 
-  // find host
-  host := gethostbyname(PAnsiChar(domain));
-  if host = nil then
-  begin
-    if Assigned(FOnError) then
-      FOnError(Format('Host not found: %s', [domain]));
-    Exit;
-  end;
-
-  // socket
-  FSocket := socket(AF_INET, SOCK_STREAM, 0);
-  try
-    if FSocket = INVALID_SOCKET then
+    if not HTTPParseURL(PChar(local_url), protocol, domain, port, uri, True) then
     begin
       if Assigned(FOnError) then
-        FOnError('Unexpected error: can''t allocate socket handle.');
+        FOnError(Format('Can''t parse url: %s', [local_url]));
       Exit;
     end;
 
-    // connect
-    FillChar(addr, SizeOf(addr), 0);
-    PSockAddrIn(@addr).sin_family := AF_INET;
-    PSockAddrIn(@addr).sin_port := htons(port);
-    PSockAddrIn(@addr).sin_addr.S_addr := PInteger(host.h_addr^)^;
-    if connect(FSocket, addr, SizeOf(addr)) <> 0 then
+    if (protocol = 'ws') or (protocol = 'http') then
+    begin
+      ssl := False;
+      if port = 0 then
+        port := 80;
+    end
+    else if (protocol = 'wss') or (protocol = 'https') then
+    begin
+      ssl := True;
+      if port = 0 then
+        port := 443;
+    end
+    else
     begin
       if Assigned(FOnError) then
-        FOnError(format('Cant''t connect to host: %s:%d', [domain, port]));
+        FOnError('Invalid protocol');
       Exit;
     end;
 
-    if ssl then
+    // find host
+    host := gethostbyname(PAnsiChar(domain));
+    if host = nil then
     begin
-      FCtx := SSL_CTX_new(TLS_client_method());
-      SSL_CTX_set_min_proto_version(FCtx, TLS1_2_VERSION);
-      SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3 or SSL_OP_NO_COMPRESSION);
-      SSL_CTX_set_cipher_list(FCtx, DOR_SSL_CIPHER_LIST);
+      if Assigned(FOnError) then
+        FOnError(Format('Host not found: %s', [domain]));
+      Exit;
+    end;
 
-      SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
-      SSL_CTX_set_default_passwd_cb(FCtx, @SSLPasswordCallback);
+    // socket
+    FSocket := socket(AF_INET, SOCK_STREAM, 0);
+    try
+      if FSocket = INVALID_SOCKET then
+      begin
+        if Assigned(FOnError) then
+          FOnError('Unexpected error: can''t allocate socket handle.');
+        Exit;
+      end;
 
-      if FCertificateFile <> '' then
-        if SSL_CTX_use_certificate_chain_file(FCtx, PAnsiChar(FCertificateFile)) <> 1 then
-          if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_PEM) <> 1 then
-            if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_ASN1) <> 1 then
+      // connect
+      FillChar(addr, SizeOf(addr), 0);
+      PSockAddrIn(@addr).sin_family := AF_INET;
+      PSockAddrIn(@addr).sin_port := htons(port);
+      PSockAddrIn(@addr).sin_addr.S_addr := PInteger(host.h_addr^)^;
+      if connect(FSocket, addr, SizeOf(addr)) <> 0 then
+      begin
+        if Assigned(FOnError) then
+          FOnError(format('Cant''t connect to host: %s:%d', [domain, port]));
+        Exit;
+      end;
+
+      if ssl then
+      begin
+        FCtx := SSL_CTX_new(TLS_client_method());
+        SSL_CTX_set_min_proto_version(FCtx, TLS1_2_VERSION);
+        SSL_CTX_set_options(FCtx, SSL_OP_NO_SSLv3 or SSL_OP_NO_COMPRESSION);
+        SSL_CTX_set_cipher_list(FCtx, DOR_SSL_CIPHER_LIST);
+
+        SSL_CTX_set_default_passwd_cb_userdata(FCtx, Self);
+        SSL_CTX_set_default_passwd_cb(FCtx, @SSLPasswordCallback);
+
+        if FCertificateFile <> '' then
+          if SSL_CTX_use_certificate_chain_file(FCtx, PAnsiChar(FCertificateFile)) <> 1 then
+            if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_PEM) <> 1 then
+              if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_ASN1) <> 1 then
+              begin
+                if Assigned(FOnError) then
+                  FOnError('SSL: Can''t use certificate');
+                Exit;
+              end;
+
+        if FPrivateKeyFile <> '' then
+          if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_PEM) <> 1 then
+            if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_ASN1) <> 1 then
             begin
               if Assigned(FOnError) then
-                FOnError('SSL: Can''t use certificate');
+                FOnError('SSL: Can''t use key file');
               Exit;
             end;
 
-      if FPrivateKeyFile <> '' then
-        if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_PEM) <> 1 then
-          if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_ASN1) <> 1 then
+        if FCertCAFile <> '' then
+          if SSL_CTX_load_verify_locations(FCtx, PAnsiChar(FCertCAFile), nil) <> 1 then
           begin
             if Assigned(FOnError) then
-              FOnError('SSL: Can''t use key file');
+              FOnError('SSL: Can''t use CA Cert');
             Exit;
           end;
 
-      if FCertCAFile <> '' then
-        if SSL_CTX_load_verify_locations(FCtx, PAnsiChar(FCertCAFile), nil) <> 1 then
+        FSsl := SSL_new(FCtx);
+        SSL_set_fd(FSsl, FSocket);
+        if SSL_connect(FSsl) <> 1 then
         begin
           if Assigned(FOnError) then
-            FOnError('SSL: Can''t use CA Cert');
+            FOnError('SSL: connection error');
+          Exit;
+        end;
+      end;
+
+      //uri := HTTPEncode(uri);
+      HTTPWriteLine('GET ' + uri + ' HTTP/1.1');
+      HTTPWriteLine('Upgrade: WebSocket');
+      HTTPWriteLine('Connection: Upgrade');
+      HTTPWriteLine('Host: ' + domain);
+      HTTPWriteLine('Origin: ' + origin);
+      HTTPWriteLine('sec-websocket-version: 13');
+      CreateGUID(guid);
+      key := RawByteString(BytesToBase64(@guid, SizeOf(guid)));
+      HTTPWriteLine('sec-websocket-key: ' + key);
+
+      key := AnsiString(key) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+      SHA1(PAnsiChar(key), Length(key), @buffer);
+      key := RawByteString(BytesToBase64(@buffer, SizeOf(buffer)));
+
+      if Assigned(FOnAddField) then
+        FOnAddField(
+          function (const key: RawByteString; const value: RawByteString): Boolean
+          begin
+            HTTPWriteLine(RawbyteString(key) + ': ' + value);
+            Result := True;
+          end
+        );
+      HTTPWriteLine('');
+      Flush();
+
+      dic := TDictionary<RawByteString, RawByteString>.Create;
+      try
+        ReadTimeOut := 3000;
+        setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
+        if not HTTPParse(
+                 function (var buf; len: Integer): Integer
+                 begin
+                   Result := SockRecv(buf, len, 0)
+                 end,
+                 function (code: Integer; const mesg: RawByteString): Boolean
+                 begin
+                   http_code := code;
+                   http_msg := string(mesg);
+
+                   Result := (code=101) or (code=301) or (code=302);
+                   if not Result and Assigned(FOnError) then
+                     FOnError(Format('Invalid response code: %d %s', [code, mesg]));
+                 end,
+                 function (const key: RawByteString; const value: RawByteString): Boolean
+                 begin
+                   dic.AddOrSetValue(lowercase(key), value);
+                   Result := True;
+                 end
+               )
+        then
+        begin
+          if Assigned(FOnError) then
+            FOnError('Unexpected error when parsing HTTP header');
           Exit;
         end;
 
-      FSsl := SSL_new(FCtx);
-      SSL_set_fd(FSsl, FSocket);
-      if SSL_connect(FSsl) <> 1 then
-      begin
-        if Assigned(FOnError) then
-          FOnError('SSL: connection error');
-        Exit;
-      end;
-    end;
-
-    //uri := HTTPEncode(uri);
-    HTTPWriteLine('GET ' + uri + ' HTTP/1.1');
-    HTTPWriteLine('Upgrade: WebSocket');
-    HTTPWriteLine('Connection: Upgrade');
-    HTTPWriteLine('Host: ' + domain);
-    HTTPWriteLine('Origin: ' + origin);
-    HTTPWriteLine('sec-websocket-version: 13');
-    CreateGUID(guid);
-    key := RawByteString(BytesToBase64(@guid, SizeOf(guid)));
-    HTTPWriteLine('sec-websocket-key: ' + key);
-
-    key := AnsiString(key) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-    SHA1(PAnsiChar(key), Length(key), @buffer);
-    key := RawByteString(BytesToBase64(@buffer, SizeOf(buffer)));
-
-    if Assigned(FOnAddField) then
-      FOnAddField(
-        function (const key: RawByteString; const value: RawByteString): Boolean
+        if http_code = 101 then
         begin
-          HTTPWriteLine(RawbyteString(key) + ': ' + value);
-          Result := True;
+          if not((dic.TryGetValue('upgrade', value) and (LowerCase(string(value)) = 'websocket')) and
+                 (dic.TryGetValue('connection', value) and (LowerCase(string(value)) = 'upgrade')))
+          then
+          begin
+            if Assigned(FOnError) then
+              FOnError('Invalid upgrade header field');
+            Exit;
+          end;
+
+          if not dic.TryGetValue('sec-websocket-accept', value) then
+          begin
+            if Assigned(FOnError) then
+              FOnError('Invalid Sec-WebSocket-Accept header field');
+            Exit;
+          end;
+
+          if key <> value then
+          begin
+            if Assigned(FOnError) then
+              FOnError('Websocket challenge failed');
+            Exit;
+          end;
+
+          ReadTimeOut := 0;
+          setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
+
+          FReadyState := rsOpen;
         end
-      );
-    HTTPWriteLine('');
-    Flush();
-
-    dic := TDictionary<RawByteString, RawByteString>.Create;
-    try
-      ReadTimeOut := 3000;
-      setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
-      if not HTTPParse(
-               function (var buf; len: Integer): Integer
-               begin
-                 Result := SockRecv(buf, len, 0)
-               end,
-               function (code: Integer; const mesg: RawByteString): Boolean
-               begin
-                 Result := code = 101;
-                 if not Result and Assigned(FOnError) then
-                   FOnError(Format('Invalid response code: %d %s', [code, mesg]));
-               end,
-               function (const key: RawByteString; const value: RawByteString): Boolean
-               begin
-                 dic.AddOrSetValue(lowercase(key), value);
-                 Result := True;
-               end
-             )
-      then
-      begin
-        if Assigned(FOnError) then
-          FOnError('Unexpected error when parsing HTTP header');
-        Exit;
+        else // http_code in [301, 302] : follow redirection
+        begin
+          local_url := string(dic['location']);
+          Inc(follow_redirect);
+        end;
+      finally
+        dic.Free;
       end;
-
-      if not((dic.TryGetValue('upgrade', value) and (LowerCase(string(value)) = 'websocket')) and
-             (dic.TryGetValue('connection', value) and (LowerCase(string(value)) = 'upgrade')))
-      then
-      begin
-        if Assigned(FOnError) then
-          FOnError('Invalid upgrade header field');
-        Exit;
-      end;
-
-      if not dic.TryGetValue('sec-websocket-accept', value) then
-      begin
-        if Assigned(FOnError) then
-          FOnError('Invalid Sec-WebSocket-Accept header field');
-        Exit;
-      end;
-
-      if key <> value then
-      begin
-        if Assigned(FOnError) then
-          FOnError('Websocket challenge failed');
-        Exit;
-      end;
-
-      ReadTimeOut := 0;
-      setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
     finally
-      dic.Free;
+      if FReadyState = rsConnecting then
+      begin
+        closesocket(FSocket);
+        FSocket := INVALID_SOCKET;
+        FReadyState := rsClosed;
+      end;
     end;
+  end;
 
-    FReadyState := rsOpen;
+  if FReadyState = rsOpen then
+  begin
     if Assigned(FOnOpen) then
       FOnOpen();
-
     Listen;
-  finally
-    if FReadyState = rsConnecting then
-    begin
-      closesocket(FSocket);
-      FSocket := INVALID_SOCKET;
-      FReadyState := rsClosed;
-    end;
   end;
 end;
 
