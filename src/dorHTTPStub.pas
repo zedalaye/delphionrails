@@ -93,6 +93,7 @@ type
     function WebSocket: Cardinal; virtual;
     procedure GetPassPhrase(var key, iv: PByte); virtual;
     function GetRootPath: string; virtual;
+    function HandleCORS(const Method, Path: string; var Origin, AllowedHeaders, AllowedMethods: string; var MaxAge: Cardinal): Boolean; virtual;
   public
     constructor CreateStub(AOwner: TSocketServer; const ASocket: IReadWrite); override;
     destructor Destroy; override;
@@ -1491,6 +1492,12 @@ begin
   Result := ExtractFilePath(ParamStr(0));
 end;
 
+function THTTPStub.HandleCORS(const Method, Path: string; var Origin,
+  AllowedHeaders, AllowedMethods: string; var MaxAge: Cardinal): Boolean;
+begin
+  Result := False;
+end;
+
 procedure THTTPStub.Render(const obj: ISuperObject; format: boolean);
 begin
   obj.SaveTo(Response.Content, format);
@@ -1517,13 +1524,57 @@ end;
 
 function THTTPStub.ProcessRequest: Boolean;
 var
-  path, str, ext, user: string;
+  uri, path, str, ext, user,
+  method, origin, allowed_headers, allowed_methods: string;
+  max_age: Cardinal;
   rec: TSearchRec;
   // references the controller class through Rtti
   Klass: TRttiInstanceType;
   Inst: TObject;
 begin
   Result := False;
+
+  { Handle CORS : Defaults to "No" because HandleCORS() returns False unless
+    overriden }
+
+  uri    := FRequest.AsObject.S['uri'];
+  method := FRequest.AsObject.S['method'];
+  origin := FRequest.AsObject.O['env'].AsObject.S['origin'];
+
+  if method = 'OPTIONS' then
+  begin
+    with FRequest.AsObject.O['env'].AsObject do
+    begin
+      method := S['access-control-request-method'];
+      allowed_headers := S['access-control-request-headers'];
+    end;
+
+    { CORS Preflight request }
+
+    if method <> '' then
+    begin
+      allowed_methods := 'OPTIONS, GET, ' + method;
+      max_age := 86400;
+
+      if HandleCORS(method, uri, origin, allowed_headers, allowed_methods, max_age) then
+      begin
+        FResponse.AsObject.S['Connection'] := 'keep-alive';
+        FResponse.AsObject.S['Access-Control-Allow-Origin'] := origin;
+        FResponse.AsObject.S['Access-Control-Allow-Methods'] := allowed_methods;
+        FResponse.AsObject.S['Access-Control-Allow-Headers'] := allowed_headers;
+        FResponse.AsObject.I['Access-Control-Max-Age'] := max_age;
+        FErrorCode := 204; // no-content
+        Exit;
+      end;
+    end;
+  end;
+
+  allowed_methods := method;
+  allowed_headers := '';
+  max_age := 0;
+
+  if HandleCORS(method, uri, origin, allowed_headers, allowed_methods, max_age) then
+    FResponse.AsObject.S['Access-Control-Allow-Origin'] := origin;
 
   { Decode the current route in the context of a controller action }
   doProcessRoute(False, Klass);
