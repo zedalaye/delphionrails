@@ -1009,8 +1009,8 @@ type
   function TLS_client_method: PSSL_METHOD; cdecl; external LIB_SSL;
 
   function SSL_CTX_new(const meth: PSSL_METHOD): PSSL_CTX; cdecl; external LIB_SSL;
-  procedure SSL_CTX_free(arg0: PSSL_CTX); cdecl; external LIB_SSL;
-  function SSL_CTX_set_cipher_list(arg0: PSSL_CTX; str: PAnsiChar): Integer; cdecl; external LIB_SSL;
+  procedure SSL_CTX_free(ctx: PSSL_CTX); cdecl; external LIB_SSL;
+  function SSL_CTX_set_cipher_list(ctx: PSSL_CTX; str: PAnsiChar): Integer; cdecl; external LIB_SSL;
   function SSL_CTX_ctrl(ctx: PSSL_CTX; cmd: Integer; larg: LongInt; parg: Pointer): LongInt; cdecl; external LIB_SSL;
   function SSL_CTX_use_PrivateKey(ctx: PSSL_CTX; pkey: PEVP_PKEY):Integer; cdecl; external LIB_SSL;
   function SSL_CTX_use_RSAPrivateKey(ctx: PSSL_CTX; rsa: PRSA):Integer; cdecl; external LIB_SSL;

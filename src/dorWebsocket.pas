@@ -57,9 +57,13 @@ type
   end;
 
   TWebSocket = class(TInterfacedObject, IWebSocket)
+  protected
+    class constructor ClassCreate;
+    class destructor ClassDestroy;
   private
     const BUFFER_SIZE = 1024;
   private
+    FListenThread: TThread;
     FOnOpen: TProc;
     FOnClose: TProc;
     FOnError: TWSMessage;
@@ -86,7 +90,7 @@ type
     procedure HTTPWriteLine(const data: RawByteString);
     function SockSend(var Buf; len, flags: Integer): Integer;
     function SockRecv(var Buf; len, flags: Integer): Integer;
-    procedure Flush();
+    procedure Flush;
     procedure Output(b: Byte; data: Pointer; len: Int64);
     procedure OutputString(b: Byte; const str: string);
     { /!\ These methods are called within the Listen thread }
@@ -123,12 +127,10 @@ type
     procedure SetOnAddField(const value: TOnHTTPAddField);
     procedure SetThreadSync(const value: Boolean);
   public
-    constructor Create(const password: AnsiString = '';
+    constructor Create(const Password: AnsiString = '';
       const CertificateFile: AnsiString = ''; const PrivateKeyFile: AnsiString = '';
       const CertCAFile: AnsiString = ''); virtual;
     destructor Destroy; override;
-    class constructor Create;
-    class destructor Destroy;
   end;
 
 implementation
@@ -136,6 +138,68 @@ implementation
 uses
   dorMD5, dorPunyCode;
 
+(******************************************************************************)
+(* TThreadIt                                                                  *)
+(* run anonymous method(s) in a thread improved with a mecanism to wait for   *)
+(* these threads to terminate gracefully.                                     *)
+(* https://stackoverflow.com/a/72225744                                       *)
+(******************************************************************************)
+
+type
+  TThreadIt = class(TThread)
+  protected
+    class var
+      FCountdown: TCountdownEvent;
+    class constructor ClassCreate;
+    class destructor ClassDestroy;
+  public
+    class procedure Shutdown; static;
+    class function WaitForAll(Timeout: Cardinal = INFINITE): TWaitResult; static;
+  protected
+    FProc: TProc;
+    procedure Execute; override;
+  public
+    constructor Create(const Proc: TProc);
+  end;
+
+  class constructor TThreadIt.ClassCreate;
+  begin
+    FCountdown := TCountdownEvent.Create(1);
+  end;
+
+  class destructor TThreadIt.ClassDestroy;
+  begin
+    FCountdown.Free;
+  end;
+
+  class procedure TThreadIt.Shutdown;
+  begin
+    FCountdown.Signal;
+  end;
+
+  class function TThreadIt.WaitForAll(Timeout: Cardinal): TWaitResult;
+  begin
+    Result := FCountdown.WaitFor(Timeout);
+  end;
+
+  constructor TThreadIt.Create(const Proc: TProc);
+  begin
+    inherited Create(True);
+    FProc := proc;
+    FreeOnTerminate := True;
+  end;
+
+  procedure TThreadIt.Execute;
+  begin
+    if FCountdown.TryAddCount then
+      try
+        FProc;
+      finally
+        FCountdown.Signal;
+      end;
+  end;
+
+{$REGION 'WEBSOCKET'}
 const
   // Non Control Frames
   OPContinuation = $0;
@@ -146,35 +210,6 @@ const
   OPClose =        $8;
   OPPing =         $9;
   OPPong =         $A;
-
-(******************************************************************************)
-(* TThreadIt                                                                  *)
-(* run anonymous method in a thread                                           *)
-(******************************************************************************)
-
-type
-  TThreadIt = class(TThread)
-  private
-    FProc: TProc;
-  protected
-    procedure Execute; override;
-    constructor Create(const proc: TProc);
-  end;
-
-  constructor TThreadIt.Create(const proc: TProc);
-  begin
-    FreeOnTerminate := True;
-    FProc := proc;
-    inherited Create(False);
-  end;
-
-  procedure TThreadIt.Execute;
-  begin
-    FProc();
-  end;
-
-
-{$REGION 'WEBSOCKET'}
 
 (******************************************************************************)
 (* WEBSOCKET                                                                  *)
@@ -256,13 +291,54 @@ end;
 
 { TWebSocket }
 
+class constructor TWebSocket.ClassCreate;
+var
+  Data: TWSAData;
+begin
+  WSAStartup($0202, Data);
+end;
+
+class destructor TWebSocket.ClassDestroy;
+begin
+  WSACleanup;
+end;
+
+constructor TWebSocket.Create(const Password, CertificateFile,
+  PrivateKeyFile, CertCAFile: AnsiString);
+begin
+  inherited Create;
+  FLockSend := TCriticalSection.Create;
+  FListenThread := nil;
+  FReadyState := rsClosed;
+  FSocket := INVALID_SOCKET;
+  FCtx := nil;
+  FSsl := nil;
+  FPassword := Password;
+  FCertificateFile := CertificateFile;
+  FPrivateKeyFile := PrivateKeyFile;
+  FCertCAFile := CertCAFile;
+  FAutoPong := True;
+  FThreadSync := True;
+end;
+
+destructor TWebSocket.Destroy;
+begin
+  Close;
+  FLockSend.Free;
+  inherited;
+end;
+
 procedure TWebSocket.Close;
 begin
   if FReadyState = rsOpen then
   begin
     FReadyState := rsClosing;
-    closesocket(FSocket);
-    Sleep(1); // let the listen thread close
+    closesocket(FSocket); // this will cause the listen thread to stop
+
+    TThreadIt.Shutdown;
+    while TThreadIt.WaitForAll(100) <> wrSignaled do
+      Sleep(1);
+
     FSocket := INVALID_SOCKET;
     FReadyState := rsClosed;
     if Assigned(FOnClose) then
@@ -611,37 +687,6 @@ begin
   OutputString($80 or OPPing, data)
 end;
 
-class constructor TWebSocket.Create;
-var
-  Data: TWSAData;
-begin
-  WSAStartup($0202, Data);
-end;
-
-destructor TWebSocket.Destroy;
-begin
-  Close;
-  FLockSend.Free;
-  inherited;
-end;
-
-constructor TWebSocket.Create(const password, CertificateFile,
-  PrivateKeyFile, CertCAFile: AnsiString);
-begin
-  inherited Create;
-  FLockSend := TCriticalSection.Create;
-  FReadyState := rsClosed;
-  FSocket := INVALID_SOCKET;
-  FCtx := nil;
-  FSsl := nil;
-  FPassword := password;
-  FCertificateFile := CertificateFile;
-  FPrivateKeyFile := PrivateKeyFile;
-  FCertCAFile := CertCAFile;
-  FAutoPong := True;
-  FThreadSync := True;
-end;
-
 function TWebSocket.getReadyState: TWSReadyState;
 begin
   Result := FReadyState;
@@ -743,7 +788,7 @@ end;
 
 procedure TWebSocket.Listen;
 begin
-  TThreadIt.Create(
+  FListenThread := TThreadIt.Create(
     procedure
     type
       TState = (stStart, stNext, stPayload16, stPayload64, stMask, stData);
@@ -917,6 +962,7 @@ begin
           Close;
     end
   );
+  FListenThread.Start;
 end;
 
 procedure TWebSocket.Send(const data: string);
@@ -997,7 +1043,8 @@ begin
     if FBufferPos = BUFFER_SIZE then
     begin
       if FSsl <> nil then
-        SSL_write(FSsl, @FBuffer, BUFFER_SIZE) else
+        SSL_write(FSsl, @FBuffer, BUFFER_SIZE)
+      else
         WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
       FBufferPos := 0;
     end;
@@ -1008,16 +1055,12 @@ end;
 function TWebSocket.SockRecv(var Buf; len, flags: Integer): Integer;
 begin
   if FSsl <> nil then
-    Result := SSL_read(FSsl, @Buf, len) else
+    Result := SSL_read(FSsl, @Buf, len)
+  else
     Result := recv(FSocket, Buf, len, flags);
 end;
 
-class destructor TWebSocket.Destroy;
-begin
-  WSACleanup;
-end;
-
-procedure TWebSocket.Flush();
+procedure TWebSocket.Flush;
 begin
   if FBufferPos > 0 then
   begin
@@ -1068,7 +1111,7 @@ function TWebSocket.GetOnPong: TWSMessage;
 begin
   Result := FOnPOng;
 end;
-
 {$ENDREGION}
+
 end.
 
