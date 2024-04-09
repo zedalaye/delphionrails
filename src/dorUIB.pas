@@ -66,6 +66,7 @@ type
     procedure ExecuteImmediate(const Options: SOString); override;
     function Query(const Sql: string; const Connection: IDBConnection = nil): IDBQuery; override;
     procedure Rollback(value: boolean); override;
+    function GetConnection: IDBConnection; override;
   public
     constructor Create(const Connections: array of TDBUIBConnection; const Options: ISuperObject); reintroduce;
     destructor Destroy; override;
@@ -313,6 +314,11 @@ procedure TDBUIBTransaction.ExecuteImmediate(const Options: SOString);
 begin
   with TDBUIBConnection(FConnection), FLibrary do
     DSQLExecuteImmediate(FDbHandle, FTrHandle, MBUEncode(Options, CharacterSetCP[FCharacterSet]), 3);
+end;
+
+function TDBUIBTransaction.GetConnection: IDBConnection;
+begin
+  Result := FConnection;
 end;
 
 function TDBUIBTransaction.Query(const Sql: string; const Connection: IDBConnection): IDBQuery;

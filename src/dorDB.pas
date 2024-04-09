@@ -145,6 +145,9 @@ type
     procedure Rollback(value: boolean);
     procedure OnCommit(const proc: TProc);
     procedure OnRollback(const proc: TProc);
+
+    function GetConnection: IDBConnection;
+    property Connection: IDBConnection read GetConnection;
   end;
 
   IDBQuery = interface
@@ -282,6 +285,8 @@ type
     procedure Rollback(value: boolean); virtual; abstract;
     procedure OnCommit(const proc: TProc);
     procedure OnRollback(const proc: TProc);
+
+    function GetConnection: IDBConnection; virtual; abstract;
   public
     constructor Create; virtual;
     destructor Destroy; override;
