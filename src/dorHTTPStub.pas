@@ -215,7 +215,8 @@ begin
   MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), PWideChar(Result), Length(Result));
 end;
 
-function HTTPInterprete(src: PSOChar; named: boolean = false; sep: SOChar = ';'; StrictSep: boolean = false; codepage: Integer = 0): ISuperObject;
+function HTTPInterprete(src: PSOChar; named: Boolean = False; sep: SOChar = ';';
+  StrictSep: Boolean = False; codepage: Integer = 0): ISuperObject;
 var
   P1: PSOChar;
   S: SOString;
@@ -234,12 +235,15 @@ begin
   while src^ <> #0 do
   begin
     P1 := src;
-    while ((not StrictSep and (src^ >= ' ')) or
-          (StrictSep and (src^ <> #0))) and (src^ <> sep) do
+    while ((not StrictSep and (src^ >= ' ')) or (StrictSep and (src^ <> #0)))
+      and (src^ <> sep)
+    do
       Inc(src);
+
     SetString(S, P1, src - P1);
     if codepage > 0 then
       S := MBUDecode(HTTPDecode(S), codepage);
+
     if named then
     begin
       i := pos('=', S);
