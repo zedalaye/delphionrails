@@ -141,7 +141,7 @@ const
 (* default limit on number of request header fields *)
   DEFAULT_LIMIT_REQUEST_FIELDS = 100;
 
-  DEFAULT_CP = 65001;
+  DEFAULT_CP = 65001; // UTF-8
   DEFAULT_CHARSET = 'utf-8';
 
   ReadTimeOut: Integer = 60000; // 1 minute
@@ -198,15 +198,15 @@ begin
 end;
 {$ENDIF}
 
-function DecodeValue(const p: PChar): ISuperObject; inline;
+function WrapValue(const S: string): ISuperObject; inline;
 begin
   try
-    Result := TSuperObject.ParseString(p, False, False);
+    Result := TSuperObject.ParseString(PChar(S), False, False);
   except
     Result := nil;
   end;
   if Result = nil then
-    Result := TSuperObject.Create(p);
+    Result := TSuperObject.Create(S);
 end;
 
 function MBUDecode(const str: RawByteString; cp: Word): UnicodeString;
@@ -249,7 +249,7 @@ begin
         S[i] := #0;
         obj := Result[S];
 //        if sep = '&' then
-//          value := DecodeValue(PChar(@S[i+1])) else
+//          value := WrapValue(PChar(@S[i+1])) else
         value := TSuperObject.Create(PSOChar(@S[i+1]));
         if obj = nil then
           Result[S] := value
@@ -276,7 +276,7 @@ begin
       value := TSuperObject.Create(S);
       if value = nil then
 //      if sep = '&' then
-//        value := DecodeValue(PChar(s)) else
+//        value := WrapValue(PChar(s)) else
         value := TSuperObject.Create(s);
       Result.AsArray.Add(value);
     end;
@@ -507,8 +507,10 @@ function THTTPStub.DecodeCommand(str: PChar): boolean;
     hexcodes = ['0'..'9', 'A'..'F', 'a'..'f'];
   var
     i: integer;
+    raw_data: RawByteString;
   begin
     data := '';
+    raw_data := '';
     while len > 0 do
     begin
       if (uri^ = '%') then
@@ -521,7 +523,7 @@ function THTTPStub.DecodeCommand(str: PChar): boolean;
           (i in [32..255])
         then
         begin
-          data := data + char(i);
+          raw_data := raw_data + AnsiChar(i);
           inc(uri, 3);
           dec(len, 3);
         end
@@ -531,13 +533,20 @@ function THTTPStub.DecodeCommand(str: PChar): boolean;
           Exit;
         end;
       end
+      else if uri^ = '+' then
+      begin
+        raw_data := raw_data + ' ';
+        inc(uri, 1);
+        dec(len, 1);
+      end
       else
       begin
-        data := data + uri^;
+        raw_data := raw_data + AnsiChar(uri^);
         inc(uri, 1);
         dec(len, 1);
       end;
     end;
+    data := MBUDecode(raw_data, DEFAULT_CP);
     Result := True;
   end;
 
@@ -589,7 +598,7 @@ begin
             if (param <> '') and (str > marker) then
             begin
               if not DecodeURI(marker, str - marker, value) then exit;
-              Request['params.'+string(HTTPDecode(param))] := DecodeValue(PChar(string(HTTPDecode(value))));
+              Request['params.'+param] := WrapValue(value);
             end;
             if {$IFDEF UNICODE}(str^ < #256) and {$ENDIF}(AnsiChar(str^) in [SP, NL]) then
               Break;
@@ -1381,7 +1390,7 @@ begin
       begin
         Assert(Klass <> nil);
 
-        var O: ISuperObject := DecodeValue(P);
+        var O: ISuperObject := WrapValue(P);
         if ObjectIsType(O, stString) then
         begin
           var A := LowerCase(O.AsString);
