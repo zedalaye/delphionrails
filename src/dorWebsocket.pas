@@ -148,55 +148,22 @@ uses
 type
   TThreadIt = class(TThread)
   protected
-    class var
-      FCountdown: TCountdownEvent;
-    class constructor ClassCreate;
-    class destructor ClassDestroy;
-  public
-    class procedure Shutdown; static;
-    class function WaitForAll(Timeout: Cardinal = INFINITE): TWaitResult; static;
-  protected
     FProc: TProc;
     procedure Execute; override;
   public
     constructor Create(const Proc: TProc);
   end;
 
-  class constructor TThreadIt.ClassCreate;
-  begin
-    FCountdown := TCountdownEvent.Create(1);
-  end;
-
-  class destructor TThreadIt.ClassDestroy;
-  begin
-    FCountdown.Free;
-  end;
-
-  class procedure TThreadIt.Shutdown;
-  begin
-    FCountdown.Signal;
-  end;
-
-  class function TThreadIt.WaitForAll(Timeout: Cardinal): TWaitResult;
-  begin
-    Result := FCountdown.WaitFor(Timeout);
-  end;
-
   constructor TThreadIt.Create(const Proc: TProc);
   begin
     inherited Create(True);
-    FProc := proc;
-    FreeOnTerminate := True;
+    FProc := Proc;
+    FreeOnTerminate := False;
   end;
 
   procedure TThreadIt.Execute;
   begin
-    if FCountdown.TryAddCount then
-      try
-        FProc;
-      finally
-        FCountdown.Signal;
-      end;
+    FProc();
   end;
 
 {$REGION 'WEBSOCKET'}
@@ -333,11 +300,10 @@ begin
   if FReadyState = rsOpen then
   begin
     FReadyState := rsClosing;
-    closesocket(FSocket); // this will cause the listen thread to stop
 
-    TThreadIt.Shutdown;
-    while TThreadIt.WaitForAll(100) <> wrSignaled do
-      Sleep(1);
+    closesocket(FSocket); // this will cause the listen thread to stop
+    FListenThread.WaitFor;
+    FListenThread.Free;
 
     FSocket := INVALID_SOCKET;
     FReadyState := rsClosed;
