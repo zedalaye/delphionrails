@@ -24,7 +24,7 @@ type
       TIV  = array[0..EVP_MAX_IV_LENGTH - 1] of Byte;
   private
     FInitialized: Boolean;
-    FCipherContext: EVP_CIPHER_CTX;
+    FCipherContext: PEVP_CIPHER_CTX;
     function GetName: string;
     function GetKeyLength: Integer;
     procedure SetKeyLength(Value: Integer);

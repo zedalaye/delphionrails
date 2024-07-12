@@ -254,12 +254,20 @@ type
     constructor CreateStub(AOwner: TSocketServer; const Source: IReadWrite); virtual;
   end;
 
-threadvar
-  CurrentDorThread: TDORThread;
+function CurrentDorThread: TDORThread;
 
 implementation
+
 uses
   SysUtils, Math, dorService;
+
+threadvar
+  _CurrentDorThread: TDORThread;
+
+function CurrentDorThread: TDORThread;
+begin
+  Result := _CurrentDorThread;
+end;
 
 var
   AThreadCount: Integer = 0;
@@ -288,16 +296,16 @@ begin
   TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
 {$ifend}
 
-  CurrentDorThread := FOwner;
-  InterlockedIncrement(CurrentDorThread.FThreadRefCount);
+  _CurrentDorThread := FOwner;
+  InterlockedIncrement(_CurrentDorThread.FThreadRefCount);
   try
-    CurrentDorThread.Run;
+    _CurrentDorThread.Run;
   finally
-    if InterlockedDecrement(CurrentDorThread.FThreadRefCount) = 0 then
-      CurrentDorThread.Free
-    else if CurrentDorThread.FOwner <> nil then
-      CurrentDorThread.FOwner.ChildRemove(CurrentDorThread);
-    CurrentDorThread := nil;
+    if InterlockedDecrement(_CurrentDorThread.FThreadRefCount) = 0 then
+      _CurrentDorThread.Free
+    else if _CurrentDorThread.FOwner <> nil then
+      _CurrentDorThread.FOwner.ChildRemove(_CurrentDorThread);
+    _CurrentDorThread := nil;
   end;
 end;
 
