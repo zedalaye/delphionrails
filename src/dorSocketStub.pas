@@ -18,9 +18,9 @@ unit dorSocketStub;
 
 interface
 uses
-  Windows, Winsock2, dorOpenSSL, dorOpenSslHelpers,
-  Generics.Collections,
-  dorUtils, Classes, superobject;
+  Windows, Winsock2, Classes, Generics.Collections,
+  superobject,
+  dorOpenSSL, dorOpenSslHelpers, dorUtils;
 
 type
   // forward declarations

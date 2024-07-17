@@ -15,6 +15,7 @@ type
     class function IsEvent(const name: string; out event: string): Boolean; virtual;
     procedure doOnEvent(const Event: ISuperObject); override;
     function Run: Cardinal; override;
+    property Context: TSuperRttiContext read FContext;
     property Event: ISuperObject read FEvent;
   public
     constructor Create(AOwner: TDORThread); override;

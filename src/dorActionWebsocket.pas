@@ -25,12 +25,13 @@ uses
 type
   TActionWebsocket = class(TCustomObserver)
   private
-    FStub: THTTPStub;
     FCriticalSection: TRTLCriticalSection;
+    FWebSocketVersion: Integer;
+    FContext: TSuperRttiContext;
+    FSource: IReadWrite;
+    FRequest: THTTPMessage;
     FParams: ISuperObject;
     FSession: ISuperObject;
-    FRequest: THTTPMessage;
-    FWebSocketVersion: Integer;
     procedure Output(b: Byte; data: Pointer; len: Int64);
     procedure OutputString(b: Byte; const str: string);
   protected
@@ -38,6 +39,13 @@ type
     function Run: Cardinal; override;
     procedure doOnInternalEvent(const Event: ISuperObject); override;
   public
+    constructor Create(Version: Integer; const Context: TSuperRttiContext;
+      const Source: IReadWrite; const Request: THTTPMessage;
+      const Params: ISuperObject; const Session: ISuperObject); reintroduce; virtual;
+    destructor Destroy; override;
+
+    procedure Initialize; virtual;
+
     procedure OutputMessage(const msg: string);
     procedure OutputPing(const msg: string);
     procedure OutputPong(const msg: string);
@@ -50,9 +58,7 @@ type
     procedure InputPong(const msg: string; const source: string); virtual;
     procedure InputClose(error: Word; const source: string); virtual;
 
-    constructor Create(Version: Integer); reintroduce; virtual;
-    destructor Destroy; override;
-
+    property Context: TSuperRttiContext read FContext;
     property Params: ISuperObject read FParams;
     property Session: ISuperObject read FSession;
     property Request: THTTPMessage read FRequest;
@@ -65,15 +71,18 @@ implementation
 
 { TActionController }
 
-constructor TActionWebsocket.Create(Version: Integer);
+constructor TActionWebsocket.Create(Version: Integer; const Context: TSuperRttiContext;
+  const Source: IReadWrite; const Request: THTTPMessage; const Params: ISuperObject;
+  const Session: ISuperObject);
 begin
   FWebSocketVersion := Version;
   InitializeCriticalSection(FCriticalSection);
 
-  FStub := (CurrentDorThread as THTTPStub);
-  FRequest := FStub.Request;
-  FParams  := FStub.Params;
-  FSession := FStub.Session;
+  FContext := Context;
+  FSource  := Source;
+  FRequest := Request;
+  FParams  := Params;
+  FSession := Session;
 
   inherited Create(CurrentDorThread);
 end;
@@ -97,6 +106,11 @@ begin
         $A: InputPong(Event.AsObject.S['data'], Event.AsObject.S['source']);
       end;
   end
+end;
+
+procedure TActionWebsocket.Initialize;
+begin
+
 end;
 
 procedure TActionWebsocket.InputClose(error: Word; const source: string);
@@ -131,7 +145,7 @@ var
 begin
   EnterCriticalSection(FCriticalSection);
   try
-    rw := FStub.Source;
+    rw := FSource;
     if rw <> nil then
     begin
       rw.Write(b, 1, 0);
@@ -180,7 +194,7 @@ begin
     OutputString($80 or $1, msg)
   else
   begin
-    rw := FStub.Source;
+    rw := FSource;
     if rw <> nil then
     begin
       utf8 := #0 + UTF8String(msg) + #255;
@@ -221,7 +235,7 @@ begin
     len := stream.Read(buffer, SizeOf(buffer));
     while len > 0 do
     begin
-      rw := FStub.Source;
+      rw := FSource;
       if rw <> nil then
       begin
         rw.Write(buffer, len, 0);

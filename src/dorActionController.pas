@@ -18,7 +18,9 @@ unit dorActionController;
 interface
 
 uses
-  SysUtils, Classes, Rtti, superobject, dorHTTPStub;
+  SysUtils, Classes, Rtti,
+  superobject,
+  dorSocketStub, dorHTTPStub;
 
 type
   NamespaceAttribute = class(TCustomAttribute)
@@ -69,35 +71,65 @@ type
 
   TActionController = class
   private
+    FContext: TSuperRttiContext;  // in (ro)
+    FSource: IReadWrite;          // in (ro)
+    FParams: ISuperObject;        // in
+    FRequest: THTTPMessage;       // in
+    FReturn: ISuperObject;        // out
+    FResponse: THTTPMessage;      // out
+    FSession: ISuperObject;       // in (rw)
+    FErrorCode: Integer;          // out
+    FFileToSend: string;          // out
+
     FEtag: Boolean;
     procedure CalcETag;
+
     function CheckAuth(const method: string): Boolean;
   public
     type TInvokeTrace = (itBefore, itAfter, itError);
   protected
-    // This empty method is called to force RTTI
-    // Could be used for something else later
+    {
+      This empty method is called to force RTTI
+      Could be used for something else later
+    }
     class procedure Register;
-    class function Params: ISuperObject; virtual;
-    class function Return: ISuperObject; virtual;
-    class function Request: THTTPMessage; virtual;
-    class function Response: THTTPMessage; virtual;
-    class function Session: ISuperObject; virtual;
-    class function ErrorCode: Integer; virtual;
-    class procedure SetErrorCode(code: Integer); virtual;
-    class function Context: TSuperRttiContext; virtual;
-    class procedure Redirect(const location: string); overload;
-    class procedure Redirect(const controler, action: string; const id: string = ''); overload;
-    class procedure SendFile(const path: string);
-    class procedure Send(stream: TStream = nil);
-    class function HaveSLL: Boolean; virtual;
-    class function HavePeerCertificate: Boolean; virtual;
-    class function SSLSubject(const key: AnsiString): AnsiString; virtual;
-    class function SSLIssuer(const key: AnsiString): AnsiString; virtual;
-    procedure ETag;
-    class procedure TraceInvoke(When: TInvokeTrace; Result: TSuperInvokeResult); virtual;
+    procedure TraceInvoke(When: TInvokeTrace; Result: TSuperInvokeResult); virtual;
   public
+    { Uses Params and Request as input and sets Return, Response, ErrorCode and FileToSend }
     function Invoke: Boolean; virtual;
+
+    {
+      This method is called by the router in THTTPStub.ProcessRequest which creates
+      an instance of TActionController.
+      It sets all parameters to instance variables before calling Invoke()
+    }
+    function InstanceInvoke(const Context: TSuperRttiContext; const Source: IReadWrite;
+      const Request: THTTPMessage; const Params: ISuperObject;
+      const Response: THTTPMessage; const Return: ISuperObject;
+      const Session: ISuperObject;
+      var ErrorCode: Integer; var FileToSend: string): Boolean;
+
+    property Context: TSuperRttiContext read FContext;
+    property Params: ISuperObject read FParams;
+    property Request: THTTPMessage read FRequest;
+    property Return: ISuperObject read FReturn;
+    property Response: THTTPMessage read FResponse;
+    property Session: ISuperObject read FSession;
+
+    property ErrorCode: Integer read FErrorCode write FErrorCode;
+
+    procedure Redirect(const location: string); overload;
+    procedure Redirect(const controler, action: string; const id: string = ''); overload;
+
+    procedure SendFile(const path: string);
+    procedure Send(stream: TStream = nil);
+
+    function HaveSLL: Boolean; virtual;
+    function HavePeerCertificate: Boolean; virtual;
+    function SSLSubject(const key: AnsiString): AnsiString; virtual;
+    function SSLIssuer(const key: AnsiString): AnsiString; virtual;
+
+    procedure ETag;
   end;
 
   TActionControllerClass = class of TActionController;
@@ -105,7 +137,7 @@ type
 implementation
 
 uses
-  dorSocketStub, dorOpenSSL;
+  dorOpenSSL;
 
 { TActionController }
 
@@ -128,11 +160,12 @@ begin
     BinToHex(PAnsiChar(@buffer), PAnsiChar(@buffer2), SHA_DIGEST_LENGTH);
 
     if Request['env'].AsObject.S['if-none-match'] = string(buffer2) then
-      SetErrorCode(304) else
-      begin
-        Response.AsObject.S['Cache-Control'] := 'max-age=946080000, public';
-        Response.AsObject.S['ETag'] := string(buffer2);
-      end;
+      ErrorCode := 304
+    else
+    begin
+      Response.AsObject.S['Cache-Control'] := 'max-age=946080000, public';
+      Response.AsObject.S['ETag'] := string(buffer2);
+    end;
   finally
     stream.Free;
   end;
@@ -149,10 +182,8 @@ var
 begin
   Auth := TAuthContext.Create(REALM);
 
-  var Ctx := (CurrentDorThread as THTTPStub).Context;
-
   Klass := Self.ClassType;
-  Typ := Ctx.Context.GetType(Klass);
+  Typ := FContext.Context.GetType(Klass);
 
   { Collect Auth Attributes from action method }
   Meth := Typ.GetMethod(method);
@@ -163,7 +194,7 @@ begin
   repeat
     Auth.Assign(Typ.GetAttributes);
     Klass := Klass.ClassParent;
-    Typ := Ctx.Context.GetType(Klass);
+    Typ := FContext.Context.GetType(Klass);
   until Klass = TActionController;
 
   if Auth.Valid and Auth.CheckAuth.Value then
@@ -172,23 +203,53 @@ begin
     else
     begin
       Response.AsObject.S['WWW-Authenticate'] := 'Basic realm="' + Auth.Realm + '"';
-      SetErrorCode(401);
+      ErrorCode := 401;
       Result := False;
     end
   else
     Result := True;
 end;
 
+function TActionController.InstanceInvoke(const Context: TSuperRttiContext; const Source: IReadWrite;
+  const Request: THTTPMessage; const Params: ISuperObject;
+  const Response: THTTPMessage; const Return: ISuperObject;
+  const Session: ISuperObject;
+  var ErrorCode: Integer; var FileToSend: string): Boolean;
+begin
+  FContext    := Context;
+  FSource     := Source;
+  FParams     := Params;
+  FRequest    := Request;
+  FReturn     := Return;
+  FResponse   := Response;
+  FSession    := Session;
+  FErrorCode  := ErrorCode;
+  FFileToSend := FileToSend;
+  try
+    Result := Invoke;
+  finally
+    ErrorCode   := FErrorCode;
+    FileToSend  := FFileToSend;
+  end;
+end;
+
 function TActionController.Invoke: Boolean;
 var
   method: string;
   obj: ISuperObject;
-  ctx: TSuperRttiContext;
   ite: TSuperAvlEntry;
 begin
+  Assert(FContext  <> nil);
+  // Assert(FSource   <> nil);
+  Assert(FParams   <> nil);
+  Assert(FRequest  <> nil);
+  Assert(FReturn   <> nil);
+  Assert(FResponse <> nil);
+  Assert(FSession  <> nil);
+
   Result := False;
   FEtag := False;
-  ctx := (CurrentDorThread as THTTPStub).Context;
+
   for obj in Params do
     if obj <> nil then
       obj.DataPtr := Pointer(1);
@@ -200,16 +261,16 @@ begin
 
   TraceInvoke(itBefore, irSuccess);
 
-  case TrySOInvoke(ctx, Self, method, Params, obj) of
+  case TrySOInvoke(FContext, Self, method, Params, obj) of
     irParamError:
       begin
         TraceInvoke(itError, irParamError);
-        SetErrorCode(400);
+        ErrorCode := 400;
       end;
     irError:
       begin
         TraceInvoke(itError, irError);
-        SetErrorCode(500);
+        ErrorCode := 500;
       end;
     irMethodError:
       begin
@@ -224,7 +285,7 @@ begin
     if (obj <> nil) then
       Return.AsObject['result'] := obj;
     if ErrorCode = 0 then
-      SetErrorCode(200);
+      ErrorCode := 200;
 
     TraceInvoke(itAfter, irSuccess);
   end;
@@ -233,93 +294,54 @@ begin
     CalcETag;
 end;
 
-class procedure TActionController.TraceInvoke(When: TInvokeTrace; Result: TSuperInvokeResult);
+procedure TActionController.TraceInvoke(When: TInvokeTrace; Result: TSuperInvokeResult);
 begin
   { Just do nothing }
 end;
 
-class procedure TActionController.Send(stream: TStream);
+procedure TActionController.Send(stream: TStream);
 begin
-  with (CurrentDorThread as THTTPStub) do
-  begin
-    if stream <> nil then
-      Response.Content.LoadFromStream(stream);
-  end;
+  if stream <> nil then
+    FResponse.Content.LoadFromStream(stream);
 end;
 
-class procedure TActionController.SendFile(const path: string);
+procedure TActionController.SendFile(const path: string);
 begin
-  (CurrentDorThread as THTTPStub).FileToSend := path;
+  FFileToSend := path;
 end;
 
-class function TActionController.Context: TSuperRttiContext;
+function TActionController.HavePeerCertificate: Boolean;
 begin
-  Result := (CurrentDorThread as THTTPStub).Context;
+  Result := FSource.HavePeerCertificate;
 end;
 
-class function TActionController.ErrorCode: Integer;
+function TActionController.HaveSLL: Boolean;
 begin
-  Result := (CurrentDorThread as THTTPStub).ErrorCode;
+  Result := FSource.IsSSL;
 end;
 
-class function TActionController.HavePeerCertificate: Boolean;
+procedure TActionController.Redirect(const location: string);
 begin
-  Result := (CurrentDorThread as TClientStub).Source.HavePeerCertificate;
+  FErrorCode := 302;
+  FResponse.AsObject.S['Location'] := Location;
 end;
 
-class function TActionController.HaveSLL: Boolean;
+procedure TActionController.Redirect(const controler, action, id: string);
 begin
-  Result := (CurrentDorThread as TClientStub).Source.IsSSL;
+  if id = '' then
+    Redirect('/' + controler + '/' + action + '.' +  FParams.S['format'])
+  else
+    Redirect('/' + controler + '/' + action + '/' + id + '.' +  FParams.S['format']);
 end;
 
-class function TActionController.Params: ISuperObject;
+function TActionController.SSLIssuer(const key: AnsiString): AnsiString;
 begin
-  Result := (CurrentDorThread as THTTPStub).Params;
+  Result := FSource.SSLIssuer(key);
 end;
 
-class function TActionController.Request: THTTPMessage;
+function TActionController.SSLSubject(const key: AnsiString): AnsiString;
 begin
-  Result := (CurrentDorThread as THTTPStub).Request;
-end;
-
-class function TActionController.Response: THTTPMessage;
-begin
-  Result := (CurrentDorThread as THTTPStub).Response;
-end;
-
-class function TActionController.Return: ISuperObject;
-begin
-  Result := (CurrentDorThread as THTTPStub).Return;
-end;
-
-class function TActionController.Session: ISuperObject;
-begin
-  Result := (CurrentDorThread as THTTPStub).Session;
-end;
-
-class procedure TActionController.Redirect(const location: string);
-begin
-  (CurrentDorThread as THTTPStub).Redirect(location);
-end;
-
-class procedure TActionController.Redirect(const controler, action, id: string);
-begin
-  (CurrentDorThread as THTTPStub).Redirect(controler, action, id);
-end;
-
-class procedure TActionController.SetErrorCode(code: Integer);
-begin
-  (CurrentDorThread as THTTPStub).ErrorCode := code;
-end;
-
-class function TActionController.SSLIssuer(const key: AnsiString): AnsiString;
-begin
-  Result := (CurrentDorThread as TClientStub).Source.SSLIssuer(key);
-end;
-
-class function TActionController.SSLSubject(const key: AnsiString): AnsiString;
-begin
-  Result := (CurrentDorThread as TClientStub).Source.SSLSubject(key);
+  Result := FSource.SSLSubject(key);
 end;
 
 class procedure TActionController.Register;
