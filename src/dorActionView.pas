@@ -84,7 +84,7 @@ var
   ret: ISuperObject;
 begin
   Assert(FContext  <> nil);
-  Assert(FSource   <> nil);
+//  Assert(FSource   <> nil);
   Assert(FParams   <> nil);
   Assert(FRequest  <> nil);
   Assert(FReturn   <> nil);
@@ -101,8 +101,7 @@ begin
         if ErrorCode = 0 then
           ErrorCode := 200;
       end;
-      irMethodError:
-        ErrorCode := 404;
+      irMethodError: ;
       irParamError:
         ErrorCode := 400;
     else

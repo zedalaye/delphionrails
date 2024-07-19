@@ -22,6 +22,9 @@ uses
   Windows,
 {$ENDIF}
   SysUtils, StrUtils, Classes, Rtti,
+{$IFDEF DEBUG}
+  Diagnostics,
+{$ENDIF}
   supertypes, superobject,
   dorSocketStub, dorUtils;
 
@@ -45,7 +48,7 @@ type
     property ContentObject: ISuperObject read GetContentObject;
   end;
 
-{$IFDEF DEBUG}
+{$if defined(DEBUG)}
   PLuaStackInfo = ^TLuaStackInfo;
   TLuaStackInfo = record
   private
@@ -57,15 +60,38 @@ type
     function Push(line: Integer; name, source: PAnsiChar): PLuaStackInfo;
     function Pop: PLuaStackInfo;
   end;
-{$ENDIF}
+
+  TLuaDebug = class
+    LuaStack: PLuaStackInfo;
+  end;
+{$endif}
+
+  TGetPasswordProc = reference to procedure(var key, iv: PByte);
+  TGetPathProc = reference to function: string;
+  TGetAuthProc = reference to function(const Method, User, Password: string): Boolean;
 
   TRequestProcessor = class
   public
     class function BuildFormats: ISuperObject;
 
+    class function DecodeSession(const Request: THTTPMessage;
+      const GetPassProc: TGetPasswordProc): ISuperObject;
+
+    class function EncodeSession(const Response: THTTPMessage; const Session: ISuperObject;
+      const GetPassProc: TGetPasswordProc): Boolean;
+
+    class function Authenticate(const AuthData: string; var User: string;
+      const GetAuthProc: TGetAuthProc): Boolean;
+
+    class procedure DecodeBody(const Request: THTTPMessage;
+      const Params: ISuperObject);
+
     class function ProcessRoute(IsWebSocket: Boolean;
       const Context: TSuperRttiContext; const Formats: ISuperObject;
       const Request: THTTPMessage; const Params: ISuperObject): TRttiInstanceType;
+
+    class procedure ApplyContentType(const Formats, Params: ISuperObject;
+      const Response: THTTPMessage);
 
     class function ProcessAction(
       Klass: TRttiInstanceType;
@@ -87,6 +113,22 @@ type
       const Response: THTTPMessage; const Return: ISuperObject;
       var ErrorCode: Integer; var FileToSend: string
     ): Boolean;
+
+    class function RenderScript(const Formats, Session: ISuperObject;
+      const Request: THTTPMessage; const Params: ISuperObject;
+      const Response: THTTPMessage; const Return: ISuperObject;
+      var ErrorCode: Integer;
+      const GetRootPathProc: TGetPathProc): Boolean;
+
+    class function PrepareSendFile(const FileToSend: string; const Formats: ISuperObject;
+      const Response: THTTPMessage; var Compress: Boolean; var ErrorCode: Integer): Boolean;
+
+    class function PrepareStaticFile(const Formats: ISuperObject;
+      const Request: THTTPMessage; const Params: ISuperObject; const Response: THTTPMessage;
+      var IsStatic, Compress: Boolean; var FileToSend: string; var ErrorCode: Integer;
+      const GetRootPathProc: TGetPathProc): Boolean;
+
+    class procedure ApplyCompress(var Compress: Boolean; const Request, Response: THTTPMessage);
   end;
 
   THTTPStub = class(TClientStub)
@@ -104,18 +146,13 @@ type
     FCompressLevel: Integer;
     FIsStatic: Boolean;
     FWebSocketVersion: Integer;
-{$IFDEF DEBUG}
-    FLuaStack: PLuaStackInfo;
-{$ENDIF}
     function DecodeFields(str: PChar): boolean;
     function DecodeCommand(str: PChar): boolean;
     procedure WriteLine(str: RawByteString);
     procedure SendEmpty;
     procedure SendFile(const filename: string);
     procedure SendStream(Stream: TStream);
-    function RenderScript: Boolean;
     function DecodeContent: boolean; virtual;
-    function doAuthenticate(const AuthData: string; var User: string): Boolean; virtual;
     procedure doBeforeProcessRequest; virtual;
     procedure doAfterProcessRequest; virtual;
   protected
@@ -123,7 +160,7 @@ type
 
     function HandleCORS(const Method, Path: string; var Origin, AllowedHeaders, AllowedMethods: string; var MaxAge: Cardinal): Boolean; virtual;
     procedure GetPassPhrase(var key, iv: PByte); virtual;
-    function BasicAuth(const User, Password: string): Boolean; virtual;
+    function ProcessAuth(const Method, User, Password: string): Boolean; virtual;
     function ProcessRequest: Boolean; virtual;
 
     function Upgrade: Cardinal; virtual;
@@ -193,18 +230,18 @@ const
 
 function lua_print(state: Plua_State): Integer; cdecl;
 var
-  p: Pointer;
-  i: Integer;
+  p: THTTPMessage;
   o: ISuperObject;
 begin
-  lua_getglobal(state, '@this');
+  lua_getglobal(state, '@response');
   p := lua_touserdata(state, -1);
   if p <> nil then
-    for i := 1 to lua_gettop(state) do
+    for var I := 1 to lua_gettop(state) do
     begin
-      o := lua_tosuperobject(state, i);
+      o := lua_tosuperobject(state, I);
       if o <> nil then
-        THTTPStub(p).Render(o.AsString);
+        // THTTPStub.Render()
+        p.Content.WriteString(o.AsString, false, DEFAULT_CP);
     end;
   Result := 0;
 end;
@@ -215,32 +252,32 @@ begin
   Result := 1;
 end;
 
-{$IFDEF DEBUG}
+{$if defined(DEBUG)}
 procedure script_hook(L: Plua_State; ar: Plua_Debug); cdecl;
 var
-  h: THTTPStub;
+  p: TLuaDebug;
 begin
-  lua_getglobal(L, '@this');
-  h := lua_touserdata(L, -1);
-  if h <> nil then
+  lua_getglobal(L, '@debug');
+  p := lua_touserdata(L, -1);
+  if p <> nil then
   begin
     case ar.event of
       LUA_HOOKLINE:
-        h.FLuaStack.line := ar.currentline;
+        p.LuaStack.line := ar.currentline;
       LUA_HOOKCALL:
         begin
           lua_getinfo(L, 'Snl', ar);
           if ar.name <> nil then
-            h.FLuaStack := h.FLuaStack.Push(ar.currentline, ar.name, ar.source)
+            p.LuaStack := p.LuaStack.Push(ar.currentline, ar.name, ar.source)
           else
-            h.FLuaStack := h.FLuaStack.Push(ar.currentline, ar.what, ar.source);
+            p.LuaStack := p.LuaStack.Push(ar.currentline, ar.what, ar.source);
         end;
       LUA_HOOKRET :
-        h.FLuaStack := h.FLuaStack.Pop;
+        p.LuaStack := p.LuaStack.Pop;
     end;
   end;
 end;
-{$ENDIF}
+{$endif}
 
 function WrapValue(const S: string): ISuperObject; inline;
 begin
@@ -731,140 +768,6 @@ begin
   Result := True;
 end;
 
-function THTTPStub.RenderScript: Boolean;
-var
-  state: Plua_State;
-  ite: TSuperObjectIter;
-  path, str, rel: string;
-
-  procedure printerror;
-  begin
-    FResponse.Content.Clear;
-    Render(
-      '<!doctype html>'#10 +
-      '<html lang="en">'#10+
-      '<head>'#10+
-      '  <meta charset="utf-8"/>'+
-      '  <title>LUA Error</title>'#10+
-      '  <style>'#10+
-      '    body { background-color: #fff; color: #333; }'#10+
-      '    body, p, ol, ul, td {'#10+
-      '      font-family: verdana, arial, helvetica, sans-serif;'#10+
-      '      font-size:   13px;'#10+
-      '      line-height: 18px;'#10+
-      '    }'#10+
-      '    pre {'#10+
-      '      background-color: #eee;'#10+
-      '      padding: 10px;'#10+
-      '      font-size: 11px;'#10+
-      '    }'#10+
-      '  </style>'#10+
-      '</head>'#10+
-      '<body>'#10+
-      '<h1>Error</h1>'#10+
-      '<p>'#10+
-      '  Showing <i>' + FRequest.AsObject.S['uri'] + '</i>'#10+
-      '  <pre><code>'+ string(UTF8String(lua_tostring(state, 1))) + '</code></pre>'#10+
-      '</p>'#10);
-
-{$IFDEF DEBUG}
-   Render(
-      '<h1>Trace</h1>'#10+
-      '<pre><code>');
-
-    while FLuaStack <> nil do
-    begin
-      Render(format('%s:%d:in %s'#10, [FLuaStack.source, FLuaStack.line, FLuaStack.name]));
-      FLuaStack := FLuaStack.Pop;
-    end;
-
-   Render('</pre></code>'#10);
-   Render(
-     '<h1>Params</h1>'#10+
-     '<pre><code>'+
-     FReturn.AsJSon(true, false)+
-     '</pre></code>'#10);
-{$ENDIF}
-    Render('</body></html>');
-  end;
-
-begin
-  Result := False;
-  with FParams.AsObject do
-  begin
-    path := GetRootPath;
-    rel := 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
-    str := path + rel;
-    if FileExists(str) then
-    begin
-      Result := True;
-{$IFDEF DEBUG}
-      FLuaStack := nil;
-{$ENDIF}
-      state := lua_newstate(@lua_app_alloc, nil);
-      try
-        luaL_openlibs(state);
-        lua_pushlightuserdata(state, Self);
-        lua_setglobal(state, '@this');
-        lua_pushcfunction(state, @lua_print);
-        lua_setglobal(state, 'print');
-        lua_pushcfunction(state, lua_gettickcount);
-        lua_setglobal(state, 'gettickcount');
-{$IFDEF DEBUG}
-        lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET or LUA_MASKLINE, 0);
-{$ENDIF}
-
-        if ObjectFindFirst(FParams, ite) then
-        repeat
-          lua_pushsuperobject(state, ite.val);
-          lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
-        until not ObjectFindNext(ite);
-        ObjectFindClose(ite);
-
-        if ObjectFindFirst(FReturn, ite) then
-        repeat
-          lua_pushsuperobject(state, ite.val);
-          lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
-        until not ObjectFindNext(ite);
-        ObjectFindClose(ite);
-
-        lua_pushsuperobject(state, FSession);
-        lua_setglobal(state, 'session');
-
-        if lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
-        begin
-          rel := 'layout/' + S['controller'] + '.' + S['format'];
-          str := path + rel;
-          if FileExists(str) then
-          begin
-            if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
-              printerror;
-          end
-          else
-          begin
-            rel := 'layout/application.' + S['format'];
-            str := path + rel;
-            if FileExists(str) then
-              if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
-                 printerror;
-          end;
-        end
-        else
-          printerror;
-      finally
-{$IFDEF DEBUG}
-        while FLuaStack  <> nil do
-          FLuaStack := FLuaStack.Pop;
-{$ENDIF}
-        lua_close(state);
-      end;
-      FErrorCode := 200;
-      Exit;
-    end;
-  end;
-  FErrorCode := 404;
-end;
-
 function THTTPStub.Run: Cardinal;
 var
   buffer: string;
@@ -875,9 +778,13 @@ var
   TimeOut: TTimeVal;
   r: integer;
 {$ENDIF}
+{$if defined(DEBUG)}
+  diag: TStopwatch;
+{$endif}
 begin
 {$if defined(DEBUG)}
   TThread.NameThreadForDebugging(AnsiString(Self.ClassName));
+  diag := TStopwatch.Create;
 {$ifend}
 
   result := 0;
@@ -963,6 +870,11 @@ begin
 
           line := 0;
           cursor := 0;
+        {$if defined(DEBUG)}
+          diag.Stop;
+          OutputDebugString(PChar(Format('REQUEST PROCESSED IN %dms', [diag.ElapsedMilliseconds])));
+          diag.Reset;
+        {$endif}
         end
         else
         begin
@@ -983,6 +895,10 @@ begin
       end;
     else
       buffer[cursor] := c;
+    {$if defined(DEBUG)}
+      if not diag.IsRunning then
+        diag.Start;
+    {$endif}
     end;
   end;
 end;
@@ -1014,30 +930,32 @@ end;
 procedure THTTPStub.doAfterProcessRequest;
 var
   ite: TSuperObjectIter;
-  key, iv: PByte;
-  obj: ISuperObject;
 begin
-  if FCompress then
-  begin
-    if Pos('deflate', FRequest.S['env.accept-encoding']) > 0 then
-      FResponse.AsObject.S['Content-Encoding'] := 'deflate'
-    else
-      FCompress := False;
-  end;
-
+  { Set Server Name and Version }
   FResponse.AsObject.S['Server'] := 'DOR 1.0';
+
+  { Client accept compressed (deflate) content and the content we have can be
+    compressed }
+  TRequestProcessor.ApplyCompress(FCompress, FRequest, FResponse);
+
+  { Encode Session Cookie }
   if not FIsStatic then
-  begin
-    GetPassPhrase(key, iv);
-    if (key <> nil) and (iv <> nil) then
-      FResponse.S['Set-Cookie[]'] := COOKIE_NAME + '=' + EncodeObject(FSession, key, iv) + '; path=/';
-  end;
+    TRequestProcessor.EncodeSession(FResponse, FSession, GetPassPhrase);
+
+  { Response has no content and there is no file to send : looks like the expected
+    resource is not found -> 404 }
+  if (FErrorCode <> 204) and (FResponse.Content.Size = 0) and (FFileToSend = '') then
+    FErrorCode := 404;
+
+  { Output Response Status Code }
   WriteLine(HttpResponseStrings(FErrorCode));
+
+  { Output Response Headers }
   if ObjectFindFirst(FResponse, ite) then
   repeat
     case ObjectGetType(ite.val) of
       stArray:
-        for obj in ite.val do
+        for var obj in ite.val do
           WriteLine(RawByteString(ite.key + ': ' + obj.AsString));
       stNull: ;
     else
@@ -1046,6 +964,7 @@ begin
   until not ObjectFindNext(ite);
   ObjectFindClose(ite);
 
+  { Output Response Body }
   if FFileToSend <> '' then
     SendFile(FFileToSend)
   else
@@ -1060,47 +979,12 @@ begin
   FRequest.Clear(True);
 end;
 
-function THTTPStub.doAuthenticate(const AuthData: string;
-  var User: string): Boolean;
-var
-  P: Integer;
-  Kind, Data, Password: string;
-begin
-  Result := False;
-
-  P := Pos(' ', AuthData);
-  if P <= 1 then
-    Exit;
-
-  Kind := Copy(AuthData, 1, P - 1);
-  Data := Copy(AuthData, P + 1, MaxInt);
-
-  if SameText(Kind, 'basic') then
-  begin
-    Data := Base64ToStr(Data);
-
-    P := Pos(':', Data);
-    if P <= 1 then
-      Exit;
-
-    User := Copy(Data, 1, P - 1);
-    Password := Copy(Data, P + 1, MaxInt);
-
-    Result := BasicAuth(User, Password);
-  end;
-end;
-
-function THTTPStub.BasicAuth(const User, Password: string): Boolean;
+function THTTPStub.ProcessAuth(const Method, User, Password: string): Boolean;
 begin
   Result := False;
 end;
 
 procedure THTTPStub.doBeforeProcessRequest;
-var
-  obj: ISuperObject;
-  key, iv: PByte;
-  // p: PSOChar;
-  f: PChar;
 begin
   FErrorCode := 0;
   FCompress := False;
@@ -1108,60 +992,25 @@ begin
   FFileToSend := '';
   FIsStatic := False;
 
+  { Extract/Decode some useful Request properties }
   with FRequest.AsObject do
   begin
-    S['remote-ip'] := string(Source.ClientIP);
+    S['remote-ip']    := string(Source.ClientIP);
   { for reverse proxies... cf. https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For
     O['x-forwarded-for'] := HTTPInterprete(PSOChar(Request.S['env.x-forwarded-for']), false, ',');
     O['forwarded'] := HTTPInterprete(PSOChar(Request.S['env.forwarded']), true); }
-    O['cookies'] := HTTPInterprete(PSOChar(FRequest.S['env.cookie']), true);
-    O['content-type'] := HTTPInterprete(PSOChar(FRequest.S['env.content-type']), false, ';');
-    O['accept'] := HTTPInterprete(PSOChar(FRequest.S['env.accept']), false, ',');
+    O['cookies']        := HTTPInterprete(PSOChar(FRequest.S['env.cookie']), true);
+    O['content-type']   := HTTPInterprete(PSOChar(FRequest.S['env.content-type']), false, ';');
+    O['accept']         := HTTPInterprete(PSOChar(FRequest.S['env.accept']), false, ',');
+    { Copy Content-Length }
+    I['content-length'] := FRequest.I['env.content-length'];
   end;
 
-  GetPassPhrase(key, iv);
-  if (key <> nil) and (iv <> nil) then
-  begin
-    obj := FRequest.AsObject['cookies'].AsObject[COOKIE_NAME];
-    case ObjectGetType(obj) of
-      stString: FSession := DecodeObject(obj.AsString, key, iv);
-      stArray: FSession := DecodeObject(obj.AsArray.S[0], key, iv);
-    else
-      FSession := TSuperObject.Create(stObject);
-    end;
-    if not ObjectIsType(FSession, stObject) then
-      FSession := TSuperObject.Create(stObject);
-  end
-  else
-    FSession := TSuperObject.Create(stObject);
+  { Decode Session Cookie }
+  FSession := TRequestProcessor.DecodeSession(FRequest, GetPassPhrase);
 
-  // get parameters
-  FParams.Merge(FRequest['params'], true);
-  if (FRequest.I['env.content-length'] > 0) then
-  begin
-    f := StrRScan(PChar(FRequest.S['content-type[0]']), '/');
-    if f <> nil then
-      if(f = '/json') then
-      begin
-        FParams.Merge(FRequest.ContentObject);
-        FParams.AsObject.S['format'] := 'json';
-      end else
-      if (f = '/xml') then
-      begin
-        FParams.Merge(XMLParseStream(FRequest.Content, true));
-        FParams.AsObject.S['format'] := 'xml';
-      end else
-      if (f = '/x-www-form-urlencoded') then
-      begin
-        obj := HTTPInterprete(PSOChar(FRequest.ContentString), true, '&', false, DEFAULT_CP);
-        try
-          FParams.Merge(obj, true);
-          FParams.AsObject.S['format'] := 'html';
-        finally
-          obj := nil;
-        end;
-      end;
-  end;
+  { Merge Query String Parameters with decoded Request Body  }
+  TRequestProcessor.DecodeBody(FRequest, FParams);
 
 {$IFDEF CONSOLEAPP}
 {$IFDEF DEBUG}
@@ -1213,10 +1062,8 @@ end;
 
 function THTTPStub.ProcessRequest: Boolean;
 var
-  uri, path, str, ext, user,
-  method, origin, allowed_headers, allowed_methods: string;
+  uri, method, origin, allowed_headers, allowed_methods: string;
   max_age: Cardinal;
-  rec: TSearchRec;
   // references the controller class through Rtti
   Klass: TRttiInstanceType;
 begin
@@ -1264,19 +1111,15 @@ begin
   if HandleCORS(method, uri, origin, allowed_headers, allowed_methods, max_age) then
     FResponse.AsObject.S['Access-Control-Allow-Origin'] := origin;
 
-  user := '';
-  if doAuthenticate(FRequest.S['env.authorization'], user) then
+  var user := '';
+  if TRequestProcessor.Authenticate(FRequest.S['env.authorization'], user, ProcessAuth) then
     FSession.S['user'] := user;
 
   { Decode the current route in the context of a controller action }
   Klass := TRequestProcessor.ProcessRoute(False, FContext, FFormats, FRequest, FParams);
 
   { Params have been fully decoded here so we can set the Response Content-Type }
-  with FParams.AsObject do
-    if FFormats[S['format'] + '.charset'] <> nil then
-      FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'] + '; charset=' + FFormats.S[S['format'] + '.charset']
-    else
-      FResponse.AsObject.S['Content-Type'] := FFormats.S[S['format'] + '.content'];
+  TRequestProcessor.ApplyContentType(FFormats, Params, Response);
 
   { Instantiate the controller and run the action }
   Result := TRequestProcessor.ProcessAction(Klass, FContext, Source, FFormats, FSession,
@@ -1284,88 +1127,59 @@ begin
     FErrorCode, FFileToSend
   );
 
-  if Stopped or (FResponse.FContent.Size > 0) or (FErrorCode >= 300) or (FErrorCode = 204) then
+  { Early return if the action
+    - rendered something or
+    - decided to return "no content" (204) or
+    - asked for a redirect (300), a client error (400) or a server error (500)
+  }
+  if Stopped or (FResponse.FContent.Size > 0) or (FErrorCode = 204) or (FErrorCode >= 300) then
     Exit;
 
+  { Early return if the action was not a GET or a POST }
   if (FRequest.AsObject.S['method'] <> 'GET') and (FRequest.AsObject.S['method'] <> 'POST') then
     Exit;
 
-  // file ?
+  { Prepare to send a file }
   if FFileToSend <> '' then
   begin
-    ext := LowerCase(ExtractFileExt(FFileToSend));
-    System.Delete(ext, 1, 1);
-    FResponse.AsObject.S['Content-Type'] := FFormats.S[ext + '.content'];
-    if FResponse.AsObject.S['Content-Type'] = '' then
-      FResponse.AsObject.S['Content-Type'] := 'application/binary';
-    FCompress := FFormats.B[ext + '.istext'];
-
-    if FileExists(FFileToSend) then
-    begin
-      FErrorCode := 200;
-      Result := True;
-      FResponse.AsObject.S['Content-Disposition'] := 'attachment; filename=' + ExtractFileName(FFileToSend);
-      FResponse.AsObject.S['Content-Transfer-Encoding'] := 'binary';
-    end
-    else
-      FErrorCode := 404;
+    if TRequestProcessor.PrepareSendFile(FFileToSend, FFormats, FResponse, FCompress, FErrorCode) then
+      Result := False;
     Exit;
   end;
 
-  // view ?
+  { Resolve and run Hardcoded View }
   Klass := TRequestProcessor.ResolveView(FContext, FFormats, FRequest, FParams);
-  if not TRequestProcessor.ProcessView(Klass, FContext, Source, FFormats, FSession,
+  if TRequestProcessor.ProcessView(Klass, FContext, Source, FFormats, FSession,
            FRequest, FParams, FResponse, FReturn,
            FErrorCode, FFileToSend)
   then
-    FErrorCode := 404;
+    Result := False;
 
-  if not (FErrorCode in [200..207]) then
-    if RenderScript then
-      Result := True;
-  if FErrorCode in [200..207] then
-  begin
-    FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
-    FCompress := FFormats.B[FParams.AsObject.S['format'] + '.istext'];
-    Exit;
-  end;
+  { Resolve and run View from File }
+  if FResponse.Content.Size = 0 then
+    if TRequestProcessor.RenderScript(
+         FFormats, FSession,
+         FRequest, FParams, FResponse, FReturn,
+         FErrorCode,
+         GetRootPath
+       )
+    then
+      Result := False;
 
-  // static ?
-  str := FRequest.S['uri'];
-  path := GetRootPath + 'static';
+  { Cache-Control and FCompress will be overriden by TRequestProcessor.PrepareStaticFile()
+    if appropriate }
+  FResponse.AsObject.S['Cache-Control'] := 'private, max-age=0';
+  FCompress := FFormats.B[FParams.AsObject.S['format'] + '.istext'];
 
-  if (AnsiChar(str[Length(str)]) in ['/','\']) then
-    str := str + 'index.' + FParams.AsObject.S['format'];
-
-  if FindFirst(path + str, faAnyFile, rec) = 0 then
-  begin
-    Result := True;
-    { Although the rec.Time is platform bounded and deprecated (on Windows) in
-      favor of the new TimeStamp property, all we need here is an integer
-      timestamp that changes with the resource }
-  {$WARN SYMBOL_PLATFORM OFF}
-  {$WARN SYMBOL_DEPRECATED OFF}
-    FIsStatic := True;
-    if FRequest.B['env.if-none-match'] and
-      (FRequest.S['env.if-none-match'] = IntToStr(rec.Time) + '-' + IntToStr(rec.Size)) then
-    begin
-      FCompress := False;
-      FErrorCode := 304;
-      FFileToSend := '';
-      FindClose(rec);
-      Exit;
-    end;
-    FResponse.AsObject.S['Cache-Control'] := 'public, no-cache';
-    FResponse.AsObject.S['ETag'] := IntToStr(rec.Time) + '-' + IntToStr(rec.Size);
-    FFileToSend := path + str;
-    FCompress := FFormats.B[FParams.AsObject.S['format'] + '.istext'];
-    FindClose(rec);
-    FErrorCode := 200;
-  {$WARN SYMBOL_DEPRECATED ON}
-  {$WARN SYMBOL_PLATFORM ON}
-  end
-  else
-    FErrorCode :=  404;
+  { Prepare to send a static file }
+  if FResponse.Content.Size = 0 then
+    if TRequestProcessor.PrepareStaticFile(
+         FFormats, FRequest, FParams, FResponse,
+         FIsStatic, FCompress, FFileToSend, FErrorCode,
+         GetRootPath
+       )
+    then
+      Result := False;
 end;
 
 procedure THTTPStub.SendEmpty;
@@ -1632,7 +1446,7 @@ procedure THTTPStub.SendStream(Stream: TStream);
 var
   streamout: TPooledMemoryStream;
 begin
-  if FCompress then
+  if (FCompress) and (stream.Size > 0) then
   begin
     streamout := TPooledMemoryStream.Create;
     try
@@ -1778,7 +1592,8 @@ begin
   end;
 end;
 
-{$IFDEF DEBUG}
+{$if defined(DEBUG)}
+
 { TLuaStackInfo }
 
 function TLuaStackInfo.Pop: PLuaStackInfo;
@@ -1797,71 +1612,171 @@ begin
   Result.source := source;
 end;
 
-{$ENDIF}
+{$endif}
 
 { TRequestProcessor }
+
+class function TRequestProcessor.DecodeSession(const Request: THTTPMessage;
+  const GetPassProc: TGetPasswordProc): ISuperObject;
+var
+  key, iv: PByte;
+begin
+  GetPassProc(key, iv);
+  if (key <> nil) and (iv <> nil) then
+  begin
+    var obj := Request.AsObject['cookies'].AsObject[COOKIE_NAME];
+    case ObjectGetType(obj) of
+      stString:
+        Result := DecodeObject(obj.AsString, key, iv);
+      stArray:
+        Result := DecodeObject(obj.AsArray.S[0], key, iv);
+    else
+      Result := TSuperObject.Create(stObject);
+    end;
+    if not ObjectIsType(Result, stObject) then
+      Result := TSuperObject.Create(stObject);
+  end
+  else
+    Result := TSuperObject.Create(stObject);
+end;
+
+class function TRequestProcessor.EncodeSession(const Response: THTTPMessage;
+  const Session: ISuperObject; const GetPassProc: TGetPasswordProc): Boolean;
+var
+  key, iv: PByte;
+begin
+  Result := False;
+  GetPassProc(key, iv);
+  if (key <> nil) and (iv <> nil) then
+  begin
+    Response.S['Set-Cookie[]'] := COOKIE_NAME + '=' + EncodeObject(Session, key, iv) + '; path=/';
+    Result := True;
+  end;
+end;
+
+class procedure TRequestProcessor.DecodeBody(const Request: THTTPMessage;
+  const Params: ISuperObject);
+begin
+  { Merge query params }
+  Params.Merge(Request['params'], true);
+
+  { Merge body }
+  if (Request.I['content-length'] > 0) then
+  begin
+    var f := StrRScan(PChar(Request.S['content-type[0]']), '/');
+    if f <> nil then
+      if f = '/json' then
+      begin
+        Params.Merge(Request.ContentObject);
+        Params.AsObject.S['format'] := 'json';
+      end
+      else if f = '/xml' then
+      begin
+        Params.Merge(XMLParseStream(Request.Content, true));
+        Params.AsObject.S['format'] := 'xml';
+      end
+      else if f = '/x-www-form-urlencoded' then
+      begin
+        var obj := HTTPInterprete(PSOChar(Request.ContentString), True, '&', False, DEFAULT_CP);
+        try
+          Params.Merge(obj, True);
+          Params.AsObject.S['format'] := 'html';
+        finally
+          obj := nil;
+        end;
+      end;
+  end;
+end;
 
 class function TRequestProcessor.ProcessRoute(IsWebSocket: Boolean;
   const Context: TSuperRttiContext; const Formats: ISuperObject;
   const Request: THTTPMessage; const Params: ISuperObject): TRttiInstanceType;
 
-  function KindUnitName: string;
+type
+  TScope = (sController, sView, sWebsocket);
+
+  function Scope(View: Boolean): TScope;
   begin
     if IsWebSocket then
-      Result := 'websocket'
+      Result := sWebsocket
+    else if View then
+      Result := sView
     else
-      Result := 'controller';
+      Result := sController;
   end;
 
-  function KindClassName: string;
+  function KindUnitName(View: Boolean): string;
   begin
-    if IsWebSocket then
-      Result := 'Websocket'
-    else
-      Result := 'Controller';
+    case Scope(View) of
+      sController: Result := 'controller';
+      sView:       Result := 'view';
+      sWebsocket:  Result := 'websocket';
+    end;
   end;
 
-  function KindClass: TClass;
+  function KindClassName(View: Boolean): string;
   begin
-    if IsWebSocket then
-      Result := TActionWebsocket
+    case Scope(View) of
+      sController: Result := 'Controller';
+      sView:       Result := 'View';
+      sWebsocket:  Result := 'Websocket';
+    end;
+  end;
+
+  function KindClass(View: Boolean): TClass;
+  begin
+    case Scope(View) of
+      sController: Result := TActionController;
+      sView:       Result := TActionView;
+      sWebsocket:  Result := TActionWebsocket;
     else
-      Result := TActionController;
+      Result := nil;
+    end;
   end;
 
   function ResolveController(const Name: string; var Klass: TRttiInstanceType; var Namespace: string): Boolean;
-  begin
-    (* {name}_{controller_or_websocket}.T{Name}{ControllerOrWebsocket} *)
-    var QualifiedClassName := Format('%s_%s.T%s%s', [Name, KindUnitName, CamelCase(Name), KindClassName]);
 
-    var K := Context.Context.FindType(QualifiedClassName);
-
-    if (K = nil) or not (K is TRttiInstanceType) then
-      Klass := nil
-    else
-      Klass := TRttiInstanceType(K);
-
-    { Check if Ancestor matches }
-    if (Klass <> nil) and not Klass.MetaclassType.InheritsFrom(KindClass) then
-      Klass := nil;
-
-    { Check if Namespace matches }
-    if (Klass <> nil) and (Namespace <> '') then
+    function BuildQualifiedClassName(View: Boolean): string;
     begin
-      var NamespaceFound := False;
-
-      for var A in Klass.GetAttributes do
-        if A is NamespaceAttribute then
-          if (A as NamespaceAttribute).Namespace = Namespace then
-          begin
-            NamespaceFound := True;
-            Break;
-          end;
-
-      if not NamespaceFound then
-        Klass := nil;
+      (* {name}_{controller_or_websocket_or_view}.T{Name}{ControllerOrWebsocketOrView} *)
+      Result := Format('%s_%s.T%s%s', [Name, KindUnitName(View), CamelCase(Name), KindClassName(View)]);
     end;
 
+    function FindKlass(View: Boolean): TRttiInstanceType;
+    begin
+      var K := Context.Context.FindType(BuildQualifiedClassName(View));
+
+      if (K <> nil) and (K is TRttiInstanceType) then
+        Result := TRttiInstanceType(K)
+      else
+        Exit(nil);
+
+      { Check if Ancestor matches }
+      if not Result.MetaclassType.InheritsFrom(KindClass(View)) then
+        Exit(nil);
+
+      { Check if Namespace matches }
+      if Namespace <> '' then
+      begin
+        var NamespaceFound := False;
+
+        for var A in Result.GetAttributes do
+          if A is NamespaceAttribute then
+            if (A as NamespaceAttribute).Namespace = Namespace then
+            begin
+              NamespaceFound := True;
+              Break;
+            end;
+
+        if not NamespaceFound then
+          Result := nil;
+      end;
+    end;
+
+  begin
+    Klass := FindKlass(False);
+    if Klass = nil then
+      Klass := FindKlass(True);
     Result := Klass <> nil;
   end;
 
@@ -2044,7 +1959,9 @@ begin
         else if A = Formats.S['xml.content'] then  // text/xml
           Format := 'xml'
         else if A = Formats.S['html.content'] then // text/html
-          Format := 'html';
+          Format := 'html'
+        else if A = Formats.S['text.content'] then  // plain/text
+          Format := 'text';
       end;
     end;
 
@@ -2058,6 +1975,10 @@ begin
     if not (ResolveController(Controller, Result, Namespace) and HasAction(Result, Action)) then
       Result := nil;
 
+  // Klass is not nil but it is a TActionView
+  if (Result <> nil) and Result.MetaclassType.InheritsFrom(TActionView) then
+    Result := nil;
+
   // store action context
   with Params.AsObject do
   begin
@@ -2065,6 +1986,76 @@ begin
     S['controller'] := Controller;
     S['action']     := Action;
     S['format']     := Format;
+  end;
+end;
+
+class function TRequestProcessor.PrepareSendFile(const FileToSend: string;
+  const Formats: ISuperObject; const Response: THTTPMessage;
+  var Compress: Boolean; var ErrorCode: Integer): Boolean;
+begin
+  Result := False;
+
+  var Ext := LowerCase(ExtractFileExt(FileToSend));
+  System.Delete(ext, 1, 1);
+  Response.AsObject.S['Content-Type'] := Formats.S[ext + '.content'];
+  if Response.AsObject.S['Content-Type'] = '' then
+    Response.AsObject.S['Content-Type'] := 'application/binary';
+  Compress := Formats.B[ext + '.istext'];
+
+  if FileExists(FileToSend) then
+  begin
+    ErrorCode := 200;
+    Result := True;
+    Response.AsObject.S['Content-Disposition'] := 'attachment; filename=' + ExtractFileName(FileToSend);
+    Response.AsObject.S['Content-Transfer-Encoding'] := 'binary';
+  end
+  else
+    ErrorCode := 404;
+end;
+
+class function TRequestProcessor.PrepareStaticFile(const Formats: ISuperObject;
+  const Request: THTTPMessage; const Params: ISuperObject; const Response: THTTPMessage;
+  var IsStatic, Compress: Boolean; var FileToSend: string; var ErrorCode: Integer;
+  const GetRootPathProc: TGetPathProc): Boolean;
+var
+  str, path: string;
+  rec: TSearchRec;
+begin
+  Result := False;
+
+  str := Request.S['uri'];
+  path := GetRootPathProc + 'static';
+
+  if (AnsiChar(str[Length(str)]) in ['/','\']) then
+    str := str + 'index.' + Params.AsObject.S['format'];
+
+  if FindFirst(path + str, faAnyFile, rec) = 0 then
+  begin
+    Result := True;
+
+    { Although the rec.Time is platform bounded and deprecated (on Windows) in
+      favor of the new TimeStamp property, all we need here is an integer
+      timestamp that changes with the resource }
+  {$WARN SYMBOL_PLATFORM OFF}
+  {$WARN SYMBOL_DEPRECATED OFF}
+    IsStatic := True;
+    if Request.B['env.if-none-match'] and
+      (Request.S['env.if-none-match'] = IntToStr(rec.Time) + '-' + IntToStr(rec.Size)) then
+    begin
+      Compress := False;
+      ErrorCode := 304;
+      FileToSend := '';
+      FindClose(rec);
+      Exit;
+    end;
+    Response.AsObject.S['Cache-Control'] := 'public, no-cache';
+    Response.AsObject.S['ETag'] := IntToStr(rec.Time) + '-' + IntToStr(rec.Size);
+    FileToSend := path + str;
+    Compress := Formats.B[Params.AsObject.S['format'] + '.istext'];
+    FindClose(rec);
+    ErrorCode := 200;
+  {$WARN SYMBOL_DEPRECATED ON}
+  {$WARN SYMBOL_PLATFORM ON}
   end;
 end;
 
@@ -2147,6 +2138,224 @@ begin
     Result := nil;
 end;
 
+class procedure TRequestProcessor.ApplyContentType(const Formats,
+  Params: ISuperObject; const Response: THTTPMessage);
+begin
+  { Params have been fully decoded here so we can set the Response Content-Type }
+  with Params.AsObject do
+    if Formats[S['format'] + '.charset'] <> nil then
+      Response.AsObject.S['Content-Type'] := Formats.S[S['format'] + '.content'] + '; charset=' + Formats.S[S['format'] + '.charset']
+    else
+      Response.AsObject.S['Content-Type'] := Formats.S[S['format'] + '.content'];
+end;
+
+class function TRequestProcessor.Authenticate(const AuthData: string;
+  var User: string; const GetAuthProc: TGetAuthProc): Boolean;
+var
+  P: Integer;
+  Kind, Data, Password: string;
+begin
+  Result := False;
+
+  P := Pos(' ', AuthData);
+  if P <= 1 then
+    Exit;
+
+  Kind := Copy(AuthData, 1, P - 1);
+  Data := Copy(AuthData, P + 1, MaxInt);
+
+  if SameText(Kind, 'basic') then
+  begin
+    Data := Base64ToStr(Data);
+
+    P := Pos(':', Data);
+    if P <= 1 then
+      Exit;
+
+    User := Copy(Data, 1, P - 1);
+    Password := Copy(Data, P + 1, MaxInt);
+
+    Result := GetAuthProc(Kind, User, Password);
+  end;
+end;
+
+class procedure TRequestProcessor.ApplyCompress(var Compress: Boolean;
+  const Request, Response: THTTPMessage);
+begin
+  if Compress then
+    if Pos('deflate', Request.S['env.accept-encoding']) > 0 then
+      Response.AsObject.S['Content-Encoding'] := 'deflate'
+    else
+      Compress := False;
+end;
+
+class function TRequestProcessor.RenderScript(const Formats, Session: ISuperObject;
+  const Request: THTTPMessage; const Params: ISuperObject;
+  const Response: THTTPMessage; const Return: ISuperObject;
+  var ErrorCode: Integer;
+  const GetRootPathProc: TGetPathProc): Boolean;
+
+  procedure Render(const Str: string);
+  begin
+    Response.Content.WriteString(Str, False, DEFAULT_CP);
+  end;
+
+var
+  state: Plua_State;
+{$if defined(DEBUG)}
+  LuaDebug: TLuaDebug;
+{$endif}
+
+  procedure printerror;
+  begin
+    Response.Content.Clear;
+    Render(
+      '<!doctype html>'#10 +
+      '<html lang="en">'#10+
+      '<head>'#10+
+      '  <meta charset="utf-8"/>'+
+      '  <title>LUA Error</title>'#10+
+      '  <style>'#10+
+      '    body { background-color: #fff; color: #333; }'#10+
+      '    body, p, ol, ul, td {'#10+
+      '      font-family: verdana, arial, helvetica, sans-serif;'#10+
+      '      font-size:   13px;'#10+
+      '      line-height: 18px;'#10+
+      '    }'#10+
+      '    pre {'#10+
+      '      background-color: #eee;'#10+
+      '      padding: 10px;'#10+
+      '      font-size: 11px;'#10+
+      '    }'#10+
+      '  </style>'#10+
+      '</head>'#10+
+      '<body>'#10+
+      '<h1>Error</h1>'#10+
+      '<p>'#10+
+      '  Showing <i>' + Request.AsObject.S['uri'] + '</i>'#10+
+      '  <pre><code>'+ string(UTF8String(lua_tostring(state, 1))) + '</code></pre>'#10+
+      '</p>'#10
+    );
+
+{$if defined(DEBUG)}
+   Render(
+      '<h1>Trace</h1>'#10+
+      '<pre><code>'
+   );
+
+    while LuaDebug.LuaStack <> nil do
+    begin
+      Render(Format('%s:%d:in %s'#10, [LuaDebug.LuaStack.source, LuaDebug.LuaStack.line, LuaDebug.LuaStack.name]));
+      LuaDebug.LuaStack := LuaDebug.LuaStack.Pop;
+    end;
+
+   Render('</pre></code>'#10);
+   Render(
+     '<h1>Params</h1>'#10+
+     '<pre><code>'+
+     Return.AsJson(True, False) +
+     '</pre></code>'#10
+   );
+{$endif}
+
+    Render('</body></html>');
+  end;
+
+  procedure PushObject(const Obj: ISuperObject; const GlobalName: string);
+  var
+    keys: ISuperObject;
+    ite: TSuperObjectIter;
+  begin
+    keys := TSuperObject.Create(stArray);
+
+    if ObjectFindFirst(Obj, ite) then
+    repeat
+      lua_pushsuperobject(state, ite.val);
+      lua_setglobal(state, PAnsiChar(UTF8Encode(ite.key)));
+      keys.AsArray.Add(ite.key);
+    until not ObjectFindNext(ite);
+    ObjectFindClose(ite);
+
+    lua_pushsuperobject(state, keys);
+    lua_setglobal(state, PAnsiChar(UTF8Encode(GlobalName)));
+  end;
+
+var
+  path, str, rel: string;
+begin
+  Result := False;
+  path := GetRootPathProc;
+
+  with Params.AsObject do
+    rel := 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
+  str := path + rel;
+
+  if FileExists(str) then
+  begin
+{$if defined(DEBUG)}
+    LuaDebug := TLuaDebug.Create;
+{$endif}
+    state := lua_newstate(@lua_app_alloc, nil);
+    try
+      luaL_openlibs(state);
+
+      lua_pushlightuserdata(state, Response);
+      lua_setglobal(state, '@response');
+      lua_pushcfunction(state, @lua_print); // need @response
+      lua_setglobal(state, 'print');
+
+      lua_pushcfunction(state, @lua_gettickcount);
+      lua_setglobal(state, 'gettickcount');
+
+{$if defined(DEBUG)}
+      lua_pushlightuserdata(state, LuaDebug);
+      lua_setglobal(state, '@debug');
+      lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET or LUA_MASKLINE, 0);
+{$endif}
+
+      PushObject(Params, '__param_keys__');
+      PushObject(Return, '__return_keys__');
+
+      lua_pushsuperobject(state, Session);
+      lua_setglobal(state, 'session');
+
+      if lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
+      begin
+        with Params.AsObject do
+          rel := 'layout/' + S['controller'] + '.' + S['format'];
+        str := path + rel;
+        if FileExists(str) then
+        begin
+          if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
+            printerror;
+        end
+        else
+        begin
+          rel := 'layout/application.' + Params.AsObject.S['format'];
+          str := path + rel;
+          if FileExists(str) then
+            if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
+               printerror;
+        end;
+      end
+      else
+        printerror;
+    finally
+{$if defined(DEBUG)}
+      while LuaDebug.LuaStack <> nil do
+        LuaDebug.LuaStack := LuaDebug.LuaStack.Pop;
+      LuaDebug.Free;
+{$endif}
+      lua_close(state);
+    end;
+
+    if ErrorCode = 0 then
+      ErrorCode := 200;
+
+    Result := True;
+  end;
+end;
+
 class function TRequestProcessor.BuildFormats: ISuperObject;
 begin
   { https://developer.mozilla.org/fr/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Complete_list_of_MIME_types }
@@ -2192,6 +2401,17 @@ begin
     S['woff.content']  := 'font/woff';
     S['woff2.content'] := 'font/woff2';
 
+    S['txt.content']   := 'text/plain';
+    S['txt.charset']   := DEFAULT_CHARSET;
+    B['txt.istext']    := True;
+
+    S['text.content']  := 'text/plain';
+    S['text.charset']  := DEFAULT_CHARSET;
+    B['text.istext']   := True;
+
+    S['css.content']   := 'text/css';
+    B['css.istext']    := True;
+
     S['csv.content']   := 'text/csv';
     S['csv.charset']   := DEFAULT_CHARSET;
     B['csv.istext']    := True;
@@ -2208,14 +2428,14 @@ begin
     S['html.charset']  := DEFAULT_CHARSET;
     B['html.istext']   := True;
 
+    S['ics.content']   := 'text/calendar';
+    B['ics.istext']    := True;
+
     S['xhtml.content'] := 'application/xhtml+xml';
     S['xhtml.charset'] := DEFAULT_CHARSET;
     B['xhtml.istext']  := True;
 
     S['xml.content']   := 'application/xml';
-    B['xml.istext']    := True;
-
-    S['xml.content']   := 'text/calendar';
     B['xml.istext']    := True;
 
     S['json.content']  := 'application/json';
@@ -2229,9 +2449,6 @@ begin
     S['tif.content']   := 'image/tiff';
     S['tiff.content']  := 'image/tiff';
     S['webp.content']  := 'image/webp';
-
-    S['css.content']   := 'text/css';
-    B['css.istext']    := True;
 
     S['js.content']    := 'application/javascript';
     B['js.istext']     := True;
