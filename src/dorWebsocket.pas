@@ -63,7 +63,7 @@ type
   private
     const BUFFER_SIZE = 1024;
   private
-    FListenThread: TThread;
+    FReadThread: TThread;
     FOnOpen: TProc;
     FOnClose: TProc;
     FOnError: TWSMessage;
@@ -86,14 +86,15 @@ type
     FCertCAFile: AnsiString;
     FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
     FBufferPos: Cardinal;
-    procedure Listen;
+    procedure InternalClose(WaitThread: Boolean);
+    procedure StartRead;
     procedure HTTPWriteLine(const data: RawByteString);
     function SockSend(var Buf; len, flags: Integer): Integer;
     function SockRecv(var Buf; len, flags: Integer): Integer;
     procedure Flush;
     procedure Output(b: Byte; data: Pointer; len: Int64);
     procedure OutputString(b: Byte; const str: string);
-    { /!\ These methods are called within the Listen thread }
+    { /!\ These methods are called within the Read thread }
     procedure HandlePing(payload: TPooledMemoryStream);
     procedure HandlePong(payload: TPooledMemoryStream);
     procedure HandleText(payload: TPooledMemoryStream);
@@ -275,7 +276,7 @@ constructor TWebSocket.Create(const Password, CertificateFile,
 begin
   inherited Create;
   FLockSend := TCriticalSection.Create;
-  FListenThread := nil;
+  FReadThread := nil;
   FReadyState := rsClosed;
   FSocket := INVALID_SOCKET;
   FCtx := nil;
@@ -291,19 +292,27 @@ end;
 destructor TWebSocket.Destroy;
 begin
   Close;
+  if Assigned(FReadThread) then
+  begin
+    FReadThread.WaitFor;
+    FreeAndNil(FReadThread);
+  end;
   FLockSend.Free;
   inherited;
 end;
 
-procedure TWebSocket.Close;
+procedure TWebSocket.InternalClose(WaitThread: Boolean);
 begin
   if FReadyState = rsOpen then
   begin
     FReadyState := rsClosing;
 
     closesocket(FSocket); // this will cause the listen thread to stop
-    FListenThread.WaitFor;
-    FListenThread.Free;
+    if WaitThread and Assigned(FReadThread) then
+    begin
+      FReadThread.WaitFor;
+      FreeAndNil(FReadThread);
+    end;
 
     FSocket := INVALID_SOCKET;
     FReadyState := rsClosed;
@@ -320,6 +329,12 @@ begin
     SSL_CTX_free(FCtx);
     FCtx := nil;
   end;
+
+end;
+
+procedure TWebSocket.Close;
+begin
+  InternalClose(True);
 end;
 
 procedure TWebSocket.HTTPWriteLine(const data: RawByteString);
@@ -575,7 +590,7 @@ begin
   begin
     if Assigned(FOnOpen) then
       FOnOpen();
-    Listen;
+    StartRead;
   end;
 end;
 
@@ -752,9 +767,9 @@ begin
   payload := TPooledMemoryStream.Create
 end;
 
-procedure TWebSocket.Listen;
+procedure TWebSocket.StartRead;
 begin
-  FListenThread := TThreadIt.Create(
+  FReadThread := TThreadIt.Create(
     procedure
     type
       TState = (stStart, stNext, stPayload16, stPayload64, stMask, stData);
@@ -925,10 +940,10 @@ begin
             end
           )
         else
-          Close;
+          InternalClose(False);
     end
   );
-  FListenThread.Start;
+  FReadThread.Start;
 end;
 
 procedure TWebSocket.Send(const data: string);
