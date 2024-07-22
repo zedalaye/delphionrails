@@ -1,0 +1,63 @@
+package DelphiOnRailsRun;
+
+{$R *.res}
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO OFF}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION OFF}
+{$OVERFLOWCHECKS ON}
+{$RANGECHECKS ON}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES ON}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE DEBUG}
+{$ENDIF IMPLICITBUILDING}
+{$DESCRIPTION 'Delphi On Rails - A Web Framework for Delphi'}
+{$LIBSUFFIX AUTO}
+{$IMPLICITBUILD ON}
+
+requires
+  rtl,
+  SuperObjectRun,
+  UIBR;
+
+contains
+  dorActionController in 'src\dorActionController.pas',
+  dorActionView in 'src\dorActionView.pas',
+  dorActionWebsocket in 'src\dorActionWebsocket.pas',
+  dorDB in 'src\dorDB.pas',
+  dorHTTP in 'src\dorHTTP.pas',
+  dorHTTPClient in 'src\dorHTTPClient.pas',
+  dorHTTPStub in 'src\dorHTTPStub.pas',
+  dorLua in 'src\dorLua.pas',
+  dorMD5 in 'src\dorMD5.pas',
+  dorObserver in 'src\dorObserver.pas',
+  dorOpenSSL in 'src\dorOpenSSL.pas',
+  dorOpenSSLCipher in 'src\dorOpenSSLCipher.pas',
+  dorOpenSSLHelpers in 'src\dorOpenSSLHelpers.pas',
+  dorOpenSSLNIDS in 'src\dorOpenSSLNIDS.pas',
+  dorPing in 'src\dorPing.pas',
+  dorPunyCode in 'src\dorPunyCode.pas',
+  dorService in 'src\dorService.pas',
+  dorSocketStub in 'src\dorSocketStub.pas',
+  dorSynchronizer in 'src\dorSynchronizer.pas',
+  dorUIB in 'src\dorUIB.pas',
+  dorUtils in 'src\dorUtils.pas',
+  dorWebsocket in 'src\dorWebsocket.pas',
+  dorXML in 'src\dorXML.pas';
+
+end.
+
