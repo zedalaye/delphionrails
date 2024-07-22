@@ -944,7 +944,7 @@ begin
 
   { Response has no content and there is no file to send : looks like the expected
     resource is not found -> 404 }
-  if (FErrorCode <> 204) and (FResponse.Content.Size = 0) and (FFileToSend = '') then
+  if (FErrorCode < 300) and (FErrorCode <> 204) and (FResponse.Content.Size = 0) and (FFileToSend = '') then
     FErrorCode := 404;
 
   { Output Response Status Code }
