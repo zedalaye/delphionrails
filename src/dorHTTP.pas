@@ -30,7 +30,7 @@ function HTMLEncode(const AStr: string): string;
 implementation
 
 uses
-  dorPunyCode;
+  dorPunyCode, dorUtils;
 
 function HTTPParseURL(const uri: PChar; out protocol: string;
   out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
@@ -305,24 +305,25 @@ const
   NoConversion = ['A'..'Z', 'a'..'z', '0'..'9', '!', '#', '&', '''', '(', ')',
     '*', '-', '.', '/', ':', ';', '=', '?', '@', '_'];
 var
-  Sp: PChar;
+  Rbs: RawByteString;
+  Sp: PAnsiChar;
   Rp: PAnsiChar;
 begin
-  SetLength(Result, Length(AStr) * 3);
-  Sp := PChar(AStr);
+  Rbs := MBUEncode(AStr, CP_UTF8);
+  SetLength(Result, Length(Rbs) * 3);
+  Sp := PAnsiChar(Rbs);
   Rp := PAnsiChar(Result);
   while Sp^ <> #0 do
   begin
-    if (Sp^ < #256) and (AnsiChar(Sp^) in NoConversion) then
-      Rp^ := AnsiChar(Sp^)
+    if CharInSet(Sp^, NoConversion) then
+      Rp^ := Sp^
+    else if Sp^ = ' ' then
+      Rp^ := '+'
     else
-      if Sp^ = ' ' then
-        Rp^ := '+'
-      else
-      begin
-        AnsiStrings.FormatBuf(Rp^, 3, AnsiString('%%%.2x'), 6, [Ord(Sp^)]);
-        Inc(Rp,2);
-      end;
+    begin
+      AnsiStrings.FormatBuf(Rp^, 3, AnsiString('%%%.2x'), 6, [Ord(Sp^)]);
+      Inc(Rp,2);
+    end;
     Inc(Rp);
     Inc(Sp);
   end;
