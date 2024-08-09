@@ -7,21 +7,21 @@ uses
   WinSock2;
 
 type
-  TOnHTTPReadWrite = reference to function(var Buf; len: Integer): Integer;
-  TOnHTTPField = reference to function(const key: RawByteString; const value: RawByteString): Boolean;
-  TOnHTTPAddField = reference to procedure(const add: TOnHTTPField);
-  TOnHTTPResponse = reference to function(code: Integer; const mesg: RawByteString): Boolean;
+  TOnHTTPReadWrite   = reference to function(var Buf; len: Integer): Integer;
+  TOnHTTPField       = reference to function(const key: RawByteString; const value: RawByteString): Boolean;
+  TOnHTTPAddField    = reference to procedure(const add: TOnHTTPField);
+  TOnHTTPResponse    = reference to function(code: Integer; const mesg: RawByteString): Boolean;
   TOnHTTPHeaderField = reference to function(group: Integer; const key: RawByteString; const value: RawByteString): Boolean;
 
-function HTTPParse(const receive: TOnHTTPReadWrite; const onResponse: TOnHTTPResponse;
-  const onfield: TOnHTTPField): Boolean;
+function HTTPParse(const receive: TOnHTTPReadWrite; const onResponse: TOnHTTPResponse; const onfield: TOnHTTPField): Boolean;
 
 function HTTPEncode(const AStr: string): RawByteString;
 function HTTPDecode(const AStr: string): RawByteString;
+
 function HttpStatusString(code: Integer): string;
 function HttpResponseStrings(code: Integer): RawByteString;
-function HTTPParseURL(const uri: PChar; out protocol: string;
-  out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
+
+function HTTPParseURL(const uri: PChar; out protocol: string; out domain: AnsiString; out port: Word; out path: RawByteString; encode: Boolean): Boolean;
 function HTTPParseHeader(const header: RawByteString; subkeys: Boolean; const onfield: TOnHTTPHeaderField): Boolean;
 function HTTPReadChunked(const read, write: TOnHTTPReadWrite): Boolean;
 
@@ -142,7 +142,8 @@ redo:
                   if p - d >= 1 then
                     getdomain;
                   if encode then
-                    path := HTTPEncode(p) else
+                    path := HTTPEncode(p)
+                  else
                     path := rawbytestring(string(p));
                   Exit(True);
                 end;
@@ -161,7 +162,8 @@ redo:
             '/':
               begin
                 if encode then
-                  path := HTTPEncode(p) else
+                  path := HTTPEncode(p)
+                else
                   path := rawbytestring(string(p));
                 Exit(True);
               end;
