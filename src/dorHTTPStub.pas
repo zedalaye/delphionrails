@@ -290,12 +290,6 @@ begin
     Result := TSuperObject.Create(S);
 end;
 
-function MBUDecode(const str: RawByteString; cp: Word): UnicodeString;
-begin
-  SetLength(Result, MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), nil, 0));
-  MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), PWideChar(Result), Length(Result));
-end;
-
 function HTTPInterprete(src: PSOChar; named: Boolean = False; sep: SOChar = ';';
   StrictSep: Boolean = False; codepage: Integer = 0): ISuperObject;
 var
@@ -924,6 +918,7 @@ begin
 
   FRequest._Release;
   FResponse._Release;
+
   inherited;
 end;
 

@@ -130,6 +130,9 @@ function GetTickCount: Cardinal;
 
 procedure SocketTuneSendBuffer(const Socket: TSocket);
 
+function MBUEncode(const str: UnicodeString; cp: Word): RawByteString;
+function MBUDecode(const str: RawByteString; cp: Word): UnicodeString;
+
 implementation
 
 const
@@ -305,7 +308,6 @@ begin
     end;
 end;
 
-
 procedure Base64ToStream(const data: string; stream: TStream);
 var
   i, PadCount: integer;
@@ -410,6 +412,24 @@ begin
   end else
     Result := '';
 end;
+
+function MBUEncode(const str: UnicodeString; cp: Word): RawByteString;
+begin
+  if cp > 0 then
+  begin
+    SetLength(Result, WideCharToMultiByte(cp, 0, PWideChar(str), length(str), nil, 0, nil, nil));
+    WideCharToMultiByte(cp, 0, PWideChar(str), length(str), PAnsiChar(Result), Length(Result), nil, nil);
+  end
+  else
+    Result := AnsiString(str);
+end;
+
+function MBUDecode(const str: RawByteString; cp: Word): UnicodeString;
+begin
+  SetLength(Result, MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), nil, 0));
+  MultiByteToWideChar(cp, 0, PAnsiChar(str), length(str), PWideChar(Result), Length(Result));
+end;
+
 
 {$IF not declared(InterLockedCompareExchange)}
 {$IFDEF MSWINDOWS}
@@ -960,16 +980,6 @@ end;
 procedure TPooledMemoryStream.WriteInteger(const V: Integer);
 begin
   Write(v, sizeof(v));
-end;
-
-function MBUEncode(const str: UnicodeString; cp: Word): RawByteString;
-begin
-  if cp > 0 then
-  begin
-    SetLength(Result, WideCharToMultiByte(cp, 0, PWideChar(str), length(str), nil, 0, nil, nil));
-    WideCharToMultiByte(cp, 0, PWideChar(str), length(str), PAnsiChar(Result), Length(Result), nil, nil);
-  end else
-    Result := AnsiString(str);
 end;
 
 procedure TPooledMemoryStream.WriteString(const str: string; writesize: boolean; cp: Integer);
