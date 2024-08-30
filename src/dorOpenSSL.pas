@@ -4,7 +4,8 @@ unit dorOpenSSL;
 
 interface
 
-uses Classes;
+uses
+  Classes;
 
 const
 (*
@@ -17,8 +18,13 @@ const
   DOR_SSL_CIPHER_LIST = 'ECDH+AESGCM:ECDH+CHACHA20:ECDH+AES256:ECDH+AES128:!aNULL:!SHA1:!AESCCM';
 
 const
+{$IFDEF Win64}
+  LIB_CRYPTO = 'libcrypto-1_1-x64.dll';
+  LIB_SSL = 'libssl-1_1-x64.dll';
+{$ELSE}
   LIB_CRYPTO = 'libcrypto-1_1.dll';
   LIB_SSL = 'libssl-1_1.dll';
+{$ENDIF}
 
 (*******************************************************************************
  * inititalization
@@ -92,7 +98,7 @@ const
 const
   MD5_DIGEST_LENGTH = 16;
 
-function MD5(const d: PByte; n: Cardinal; md: PByte): PByte; cdecl; external LIB_CRYPTO;
+function MD5(const d: PByte; n: NativeUInt; md: PByte): PByte; cdecl; external LIB_CRYPTO;
 
 (*******************************************************************************
  * sha1 (deprecated)
@@ -101,7 +107,7 @@ function MD5(const d: PByte; n: Cardinal; md: PByte): PByte; cdecl; external LIB
 const
   SHA_DIGEST_LENGTH = 20;
 
-function SHA1(const d: PAnsiChar; n: Cardinal; md: PAnsiChar): PAnsiChar; cdecl; external LIB_CRYPTO;
+function SHA1(const d: PAnsiChar; n: NativeUInt; md: PAnsiChar): PAnsiChar; cdecl; external LIB_CRYPTO;
 
 (******************************************************************************
  * ENGINE
@@ -216,25 +222,25 @@ function EVP_DigestInit_ex(ctx: PEVP_MD_CTX; const &type: PEVP_MD; impl: PENGINE
 function EVP_DigestFinal_ex(ctx: PEVP_MD_CTX; md: PByte; var s: Cardinal): Integer; cdecl; external LIB_CRYPTO;
 
 function EVP_DigestSignInit(ctx: PEVP_MD_CTX; pctx: PPEVP_PKEY_CTX; const &type: PEVP_MD; e: PENGINE; pkey: PEVP_PKEY): Integer; cdecl; external LIB_CRYPTO;
-function EVP_DigestSignFinal(ctx: PEVP_MD_CTX; sig: PByte; var siglen: Cardinal): Integer; cdecl; external LIB_CRYPTO;
+function EVP_DigestSignFinal(ctx: PEVP_MD_CTX; sig: PByte; var siglen: NativeUInt): Integer; cdecl; external LIB_CRYPTO;
 
 function EVP_DigestVerifyInit(ctx: PEVP_MD_CTX; pctx: PPEVP_PKEY_CTX; const &type: PEVP_MD; e: PENGINE; pkey: PEVP_PKEY): Integer; cdecl; external LIB_CRYPTO;
-function EVP_DigestVerifyFinal(ctx: PEVP_MD_CTX; const sig: PByte; siglen: Cardinal): Integer; cdecl; external LIB_CRYPTO;
+function EVP_DigestVerifyFinal(ctx: PEVP_MD_CTX; const sig: PByte; siglen: NativeUInt): Integer; cdecl; external LIB_CRYPTO;
 
-function EVP_DigestUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer; cdecl; external LIB_CRYPTO;
+function EVP_DigestUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer; cdecl; external LIB_CRYPTO;
 
 function EVP_SignInit_ex(ctx: PEVP_MD_CTX; const &type: PEVP_MD; impl: PENGINE): Integer; // EVP_DigestInit_ex(a,b,c)
 function EVP_SignInit(ctx: PEVP_MD_CTX; const &type: PEVP_MD): Integer;  // EVP_DigestInit
-function EVP_SignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer; // EVP_DigestUpdate
+function EVP_SignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer; // EVP_DigestUpdate
 
 function EVP_VerifyInit_ex(ctx: PEVP_MD_CTX; const &type: PEVP_MD; impl: PENGINE): Integer; // EVP_DigestInit_ex
 function EVP_VerifyInit(ctx: PEVP_MD_CTX; const &type: PEVP_MD): Integer; // EVP_DigestInit
-function EVP_VerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer; // EVP_DigestUpdate
+function EVP_VerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer; // EVP_DigestUpdate
 
-function EVP_DigestSignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer; // EVP_DigestUpdate
-function EVP_DigestVerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer; // EVP_DigestUpdate
+function EVP_DigestSignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer; // EVP_DigestUpdate
+function EVP_DigestVerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer; // EVP_DigestUpdate
 
-function EVP_OpenInit(ctx: PEVP_CIPHER_CTX; &type: PEVP_CIPHER; ek: PByte; ekl: Integer; iv: PByte; priv: PEVP_PKEY): Integer; cdecl; external LIB_CRYPTO;
+function EVP_OpenInit(ctx: PEVP_CIPHER_CTX; const &type: PEVP_CIPHER; const ek: PByte; ekl: Integer; const iv: PByte; priv: PEVP_PKEY): Integer; cdecl; external LIB_CRYPTO;
 function EVP_OpenFinal(ctx: PEVP_CIPHER_CTX; &out: PByte; var outl: Integer): Integer; cdecl; external LIB_CRYPTO;
 
 function EVP_OpenUpdate(ctx: PEVP_CIPHER_CTX; &out: PByte; var outl: Integer; &in: PByte; inl: Integer): Integer; // EVP_DecryptUpdate(a,b,c,d,e)
@@ -499,7 +505,7 @@ procedure EVP_cleanup; cdecl; external LIB_CRYPTO;
 
 // Crypto
 
-procedure OPENSSL_cleanse(ptr: Pointer; len: Cardinal); cdecl; external LIB_CRYPTO;
+procedure OPENSSL_cleanse(ptr: Pointer; len: NativeUInt); cdecl; external LIB_CRYPTO;
 
 // Objects
 
@@ -613,7 +619,7 @@ function BIO_new_mem_buf(buf: Pointer; len: Integer): PBIO; cdecl; external LIB_
 function BIO_push(b: PBIO; append: PBIO): PBIO; cdecl; external LIB_CRYPTO;
 function BIO_write(b: PBIO; const data: Pointer; len: Integer): Integer; cdecl; external LIB_CRYPTO;
 function BIO_read(b: PBIO; data: Pointer; len: Integer): Integer; cdecl; external LIB_CRYPTO;
-function BIO_ctrl(bp: PBIO; cmd: Integer; larg: Longint; parg: Pointer): LongInt; cdecl; external LIB_CRYPTO;
+function BIO_ctrl(bp: PBIO; cmd: Integer; larg: LongInt; parg: Pointer): LongInt; cdecl; external LIB_CRYPTO;
 
 function BIO_flush(b: PBIO): Integer; inline;
 function BIO_get_mem_ptr(b: PBIO; ptr: Pointer): LongInt; inline;
@@ -792,9 +798,9 @@ const
   SSL_CERT_SET_SERVER                      = 3;
 
 const
-  SSL_OP_MICROSOFT_SESS_ID_BUG            = $00000001;
-
-  SSL_OP_NETSCAPE_CHALLENGE_BUG           = $00000002;
+  {* Removed from OpenSSL 1.1.0 *}
+  SSL_OP_MICROSOFT_SESS_ID_BUG            = $0;
+  SSL_OP_NETSCAPE_CHALLENGE_BUG           = $0;
 
   {* Allow initial connection to servers that don't support RI *}
   SSL_OP_LEGACY_SERVER_CONNECT            = $00000004;
@@ -1031,11 +1037,11 @@ type
 
   function SSL_new(ctx: PSSL_CTX):PSSL; cdecl; external LIB_SSL;
   procedure SSL_free(ssl: PSSL); cdecl; external LIB_SSL;
-  function SSL_set_fd(s: PSSL; fd: Longint): Integer; cdecl; external LIB_SSL;
-  function SSL_ctrl(ssl: PSSL; cmd: Integer; larg: Integer; parg: Pointer): Integer; cdecl; external LIB_SSL;
-  function SSL_connect(ssl: PSSL):Integer; cdecl; external LIB_SSL;
-  function SSL_accept(ssl: PSSL):Integer; cdecl; external LIB_SSL;
-  function SSL_shutdown(ssl: PSSL):Integer; cdecl; external LIB_SSL;
+  function SSL_set_fd(s: PSSL; fd: Integer): Integer; cdecl; external LIB_SSL;
+  function SSL_ctrl(ssl: PSSL; cmd: Integer; larg: LongInt; parg: Pointer): Integer; cdecl; external LIB_SSL;
+  function SSL_connect(ssl: PSSL): Integer; cdecl; external LIB_SSL;
+  function SSL_accept(ssl: PSSL): Integer; cdecl; external LIB_SSL;
+  function SSL_shutdown(ssl: PSSL): Integer; cdecl; external LIB_SSL;
   function SSL_read(ssl: PSSL; buf: Pointer; num: Integer): Integer; cdecl; external LIB_SSL;
   function SSL_write(ssl: PSSL; const buf: Pointer; num: Integer): Integer; cdecl; external LIB_SSL;
   function SSL_get_error(ssl: PSSL; ret: Integer): Integer; cdecl; external LIB_SSL;
@@ -1075,10 +1081,10 @@ const
   TLS1_2_VERSION = $0303;
   TLS1_3_VERSION = $0304;
 
-  function SSL_CTX_set_min_proto_version(ctx: PSSL_CTX; version: Integer): Integer; inline;
-  function SSL_CTX_set_max_proto_version(ctx: PSSL_CTX; version: Integer): Integer; inline;
-  function SSL_CTX_get_min_proto_version(ctx: PSSL_CTX): Integer; inline;
-  function SSL_CTX_get_max_proto_version(ctx: PSSL_CTX): Integer; inline;
+  function SSL_CTX_set_min_proto_version(ctx: PSSL_CTX; version: LongInt): LongInt; inline;
+  function SSL_CTX_set_max_proto_version(ctx: PSSL_CTX; version: LongInt): LongInt; inline;
+  function SSL_CTX_get_min_proto_version(ctx: PSSL_CTX): LongInt; inline;
+  function SSL_CTX_get_max_proto_version(ctx: PSSL_CTX): LongInt; inline;
 
 type
   SSL_CTX_keylog_cb_func = procedure(const ssl: PSSL; const line: PAnsiChar); cdecl;
@@ -1141,15 +1147,7 @@ type
 (******************************************************************************)
 
 type
-  PRAND_METHOD = ^RAND_METHOD;
-  RAND_METHOD = record
-    seed: procedure(const buf: Pointer; num: Integer); cdecl;
-    bytes: function(buf: PByte; num: Integer): Integer; cdecl;
-    cleanup: procedure; cdecl;
-    add: procedure(const buf: Pointer; num: Integer; entropy: Double); cdecl;
-    pseudorand: function(buf: PByte; num: Integer): Integer; cdecl;
-    status: procedure; cdecl;
-  end;
+  PRAND_METHOD = Pointer;
 
 function RAND_poll: Integer; cdecl; external LIB_CRYPTO;
 
@@ -1198,22 +1196,22 @@ begin
   Result := SSL_CTX_ctrl(ctx, SSL_CTRL_OPTIONS, 0, nil);
 end;
 
-function SSL_CTX_set_min_proto_version(ctx: PSSL_CTX; version: Integer): Integer;
+function SSL_CTX_set_min_proto_version(ctx: PSSL_CTX; version: LongInt): LongInt;
 begin
   Result := SSL_CTX_ctrl(ctx, SSL_CTRL_SET_MIN_PROTO_VERSION, version, nil);
 end;
 
-function SSL_CTX_set_max_proto_version(ctx: PSSL_CTX; version: Integer): Integer;
+function SSL_CTX_set_max_proto_version(ctx: PSSL_CTX; version: LongInt): LongInt;
 begin
   Result := SSL_CTX_ctrl(ctx, SSL_CTRL_SET_MAX_PROTO_VERSION, version, nil);
 end;
 
-function SSL_CTX_get_min_proto_version(ctx: PSSL_CTX): Integer;
+function SSL_CTX_get_min_proto_version(ctx: PSSL_CTX): LongInt;
 begin
   Result := SSL_CTX_ctrl(ctx, SSL_CTRL_GET_MIN_PROTO_VERSION, 0, nil);
 end;
 
-function SSL_CTX_get_max_proto_version(ctx: PSSL_CTX): Integer;
+function SSL_CTX_get_max_proto_version(ctx: PSSL_CTX): LongInt;
 begin
 Result := SSL_CTX_ctrl(ctx, SSL_CTRL_GET_MAX_PROTO_VERSION, 0, nil);
 end;
@@ -1281,7 +1279,7 @@ begin
   Result := EVP_DigestInit(ctx, &type);
 end;
 
-function EVP_SignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer;
+function EVP_SignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer;
 begin
   Result := EVP_DigestUpdate(ctx, d, cnt);
 end;
@@ -1296,17 +1294,17 @@ begin
   Result := EVP_DigestInit(ctx, &type);
 end;
 
-function EVP_VerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer;
+function EVP_VerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer;
 begin
   Result := EVP_DigestUpdate(ctx, d, cnt);
 end;
 
-function EVP_DigestSignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer;
+function EVP_DigestSignUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer;
 begin
   Result := EVP_DigestUpdate(ctx, d, cnt);
 end;
 
-function EVP_DigestVerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: Cardinal): Integer;
+function EVP_DigestVerifyUpdate(ctx: PEVP_MD_CTX; const d: Pointer; cnt: NativeUInt): Integer;
 begin
   Result := EVP_DigestUpdate(ctx, d, cnt);
 end;
