@@ -57,7 +57,11 @@ begin
   LocalSyncList := nil;
   EnterCriticalSection(FThreadLock);
   try
+  {$ifdef Win64}
+    IntPtr(LocalSyncList) := InterlockedExchange64(IntPtr(FSyncList), IntPtr(LocalSyncList));
+  {$else}
     IntPtr(LocalSyncList) := InterlockedExchange(IntPtr(FSyncList), IntPtr(LocalSyncList));
+  {$endif}
     try
       Result := (LocalSyncList <> nil) and (LocalSyncList.Count > 0);
       if Result then
