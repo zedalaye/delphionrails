@@ -34,7 +34,7 @@ uses
   AnsiStrings, Classes, superobject;
 
 type
-  size_t = Cardinal;
+  size_t = NativeUInt;
   Psize_t = ^size_t;
 {$IFNDEF FPC}
   PtrInt = Int64;
@@ -43,9 +43,9 @@ type
 
 const
 {$IFDEF UNIX}
-  LUA_LIB = 'liblua5.4.6.so';
+  LUA_LIB = 'liblua5.4.7.so';
 {$ELSE}
-  LUA_LIB = 'lua5.4.6.dll';
+  LUA_LIB = 'lua5.4.7.dll';
 {$ENDIF}
 
 const
@@ -65,9 +65,9 @@ const
 
 const
   LUA_VERSION = 'Lua 5.4';
-  LUA_RELEASE = 'Lua 5.4.6';
+  LUA_RELEASE = 'Lua 5.4.7';
   LUA_VERSION_NUM = 504;
-  LUA_COPYRIGHT = 'Copyright (C) 1994-2023 Lua.org, PUC-Rio';
+  LUA_COPYRIGHT = 'Copyright (C) 1994-2024 Lua.org, PUC-Rio';
   LUA_AUTHORS  = 'R. Ierusalimschy, L. H. de Figueiredo, W. Celes';
 
 
@@ -1167,6 +1167,7 @@ var
   pr: PLuaTextProcessor;
   pin, pout: PAnsiChar;
   c: AnsiChar;
+
   function Append(const str: PAnsiChar; l: Integer): Boolean;
   begin
     if outlen + l <= sizeof(pr.outbuffer) then
@@ -1178,6 +1179,7 @@ var
     end else
       Result := False;
   end;
+
 label
   redo, needspace;
 begin
