@@ -1070,6 +1070,19 @@ begin
   if FSocketHandle <> INVALID_SOCKET then
   begin
     shutdown(FSocketHandle, SD_BOTH);
+
+  { Could be useful, some day as it seems to be the right way to close a socket
+    instead of simply throwing a shutdown(..., SD_BOTH);
+
+    if shutdown(FSocketHandle, SD_SEND) <> SOCKET_ERROR then
+    begin
+      var Res: Integer;
+      repeat
+        var B: Byte;
+        Res := recv(FSocketHandle, B, SizeOf(B), 0);
+      until Res = 0;
+    end;
+  }
     closesocket(FSocketHandle);
     FSocketHandle := INVALID_SOCKET;
   end;
@@ -1102,6 +1115,19 @@ begin
   if FSocketHandle <> INVALID_SOCKET then
   begin
     shutdown(FSocketHandle, SD_BOTH);
+    
+  { Could be useful, some day as it seems to be the right way to close a socket
+    instead of simply throwing a shutdown(..., SD_BOTH);
+
+    if shutdown(FSocketHandle, SD_SEND) <> SOCKET_ERROR then
+    begin
+      var B: Byte;
+      var Res: Integer;
+      repeat
+        Res := recv(FSocketHandle, B, SizeOf(B), 0);
+      until Res = 0;
+    end;
+  }
     closesocket(FSocketHandle);
     FSocketHandle := INVALID_SOCKET;
   end;
@@ -1298,6 +1324,23 @@ begin
   if FOwned then
   begin
     Flush;
+    
+  { Could be useful, some day as it seems to be the right way to close a SSL socket
+
+    if SSL_shutdown(FSSL) = 0 then  // Server Close
+      if SSL_shutdown(FSSL) = 0 then // Wait Client Close
+      begin
+        if shutdown(FSocket, SD_SEND) <> SOCKET_ERROR then
+        begin
+          var Res: Integer;
+          repeat
+            var B: Byte;
+            Res := recv(FSocket, B, SizeOf(B), 0);
+          until Res = 0;
+        end;
+      end;
+  }
+  
     closesocket(FSocket);
   end;
   FSocket := INVALID_SOCKET;
