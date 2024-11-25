@@ -101,7 +101,7 @@ var
   buff: array[0..1024] of AnsiChar;
 begin
   if name <> nil then
-    Result := X509_NAME_oneline(name, @buff, SizeOf(buff))
+    Result := X509_NAME_oneline(name, PAnsiChar(@buff), SizeOf(buff))
   else
     Result := '';
 end;
@@ -118,7 +118,7 @@ begin
   if (name <> nil) and Assigned(onkey) then
   begin
     Result := True;
-    p := X509_NAME_oneline(name, @buff, SizeOf(buff));
+    p := X509_NAME_oneline(name, PAnsiChar(@buff), SizeOf(buff));
     if p <> nil then
     begin
       st := stStart;

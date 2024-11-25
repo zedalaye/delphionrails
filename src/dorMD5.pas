@@ -166,7 +166,7 @@ begin
   c := PState(state)[2];
   d := PState(state)[3];
 
-  MD5_Decode (@x, block, 64);
+  MD5_Decode(PCardinal(@x), block, 64);
 
   (* Round 1 *)
   MD5_FF(a, b, c, d, x[ 0], MD5_S11, $d76aa478); (* 1 *)
@@ -282,11 +282,11 @@ begin
   if (inputLen >= partLen) then
   begin
     move(input^, context.buffer[index], partLen);
-    MD5Transform (@context.state, @context.buffer);
+    MD5Transform(PCardinal(@context.state), PByte(@context.buffer));
     i := partLen;
     while i + 63 < inputLen do
     begin
-      MD5Transform(@context.state, @input[i]);
+      MD5Transform(PCardinal(@context.state), PByte(@input[i]));
       Inc(i, 64);
     end;
     index := 0;
@@ -326,7 +326,7 @@ var
   index, padLen: Cardinal;
 begin
   (* Save number of bits *)
-  MD5_Encode(@bits, @context.count, 8);
+  MD5_Encode(PByte(@bits), PCardinal(@context.count), 8);
 
   (* Pad out to 56 mod 64 *)
   index := (context.count[0] shr 3) and $3f;
@@ -334,13 +334,13 @@ begin
     padLen := 56 - index else
     padLen := 120 - index;
 
-  MD5Update(context, @MD5_PADDING, padLen);
+  MD5Update(context, PByte(@MD5_PADDING), padLen);
 
   (* Append length (before padding) *)
-  MD5Update(context, @bits, 8);
+  MD5Update(context, PByte(@bits), 8);
 
   (* Store state in digest *)
-  MD5_Encode(digest, @context.state, 16);
+  MD5_Encode(digest, PCardinal(@context.state), 16);
 end;
 
 procedure MD5(input: PByte; len: Cardinal; output: PByte);

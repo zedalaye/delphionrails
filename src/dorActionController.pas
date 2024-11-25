@@ -156,7 +156,7 @@ begin
   try
     stream.Size := Return.CalcSize;
     Return.SaveTo(stream);
-    SHA1(stream.Memory, stream.Size, @buffer);
+    SHA1(stream.Memory, stream.Size, PAnsiChar(@buffer));
     BinToHex(PAnsiChar(@buffer), PAnsiChar(@buffer2), SHA_DIGEST_LENGTH);
 
     if Request['env'].AsObject.S['if-none-match'] = string(buffer2) then

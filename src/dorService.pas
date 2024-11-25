@@ -221,7 +221,7 @@ var
   OldThreadId: Cardinal;
 begin
   ServiceStatusHandle := RegisterServiceCtrlHandler(
-    @Application.FName[1], @ServiceCtrlHandler);
+    LPCWSTR(Application.FName), LPHANDLER_FUNCTION(@ServiceCtrlHandler));
 
   if ServiceStatusHandle = 0 then
   begin
@@ -261,8 +261,8 @@ function StartService: boolean;
 var
   DispatchTable: array[0..1] of TServiceTableEntry;
 begin
-  DispatchTable[0].lpServiceName := @Application.Name[1];
-  DispatchTable[0].lpServiceProc := @ServiceMain;
+  DispatchTable[0].lpServiceName := LPCWSTR(Application.Name);
+  DispatchTable[0].lpServiceProc := LPSERVICE_MAIN_FUNCTIONW(@ServiceMain);
   DispatchTable[1].lpServiceName := nil;
   DispatchTable[1].lpServiceProc := nil;
   Result := StartServiceCtrlDispatcher(DispatchTable[0]);
@@ -301,7 +301,7 @@ begin
       if FDependencies <> '' then
         data := @FDependencies[1] else
         data := nil;
-      Service := CreateService(SCManager, @FName[1], @FDisplayName[1],
+      Service := CreateService(SCManager, LPCWSTR(FName), LPCWSTR(FDisplayName),
         SERVICE_QUERY_STATUS or SERVICE_CHANGE_CONFIG, FServiceType, FStartType,
         SERVICE_ERROR_NORMAL, Path, nil, nil, data, nil, nil);
 

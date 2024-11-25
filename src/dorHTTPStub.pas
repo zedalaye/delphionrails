@@ -721,7 +721,7 @@ begin
   if not ((str[0] = 'H') and (str[1] = 'T') and (str[2] = 'T') and
      (str[3] = 'P') and (str[4] = SL)) then
     Exit;
-  str := @str[5];
+  str := PChar(@str[5]);
 
   // version major
   marker := str;
@@ -1526,7 +1526,7 @@ function THTTPStub.Upgrade: Cardinal;
       Exit;
     challenge.part1 := bigendian(keyNumber1 div space1);
 	  challenge.part2 := bigendian(keyNumber2 div space2);
-    if MD5(@challenge, SizeOf(challenge), @response) = nil then
+    if MD5(PByte(@challenge), SizeOf(challenge), PByte(@response)) = nil then
       Exit;
     WriteLine('HTTP/1.1 101 WebSocket Protocol Handshake');
 	  WriteLine('Upgrade: WebSocket');
@@ -1561,8 +1561,8 @@ function THTTPStub.Upgrade: Cardinal;
     if not ObjectIsType(key, stString) then Exit;
 
     ret := AnsiString(key.AsString) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-    SHA1(PAnsiChar(ret), Length(ret), @buffer);
-    ret := RawByteString(BytesToBase64(@buffer, SizeOf(buffer)));
+    SHA1(PAnsiChar(ret), Length(ret), PAnsiChar(@buffer));
+    ret := RawByteString(BytesToBase64(PByte(@buffer), SizeOf(buffer)));
     WriteLine('HTTP/1.1 101 WebSocket Protocol Handshake');
 	  WriteLine('Upgrade: websocket');
 	  WriteLine('Connection: Upgrade');
@@ -2290,22 +2290,22 @@ begin
 {$if defined(DEBUG)}
     LuaDebug := TLuaDebug.Create;
 {$endif}
-    state := lua_newstate(@lua_app_alloc, nil);
+    state := lua_newstate(lua_Alloc(@lua_app_alloc), nil);
     try
       luaL_openlibs(state);
 
       lua_pushlightuserdata(state, Response);
       lua_setglobal(state, '@response');
-      lua_pushcfunction(state, @lua_print); // need @response
+      lua_pushcfunction(state, lua_CFunction(@lua_print)); // need @response
       lua_setglobal(state, 'print');
 
-      lua_pushcfunction(state, @lua_gettickcount);
+      lua_pushcfunction(state, lua_CFunction(@lua_gettickcount));
       lua_setglobal(state, 'gettickcount');
 
 {$if defined(DEBUG)}
       lua_pushlightuserdata(state, LuaDebug);
       lua_setglobal(state, '@debug');
-      lua_sethook(state, @script_hook, LUA_MASKCALL or LUA_MASKRET or LUA_MASKLINE, 0);
+      lua_sethook(state, lua_Hook(@script_hook), LUA_MASKCALL or LUA_MASKRET or LUA_MASKLINE, 0);
 {$endif}
 
       PushObject(Params, '__param_keys__');

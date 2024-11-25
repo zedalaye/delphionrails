@@ -881,11 +881,11 @@ end;
 
 function TRWSocket.Read(var buf; len, Timeout: Cardinal): Cardinal;
 var
- p: PByte;
+  p: PByte;
 begin
   if (FReadTimeout <> Timeout) then
   begin
-    setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @Timeout, SizeOf(Timeout));
+    setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, MarshaledAString(@Timeout), SizeOf(Timeout));
     FReadTimeout := Timeout;
   end;
 
@@ -913,7 +913,7 @@ begin
 
   if (FWriteTimeout <> Timeout) then
   begin
-    setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
+    setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, MarshaledAString(@Timeout), SizeOf(Timeout));
     FWriteTimeout := Timeout;
   end;
 
@@ -1046,7 +1046,7 @@ begin
   InputLen := SizeOf(InputAddress);
   while not Stopped do
   try
-    InputSocket := accept(FSocketHandle, @InputAddress, @InputLen);
+    InputSocket := accept(FSocketHandle, PSockAddr(@InputAddress), @InputLen);
     if (InputSocket <> INVALID_SOCKET) then
     begin
       if not Assigned(FOnSocketStub) then
@@ -1179,7 +1179,7 @@ function SSLError(const Ssl: PSSL; const ReturnCode: Integer; const SSLMethod: s
     err := ERR_get_error();
     while err <> SSL_ERROR_NONE do
     begin
-      ERR_error_string_n(err, @err_buf[0], ERROR_BUF_LEN);
+      ERR_error_string_n(err, PAnsiChar(@err_buf[0]), ERROR_BUF_LEN);
       err_msg := TEncoding.Default.GetString(err_buf);
       OutputDebugString(PChar(Format('%s=%d, ssl_error=%d (%s) %s', [
         SSLMethod, ReturnCode, ErrorCode, SSLErrorMsg(ErrorCode), err_msg
@@ -1358,7 +1358,7 @@ begin
   begin
     if (FReadTimeout <> Timeout) then
     begin
-      setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @Timeout, SizeOf(Timeout));
+      setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, MarshaledAString(@Timeout), SizeOf(Timeout));
       FReadTimeout := Timeout;
     end;
 
@@ -1396,7 +1396,7 @@ begin
 
     if (FWriteTimeout <> Timeout) then
     begin
-      setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, @Timeout, SizeOf(Timeout));
+      setsockopt(FSocket, SOL_SOCKET, SO_SNDTIMEO, PAnsiChar(@Timeout), SizeOf(Timeout));
       FWriteTimeout := Timeout;
     end;
 

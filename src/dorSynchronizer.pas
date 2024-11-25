@@ -49,7 +49,7 @@ var
   LocalSyncList: TList;
 begin
   if GetCurrentThreadID <> FMainThreadID then
-    raise EThread.CreateResFmt(@SCheckSynchronizeError, [GetCurrentThreadID]);
+    raise EThread.CreateResFmt(PResStringRec(@SCheckSynchronizeError), [GetCurrentThreadID]);
   if Timeout > 0 then
     WaitForSingleObject(SyncEvent, Timeout);
   ResetEvent(FSyncEvent);

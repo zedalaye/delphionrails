@@ -492,10 +492,10 @@ begin
   inSize := inStream.Read(inBuffer, bufferSize);
   while inSize > 0 do
   begin
-    zstream.next_in := @inBuffer;
+    zstream.next_in := PByte(@inBuffer);
     zstream.avail_in := inSize;
     repeat
-      zstream.next_out := @outBuffer;
+      zstream.next_out := PByte(@outBuffer);
       zstream.avail_out := bufferSize;
       if deflate(zstream, Z_NO_FLUSH) < Z_OK then
         goto error;
@@ -512,7 +512,7 @@ begin
   end;
 
   repeat
-    zstream.next_out := @outBuffer;
+    zstream.next_out := PByte(@outBuffer);
     zstream.avail_out := bufferSize;
     zresult := deflate(zstream, Z_FINISH);
     if zresult < Z_OK then
@@ -569,10 +569,10 @@ begin
 
   while inSize > 0 do
   begin
-    zstream.next_in := @inBuffer;
+    zstream.next_in := PByte(@inBuffer);
     zstream.avail_in := inSize;
     repeat
-      zstream.next_out := @outBuffer;
+      zstream.next_out := PByte(@outBuffer);
       zstream.avail_out := bufferSize;
       if inflate(zstream, Z_NO_FLUSH) < Z_OK then
         goto finish;
@@ -586,7 +586,7 @@ begin
   end;
 
   repeat
-    zstream.next_out := @outBuffer;
+    zstream.next_out := PByte(@outBuffer);
     zstream.avail_out := bufferSize;
     zresult := inflate(zstream, Z_FINISH);
     if not((zresult >= Z_OK) or (zresult = Z_BUF_ERROR)) then

@@ -658,7 +658,7 @@ begin
 
     { Upload finished, set receive timeout }
     t := Timeout * 1000;
-    setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @t, SizeOf(t));
+    setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, MarshaledAString(@t), SizeOf(t));
 
     if not HTTPParse(
       function (var buf; len: Integer): Integer
@@ -1218,7 +1218,7 @@ function SSLError(const Ssl: PSSL; const ReturnCode: Integer; const SSLMethod: s
     err := ERR_get_error();
     while err <> SSL_ERROR_NONE do
     begin
-      ERR_error_string_n(err, @err_buf[0], ERROR_BUF_LEN);
+      ERR_error_string_n(err, PAnsiChar(@err_buf[0]), ERROR_BUF_LEN);
       err_msg := TEncoding.Default.GetString(err_buf);
       OutputDebugString(PChar(Format('%s=%d, ssl_error=%d (%s) %s', [
         SSLMethod, ReturnCode, ErrorCode, SSLErrorMsg(ErrorCode), err_msg

@@ -848,20 +848,20 @@ begin
          C[1] := Base64Code[((V[0] shl 4) and $3F) or V[1] shr 4];
          C[2] := Base64Code[((V[1] shl 2) and $3F) or V[2] shr 6];
          C[3] := Base64Code[V[2] and $3F];
-         inc(Result, writer.Append(@C, 4));
+         inc(Result, writer.Append(PSOChar(@C), 4));
        end;
     2: begin
          C[0] := Base64Code[(V[0] shr 2) and $3F];
          C[1] := Base64Code[((V[0] shl 4) and $3F) or V[1] shr 4];
          C[2] := Base64Code[((V[1] shl 2) and $3F) or 0    shr 6];
-         inc(Result, writer.Append(@C, 3));
+         inc(Result, writer.Append(PSOChar(@C), 3));
          inc(Result, writer.Append(EQ2, 1));
          Break;
        end;
     1: begin
          C[0] := Base64Code[(V[0] shr 2) and $3F];
          C[1] := Base64Code[((V[0] shl 4) and $3F) or 0 shr 4];
-         inc(Result, writer.Append(@C, 2));
+         inc(Result, writer.Append(PSOChar(@C), 2));
          inc(Result, writer.Append(EQ2, 2));
          Break;
        end;

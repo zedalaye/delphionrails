@@ -995,7 +995,7 @@ redo:
             case AnsiChar(c) of
               '0'..'9':Position := (Position * 10) + (Ord(c) - 48);
               ';': begin
-                     Value.Append(@Position, 1);
+                     Value.Append(PAnsiChar(@Position), 1);
                      Stack^.state := Stack^.savedstate;
                    end;
             else
@@ -1011,7 +1011,7 @@ redo:
             if c = ';' then
             begin
               if Position < 256 then
-                Value.Append(@Position, 1)
+                Value.Append(PAnsiChar(@Position), 1)
               else
                 Value.Append(cp, Char(Position));
               Stack^.state := Stack^.savedstate;

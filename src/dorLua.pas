@@ -1186,8 +1186,8 @@ begin
   pr := PLuaTextProcessor(ud);
   inlen := pr.stream.Read(inbuffer, sizeof(inbuffer));
   outlen := 0;
-  pin := @inbuffer;
-  pout := @pr.outbuffer;
+  pin := PAnsiChar(@inbuffer);
+  pout := PAnsiChar(@pr.outbuffer);
   while (inlen > 0) do
   begin
     c := pin^;
@@ -1314,12 +1314,12 @@ redo:
     end;
     pr.state := lsStart;
   end;
-  Result := @pr.outbuffer;
+  Result := PAnsiChar(@pr.outbuffer);
   sz^ := outlen;
   Exit;
 needspace:
   pr.stream.Seek(-inlen, soFromCurrent);
-  Result := @pr.outbuffer;
+  Result := PAnsiChar(@pr.outbuffer);
   sz^ := outlen;
 end;
 
@@ -1334,7 +1334,7 @@ begin
   stream.Seek(0, soFromBeginning);
   if not((stream.Read(bom, 3) = 3) and (bom[0] = $EF) and (bom[1] = $BB) and (bom[2] = $BF)) then
     stream.Seek(0, soFromBeginning);
-  Result := lua_load(L, @lua_stream_reader, @processor, chunkname, mode);
+  Result := lua_load(L, lua_Reader(@lua_stream_reader), @processor, chunkname, mode);
 end;
 
 function lua_processsor_loadfile(L: Plua_State; const FileName: string; chunkname: PAnsiChar; mode: PAnsiChar): Integer;

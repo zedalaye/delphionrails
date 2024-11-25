@@ -489,12 +489,12 @@ begin
       HTTPWriteLine('Origin: ' + origin);
       HTTPWriteLine('sec-websocket-version: 13');
       CreateGUID(guid);
-      key := RawByteString(BytesToBase64(@guid, SizeOf(guid)));
+      key := RawByteString(BytesToBase64(PByte(@guid), SizeOf(guid)));
       HTTPWriteLine('sec-websocket-key: ' + key);
 
       key := AnsiString(key) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-      SHA1(PAnsiChar(key), Length(key), @buffer);
-      key := RawByteString(BytesToBase64(@buffer, SizeOf(buffer)));
+      SHA1(PAnsiChar(key), Length(key), PAnsiChar(@buffer));
+      key := RawByteString(BytesToBase64(PByte(@buffer), SizeOf(buffer)));
 
       if Assigned(FOnAddField) then
         FOnAddField(
@@ -510,7 +510,7 @@ begin
       dic := TDictionary<RawByteString, RawByteString>.Create;
       try
         ReadTimeOut := 3000;
-        setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
+        setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, MarshaledAString(@ReadTimeOut), SizeOf(ReadTimeOut));
         if not HTTPParse(
                  function (var buf; len: Integer): Integer
                  begin
@@ -564,7 +564,7 @@ begin
           end;
 
           ReadTimeOut := 0;
-          setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, @ReadTimeOut, SizeOf(ReadTimeOut));
+          setsockopt(FSocket, SOL_SOCKET, SO_RCVTIMEO, MarshaledAString(@ReadTimeOut), SizeOf(ReadTimeOut));
 
           FReadyState := rsOpen;
         end
