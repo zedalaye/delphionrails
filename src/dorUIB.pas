@@ -710,72 +710,93 @@ end;
 
 function TDBUIBQuery.GetInputMeta: ISuperObject;
 var
-  j: Integer;
+  J, index: Integer;
   rec: ISuperObject;
   prm: PUIBSQLVar;
+  byname: TDictionary<string, Integer>;
 begin
   if FSQLParams.FieldCount > 0 then
   begin
-    Result := TSuperObject.Create(stArray);
-    with Result.AsArray do
-      for j := 0 to FSQLParams.FieldCount - 1 do
-      begin
-        rec := TSuperObject.Create(stObject);
-        prm := @FSQLParams.Data.sqlvar[j];
-        if prm.ParamNameLength > 0 then
-          rec.S['name'] := LowerCase(string(copy(prm.ParamName, 1, prm.ParamNameLength)));
-        add(rec);
-        case FSQLParams.FieldType[j] of
-          uftChar, uftVarchar, uftCstring:
+    byname := TDictionary<string, Integer>.Create;
+    try
+      Result := TSuperObject.Create(stArray);
+      with Result.AsArray do
+        for J := 0 to FSQLParams.FieldCount - 1 do
+        begin
+          prm := @FSQLParams.Data.sqlvar[J];
+          if prm.ParamNameLength > 0 then
           begin
-            rec.S['type'] := 'str';
-            rec.I['length'] := FSQLParams.SQLLen[j] div BytesPerCharacter[csUTF8];
-          end;
-          uftSmallint: rec.S['type'] := 'int16';
-          uftInteger: rec.S['type'] := 'int32';
-          uftInt64: rec.S['type'] := 'int64';
-          uftNumeric:
+            var name := LowerCase(string(Copy(prm.ParamName, 1, prm.ParamNameLength)));
+            if byname.TryGetValue(name, index) then
+              rec := O[index]
+            else
             begin
-              rec.S['type'] := 'numeric';
-              rec.I['scale'] := -FSQLParams.SQLScale[j];
-              case FSQLParams.SqlType[j] of
-                SQL_SHORT:
-                  if FSQLParams.SQLScale[j] = -4 then
-                    rec.I['precision'] := 5
-                  else
-                    rec.I['precision'] := 4;
-                SQL_LONG:
-                  if FSQLParams.SQLScale[j] = -9 then
-                    rec.I['precision'] := 10
-                  else
-                    rec.I['precision'] := 9;
-                SQL_INT64:
-                  if FSQLParams.SQLScale[j] = -18 then
-                    rec.I['precision'] := 19
-                  else
-                    rec.I['precision'] := 18;
-              end;
+              rec := TSuperObject.Create(stObject);
+              rec.S['name'] := name;
+              byname.Add(name, Add(rec));
             end;
-
-          uftFloat: rec.S['type'] := 'float';
-          uftDoublePrecision: rec.S['type'] := 'double';
-          uftBlob, uftBlobId:
+          end
+          else
           begin
-            if FSQLParams.Data^.sqlvar[j].SqlSubType = 1 then
-              rec.S['type'] := 'str' else
-              rec.S['type'] := 'bin';
+            rec := TSuperObject.Create(stObject);
+            Add(rec);
           end;
-          uftTimestamp: rec.S['type'] := 'timestamp';
-          uftDate: rec.S['type'] := 'date';
-          uftTime: rec.S['type'] := 'time';
-        {$IFDEF UIB_HAVE_BOOLEAN}
-          uftBoolean: rec.S['type'] := 'bool';
-        {$ENDIF}
+
+          case FSQLParams.FieldType[j] of
+            uftChar, uftVarchar, uftCstring:
+            begin
+              rec.S['type'] := 'str';
+              rec.I['length'] := FSQLParams.SQLLen[j] div BytesPerCharacter[csUTF8];
+            end;
+            uftSmallint: rec.S['type'] := 'int16';
+            uftInteger: rec.S['type'] := 'int32';
+            uftInt64: rec.S['type'] := 'int64';
+            uftNumeric:
+              begin
+                rec.S['type'] := 'numeric';
+                rec.I['scale'] := -FSQLParams.SQLScale[j];
+                case FSQLParams.SqlType[j] of
+                  SQL_SHORT:
+                    if FSQLParams.SQLScale[j] = -4 then
+                      rec.I['precision'] := 5
+                    else
+                      rec.I['precision'] := 4;
+                  SQL_LONG:
+                    if FSQLParams.SQLScale[j] = -9 then
+                      rec.I['precision'] := 10
+                    else
+                      rec.I['precision'] := 9;
+                  SQL_INT64:
+                    if FSQLParams.SQLScale[j] = -18 then
+                      rec.I['precision'] := 19
+                    else
+                      rec.I['precision'] := 18;
+                end;
+              end;
+
+            uftFloat: rec.S['type'] := 'float';
+            uftDoublePrecision: rec.S['type'] := 'double';
+            uftBlob, uftBlobId:
+            begin
+              if FSQLParams.Data^.sqlvar[j].SqlSubType = 1 then
+                rec.S['type'] := 'str' else
+                rec.S['type'] := 'bin';
+            end;
+            uftTimestamp: rec.S['type'] := 'timestamp';
+            uftDate: rec.S['type'] := 'date';
+            uftTime: rec.S['type'] := 'time';
+          {$IFDEF UIB_HAVE_BOOLEAN}
+            uftBoolean: rec.S['type'] := 'bool';
+          {$ENDIF}
+          end;
+          if not FSQLParams.IsNullable[j] then
+            rec.B['notnull'] := true;
         end;
-        if not FSQLParams.IsNullable[j] then
-          rec.B['notnull'] := true;
-      end;
-  end else
+    finally
+      byname.Free;
+    end;
+  end
+  else
     Result := nil;
 end;
 
