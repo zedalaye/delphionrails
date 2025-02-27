@@ -1069,15 +1069,12 @@ begin
 
   uri    := FRequest.AsObject.S['uri'];
   method := FRequest.AsObject.S['method'];
-  origin := FRequest.AsObject.O['env'].AsObject.S['origin'];
+  origin := FRequest.S['env.origin'];
 
   if method = 'OPTIONS' then
   begin
-    with FRequest.AsObject.O['env'].AsObject do
-    begin
-      method := S['access-control-request-method'];
-      allowed_headers := S['access-control-request-headers'];
-    end;
+    method := FRequest.S['env.access-control-request-method'];
+    allowed_headers := FRequest.S['env.access-control-request-headers'];
 
     { CORS Preflight request }
 
@@ -1130,8 +1127,9 @@ begin
   if Stopped or (FResponse.FContent.Size > 0) or (FErrorCode = 204) or (FErrorCode >= 300) then
     Exit;
 
-  { Early return if the action was not a GET or a POST }
-  if (FRequest.AsObject.S['method'] <> 'GET') and (FRequest.AsObject.S['method'] <> 'POST') then
+  { Early return if the original action was not a GET or a POST }
+  method := FRequest.AsObject.S['method'];
+  if (method <> 'GET') and (method <> 'POST') then
     Exit;
 
   { Prepare to send a file }
