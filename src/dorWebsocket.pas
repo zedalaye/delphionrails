@@ -50,6 +50,7 @@ type
     property OnPong: TWSMessage read GetOnPong write SetOnPong;
     property OnBinaryData: TWSBinary read GetOnBinaryData write SetOnBinaryData;
 
+    { not synchronized - beware to avoid UI changes }
     property OnAddField: TOnHTTPAddField read GetOnAddField write SetOnAddField;
 
     property ReadyState: TWSReadyState read GetReadyState;
@@ -86,8 +87,8 @@ type
     FCertCAFile: AnsiString;
     FBuffer: array[0..BUFFER_SIZE - 1] of Byte;
     FBufferPos: Cardinal;
-    procedure InternalClose(WaitThread: Boolean);
-    procedure StartRead;
+    procedure InternalClose;
+    procedure StartRead({$ifndef RELEASE}const UrlForDebugging: string{$endif});
     procedure HTTPWriteLine(const data: RawByteString);
     function SockSend(var Buf; len, flags: Integer): Integer;
     function SockRecv(var Buf; len, flags: Integer): Integer;
@@ -301,40 +302,51 @@ begin
   inherited;
 end;
 
-procedure TWebSocket.InternalClose(WaitThread: Boolean);
+procedure TWebSocket.InternalClose;
 begin
   if FReadyState = rsOpen then
   begin
     FReadyState := rsClosing;
 
-    closesocket(FSocket); // this will cause the listen thread to stop
-    if WaitThread and Assigned(FReadThread) then
+    if FSocket <> INVALID_SOCKET then
     begin
-      FReadThread.WaitFor;
-      FreeAndNil(FReadThread);
+      shutdown(FSocket, SD_BOTH);
+      closesocket(FSocket); // this will cause the listen thread to stop
+      FSocket := INVALID_SOCKET;
+      Sleep(1);
     end;
 
-    FSocket := INVALID_SOCKET;
-    FReadyState := rsClosed;
-    if Assigned(FOnClose) then
-      FOnClose();
-  end;
-  if Fssl <> nil then
-  begin
-    SSL_free(FSsl);
-    FSsl := nil;
-  end;
-  if Fctx <> nil then
-  begin
-    SSL_CTX_free(FCtx);
-    FCtx := nil;
-  end;
+    if FSsl <> nil then
+    begin
+      SSL_free(FSsl);
+      FSsl := nil;
+    end;
 
+    if FCtx <> nil then
+    begin
+      SSL_CTX_free(FCtx);
+      FCtx := nil;
+    end;
+
+    FReadyState := rsClosed;
+
+    // this method can be called by FReadThread so it must be synchronized
+    if FThreadSync then
+      TThread.Synchronize(nil,
+        procedure
+        begin
+          if Assigned(FOnClose) then
+            FOnClose();
+        end
+      )
+    else if Assigned(FOnClose) then
+      FOnClose;
+  end;
 end;
 
 procedure TWebSocket.Close;
 begin
-  InternalClose(True);
+  InternalClose;
 end;
 
 procedure TWebSocket.HTTPWriteLine(const data: RawByteString);
@@ -379,6 +391,7 @@ begin
 
     if not HTTPParseURL(PChar(local_url), protocol, domain, port, uri, True) then
     begin
+      // no need to synchronize
       if Assigned(FOnError) then
         FOnError(Format('Can''t parse url: %s', [local_url]));
       Exit;
@@ -398,6 +411,7 @@ begin
     end
     else
     begin
+      // no need to synchronize
       if Assigned(FOnError) then
         FOnError('Invalid protocol');
       Exit;
@@ -407,6 +421,7 @@ begin
     host := gethostbyname(PAnsiChar(domain));
     if host = nil then
     begin
+      // no need to synchronize
       if Assigned(FOnError) then
         FOnError(Format('Host not found: %s', [domain]));
       Exit;
@@ -417,6 +432,7 @@ begin
     try
       if FSocket = INVALID_SOCKET then
       begin
+        // no need to synchronize
         if Assigned(FOnError) then
           FOnError('Unexpected error: can''t allocate socket handle.');
         Exit;
@@ -429,6 +445,7 @@ begin
       PSockAddrIn(@addr).sin_addr.S_addr := PInteger(host.h_addr^)^;
       if connect(FSocket, addr, SizeOf(addr)) <> 0 then
       begin
+        // no need to synchronize
         if Assigned(FOnError) then
           FOnError(format('Cant''t connect to host: %s:%d', [domain, port]));
         Exit;
@@ -449,6 +466,7 @@ begin
             if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_PEM) <> 1 then
               if SSL_CTX_use_certificate_file(FCtx, PAnsiChar(FCertificateFile), SSL_FILETYPE_ASN1) <> 1 then
               begin
+                // no need to synchronize
                 if Assigned(FOnError) then
                   FOnError('SSL: Can''t use certificate');
                 Exit;
@@ -458,6 +476,7 @@ begin
           if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_PEM) <> 1 then
             if SSL_CTX_use_RSAPrivateKey_file(FCtx, PAnsiChar(FPrivateKeyFile), SSL_FILETYPE_ASN1) <> 1 then
             begin
+              // no need to synchronize
               if Assigned(FOnError) then
                 FOnError('SSL: Can''t use key file');
               Exit;
@@ -466,6 +485,7 @@ begin
         if FCertCAFile <> '' then
           if SSL_CTX_load_verify_locations(FCtx, PAnsiChar(FCertCAFile), nil) <> 1 then
           begin
+            // no need to synchronize
             if Assigned(FOnError) then
               FOnError('SSL: Can''t use CA Cert');
             Exit;
@@ -475,6 +495,7 @@ begin
         SSL_set_fd(FSsl, FSocket);
         if SSL_connect(FSsl) <> 1 then
         begin
+          // no need to synchronize
           if Assigned(FOnError) then
             FOnError('SSL: connection error');
           Exit;
@@ -496,6 +517,7 @@ begin
       SHA1(PAnsiChar(key), Length(key), PAnsiChar(@buffer));
       key := RawByteString(BytesToBase64(PByte(@buffer), SizeOf(buffer)));
 
+      // not synchronized !
       if Assigned(FOnAddField) then
         FOnAddField(
           function (const key: RawByteString; const value: RawByteString): Boolean
@@ -522,6 +544,7 @@ begin
                    http_msg := string(mesg);
 
                    Result := (code=101) or (code=301) or (code=302);
+                   // no need to synchronize
                    if not Result and Assigned(FOnError) then
                      FOnError(Format('Invalid response code: %d %s', [code, mesg]));
                  end,
@@ -544,6 +567,7 @@ begin
                  (dic.TryGetValue('connection', value) and (LowerCase(string(value)) = 'upgrade')))
           then
           begin
+            // no need to synchronize
             if Assigned(FOnError) then
               FOnError('Invalid upgrade header field');
             Exit;
@@ -551,6 +575,7 @@ begin
 
           if not dic.TryGetValue('sec-websocket-accept', value) then
           begin
+            // no need to synchronize
             if Assigned(FOnError) then
               FOnError('Invalid Sec-WebSocket-Accept header field');
             Exit;
@@ -558,6 +583,7 @@ begin
 
           if key <> value then
           begin
+            // no need to synchronize
             if Assigned(FOnError) then
               FOnError('Websocket challenge failed');
             Exit;
@@ -588,9 +614,10 @@ begin
 
   if FReadyState = rsOpen then
   begin
+    // no need to synchronize
     if Assigned(FOnOpen) then
       FOnOpen();
-    StartRead;
+    StartRead({$ifndef RELEASE}local_url{$endif});
   end;
 end;
 
@@ -689,6 +716,7 @@ begin
   if FAutoPong then
     Output($80 or OPPong, PAnsiChar(data), Length(data));
 
+  // this method can be called by FReadThread so it must be synchronized
   if FThreadSync then
     TThread.Synchronize(nil,
       procedure
@@ -709,6 +737,7 @@ begin
   payload.Seek(0, soFromBeginning);
   payload.Read(PAnsiChar(data)^, payload.Size);
 
+  // this method can be called by FReadThread so it must be synchronized
   if FThreadSync then
     TThread.Synchronize(nil,
       procedure
@@ -729,6 +758,7 @@ begin
   payload.Seek(0, soFromBeginning);
   payload.Read(PAnsiChar(data)^, payload.Size);
 
+  // this method can be called by FReadThread so it must be synchronized
   if FThreadSync then
     TThread.Synchronize(nil,
       procedure
@@ -745,6 +775,7 @@ procedure TWebSocket.HandleBinary(var payload: TPooledMemoryStream);
 begin
   payload.Seek(0, soBeginning);
 
+  // this method can be called by FReadThread so it must be synchronized
   if FThreadSync then
   begin
     var buffer := TPooledMemoryStream.Create;
@@ -767,7 +798,7 @@ begin
   payload := TPooledMemoryStream.Create
 end;
 
-procedure TWebSocket.StartRead;
+procedure TWebSocket.StartRead({$ifndef RELEASE}const UrlForDebugging: string{$endif});
 begin
   FReadThread := TThreadIt.Create(
     procedure
@@ -802,145 +833,159 @@ begin
       end;
 
     begin
-      state := stStart;
-      pos := 0;
-      payloadLength := 0;
-      opcode := 0;
-      fin := False;
-      closecode := 0;
-      havemask := False;
+    {$ifndef RELEASE}
+      TThread.NameThreadForDebugging(Format('WS ReadThread (%s)', [UrlForDebugging]));
+    {$endif}
 
-      stream := TPooledMemoryStream.Create;
       try
-        while (FReadyState = rsOpen) and (SockRecv(b, 1, 0) = 1) do
-        begin
-          case state of
-            stStart:
-              begin
-                fin := (b and $80) <> 0;
-                if (b and $70) <> 0 then Exit; // reserved
-                opcode := b and $0F;
-                closecode := 0;
-                state := stNext;
-              end;
-            stNext:
-              begin
-                havemask := b and $80 = 1;
-                payloadLength := b and $7F;
+        state := stStart;
+        pos := 0;
+        payloadLength := 0;
+        opcode := 0;
+        fin := False;
+        closecode := 0;
+        havemask := False;
 
-                if (payloadLength < 126) then
+        stream := TPooledMemoryStream.Create;
+        try
+          while (FReadyState = rsOpen) and (SockRecv(b, 1, 0) = 1) do
+          begin
+            case state of
+              stStart:
+                begin
+                  fin := (b and $80) <> 0;
+                  if (b and $70) <> 0 then Exit; // reserved
+                  opcode := b and $0F;
+                  closecode := 0;
+                  state := stNext;
+                end;
+              stNext:
+                begin
+                  havemask := b and $80 = 1;
+                  payloadLength := b and $7F;
+
+                  if (payloadLength < 126) then
+                  begin
+                    if havemask then
+                      state := stMask
+                    else
+                      EndMask;
+                    pos := 0;
+                  end
+                  else if (payloadLength = 126) then
+                  begin
+                    pos := 0;
+                    state := stPayload16;
+                  end
+                  else { payloadLength = 127 }
+                  begin
+                    pos := 0;
+                    state := stPayload64;
+                  end;
+                end;
+              stPayload16:
+                begin
+                  case pos of
+                    0: payloadLength := b;
+                    1:
+                      begin
+                        payloadLength := payloadLength shl 8 or b;
+                        if havemask then
+                          state := stMask
+                        else
+                          EndMask;
+                        pos := 0;
+                        Continue;
+                      end;
+                  end;
+                  Inc(pos);
+                end;
+              stPayload64:
+                begin
+                  case pos of
+                    0   : payloadLength := b;
+                    1..6: payloadLength := payloadLength shl 8 or b;
+                    7:
+                      begin
+                        payloadLength := payloadLength shl 8 or b;
+                        if havemask then
+                          state := stMask
+                        else
+                          EndMask;
+                        pos := 0;
+                        Continue
+                      end;
+                  end;
+                  Inc(pos);
+                end;
+              stMask:
+                case pos of
+                  0..2:
+                    begin
+                      mask[pos] := b;
+                      Inc(pos);
+                    end;
+                  3:
+                    begin
+                      mask[3] := b;
+                      EndMask;
+                    end;
+                end;
+              stData:
                 begin
                   if havemask then
-                    state := stMask
+                    b := b xor mask[pos mod 4];
+
+                  case opcode of
+                    OPClose: closecode := closecode shl 8 or b;
                   else
-                    EndMask;
-                  pos := 0;
-                end
-                else if (payloadLength = 126) then
-                begin
-                  pos := 0;
-                  state := stPayload16;
-                end
-                else { payloadLength = 127 }
-                begin
-                  pos := 0;
-                  state := stPayload64;
-                end;
-              end;
-            stPayload16:
-              begin
-                case pos of
-                  0: payloadLength := b;
-                  1:
+                    stream.Write(b, 1);
+                  end;
+
+                  Dec(payloadLength);
+                  Inc(pos);
+
+                  if (payloadLength = 0) then
+                  begin
+                    if fin and (opcode <> OPContinuation) and (FReadyState = rsOpen) then
                     begin
-                      payloadLength := payloadLength shl 8 or b;
-                      if havemask then
-                        state := stMask
-                      else
-                        EndMask;
-                      pos := 0;
-                      Continue;
+                      case opcode of
+                        OPClose:  Break;
+                        OPPing:   HandlePing(stream);
+                        OPPong:   HandlePong(stream);
+                        OPText:   HandleText(stream);
+                        OPBinary: HandleBinary(stream);
+                      end;
+                      stream.Size := 0;
                     end;
-                end;
-                Inc(pos);
-              end;
-            stPayload64:
-              begin
-                case pos of
-                  0   : payloadLength := b;
-                  1..6: payloadLength := payloadLength shl 8 or b;
-                  7:
-                    begin
-                      payloadLength := payloadLength shl 8 or b;
-                      if havemask then
-                        state := stMask
-                      else
-                        EndMask;
-                      pos := 0;
-                      Continue
-                    end;
-                end;
-                Inc(pos);
-              end;
-            stMask:
-              case pos of
-                0..2:
-                  begin
-                    mask[pos] := b;
-                    Inc(pos);
+                    state := stStart;
                   end;
-                3:
-                  begin
-                    mask[3] := b;
-                    EndMask;
-                  end;
-              end;
-            stData:
-              begin
-                if havemask then
-                  b := b xor mask[pos mod 4];
-
-                case opcode of
-                  OPClose: closecode := closecode shl 8 or b;
-                else
-                  stream.Write(b, 1);
                 end;
-
-                Dec(payloadLength);
-                Inc(pos);
-
-                if (payloadLength = 0) then
-                begin
-                  if fin and (opcode <> OPContinuation) and (FReadyState = rsOpen) then
-                  begin
-                    case opcode of
-                      OPClose:  Break;
-                      OPPing:   HandlePing(stream);
-                      OPPong:   HandlePong(stream);
-                      OPText:   HandleText(stream);
-                      OPBinary: HandleBinary(stream);
-                    end;
-                    stream.Size := 0;
-                  end;
-                  state := stStart;
-                end;
-              end;
+            end;
           end;
+        finally
+          stream.Free;
         end;
-      finally
-        stream.Free;
-      end;
 
-      if FReadyState = rsOpen then // remotely closed
-        if FThreadSync then
-          TThread.Synchronize(nil,
-            procedure
-            begin
-              Close;
-            end
-          )
-        else
-          InternalClose(False);
+        if FReadyState = rsOpen then // remotely closed
+          InternalClose;
+
+      except
+        on E: Exception do
+        begin
+          { Exceptions must never leak from a thread }
+          if FThreadSync then
+            TThread.Synchronize(nil,
+              procedure
+              begin
+                if Assigned(FOnError) then
+                  FOnError(Format('ReadThread Error (%s): "%s"', [E.ClassName, E.Message]));
+              end
+            )
+          else if Assigned(FOnError) then
+            FOnError(Format('ReadThread Error (%s): "%s"', [E.ClassName, E.Message]));
+        end;
+      end;
     end
   );
   FReadThread.Start;
@@ -1007,37 +1052,42 @@ end;
 
 function TWebSocket.SockSend(var Buf; len, flags: Integer): Integer;
 var
-  l: Cardinal;
-  p: PByte;
+  L: Cardinal;
+  P: PByte;
 begin
   Result := len;
 
-  l := Min(len, BUFFER_SIZE - FBufferPos);
-  p := PByte(@buf);
-  while l > 0 do
+  L := Min(len, BUFFER_SIZE - FBufferPos);
+  P := PByte(@buf);
+  while L > 0 do
   begin
-    Move(p^, FBuffer[FBufferPos], l);
-    Dec(len, l);
-    Inc(p, l);
-    Inc(FBufferPos, l);
+    Move(P^, FBuffer[FBufferPos], L);
+    Dec(len, L);
+    Inc(P, L);
+    Inc(FBufferPos, L);
 
     if FBufferPos = BUFFER_SIZE then
     begin
       if FSsl <> nil then
         SSL_write(FSsl, @FBuffer, BUFFER_SIZE)
+      else if FSocket <> INVALID_SOCKET then
+        WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0)
       else
-        WinSock2.send(FSocket, FBuffer, BUFFER_SIZE, 0);
+        Exit(0);
+
       FBufferPos := 0;
     end;
-    l := Min(len, BUFFER_SIZE - FBufferPos);
+
+    L := Min(len, BUFFER_SIZE - FBufferPos);
   end;
 end;
 
 function TWebSocket.SockRecv(var Buf; len, flags: Integer): Integer;
 begin
+  Result := 0;
   if FSsl <> nil then
     Result := SSL_read(FSsl, @Buf, len)
-  else
+  else if FSocket <> INVALID_SOCKET then
     Result := recv(FSocket, Buf, len, flags);
 end;
 
