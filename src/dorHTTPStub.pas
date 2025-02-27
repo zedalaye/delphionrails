@@ -2012,19 +2012,29 @@ class function TRequestProcessor.PrepareStaticFile(const Formats: ISuperObject;
   const Request: THTTPMessage; const Params: ISuperObject; const Response: THTTPMessage;
   var IsStatic, Compress: Boolean; var FileToSend: string; var ErrorCode: Integer;
   const GetRootPathProc: TGetPathProc): Boolean;
+const
+  STATIC_DIR = 'static';
 var
-  str, path: string;
+  path, static_path, final_path, rel, str: string;
   rec: TSearchRec;
 begin
   Result := False;
 
-  str := Request.S['uri'];
-  path := GetRootPathProc + 'static';
+  path := GetRootPathProc;
+  static_path := path + STATIC_DIR;
 
-  if (AnsiChar(str[Length(str)]) in ['/','\']) then
-    str := str + 'index.' + Params.AsObject.S['format'];
+  rel := Request.S['uri'];
+  if AnsiChar(rel[Length(rel)]) in ['/','\'] then
+    rel := rel + 'index.' + Params.AsObject.S['format'];
 
-  if FindFirst(path + str, faAnyFile, rec) = 0 then
+  str := static_path + rel;
+  final_path := ExpandFileName(str);
+  str := '';
+
+  if Pos(static_path, final_path) <> 1 then
+    Exit;
+
+  if FindFirst(final_path, faAnyFile, rec) = 0 then
   begin
     Result := True;
 
@@ -2045,7 +2055,7 @@ begin
     end;
     Response.AsObject.S['Cache-Control'] := 'public, no-cache';
     Response.AsObject.S['ETag'] := IntToStr(rec.Time) + '-' + IntToStr(rec.Size);
-    FileToSend := path + str;
+    FileToSend := final_path;
     Compress := Formats.B[Params.AsObject.S['format'] + '.istext'];
     FindClose(rec);
     ErrorCode := 200;
@@ -2275,17 +2285,29 @@ var
     lua_setglobal(state, PAnsiChar(UTF8Encode(GlobalName)));
   end;
 
+const
+  VIEWS_DIR = 'view';
+  LAYOUTS_DIR = 'layout';
 var
-  path, str, rel: string;
+  path, views_path, layouts_path, rel, str, final_path: string;
 begin
   Result := False;
+
   path := GetRootPathProc;
+  views_path := path + VIEWS_DIR + '\';
+  layouts_path := path + LAYOUTS_DIR + '\';
 
   with Params.AsObject do
-    rel := 'view/' + S['controller'] + '/' + S['action'] + '.' + S['format'];
-  str := path + rel;
+    rel := S['controller'] + '/' + S['action'] + '.' + S['format'];
 
-  if FileExists(str) then
+  str := views_path + rel;
+  final_path := ExpandFileName(str);
+  str := '';
+
+  if Pos(views_path, final_path) <> 1 then
+    Exit;
+
+  if FileExists(final_path) then
   begin
 {$if defined(DEBUG)}
     LuaDebug := TLuaDebug.Create;
@@ -2314,22 +2336,36 @@ begin
       lua_pushsuperobject(state, Session);
       lua_setglobal(state, 'session');
 
-      if lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
+      if lua_processsor_dofile(state, final_path, PAnsiChar(UTF8String(VIEWS_DIR + '/' + rel)), 't') then
       begin
         with Params.AsObject do
-          rel := 'layout/' + S['controller'] + '.' + S['format'];
-        str := path + rel;
-        if FileExists(str) then
+          rel := S['controller'] + '.' + S['format'];
+
+        str := layouts_path + rel;
+        final_path := ExpandFileName(str);
+        str := '';
+
+        if Pos(layouts_path, final_path) <> 1 then
+          Exit;
+
+        if FileExists(final_path) then
         begin
-          if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
+          if not lua_processsor_dofile(state, final_path, PAnsiChar(UTF8String(LAYOUTS_DIR + '/' + rel)), 't') then
             printerror;
         end
         else
         begin
-          rel := 'layout/application.' + Params.AsObject.S['format'];
-          str := path + rel;
-          if FileExists(str) then
-            if not lua_processsor_dofile(state, str, PAnsiChar(UTF8String(rel)), 't') then
+          rel := 'application.' + Params.AsObject.S['format'];
+
+          str := layouts_path + rel;
+          final_path := ExpandFileName(str);
+          str := '';
+
+          if Pos(layouts_path, final_path) <> 1 then
+            Exit;
+
+          if FileExists(final_path) then
+            if not lua_processsor_dofile(state, final_path, PAnsiChar(UTF8String(LAYOUTS_DIR + '/' + rel)), 't') then
                printerror;
         end;
       end
