@@ -253,11 +253,16 @@ type
     procedure WriteToPNGStream(stream: TStream);
 {$endif}
     procedure GetFontOptions(options: ICairoFontOptions);
-    procedure Flush;
-    procedure MarkDirty;
-    procedure MarkDirtyRectangle(x, y, width, height: Integer);
-    procedure SetDeviceOffset(xOffset, yOffset: Double);
-    procedure GetDeviceOffset(var xOffset, yOffset: Double);
+
+    procedure Flush;
+
+    procedure MarkDirty;
+
+    procedure MarkDirtyRectangle(x, y, width, height: Integer);
+
+    procedure SetDeviceOffset(xOffset, yOffset: Double);
+
+    procedure GetDeviceOffset(var xOffset, yOffset: Double);
     procedure SetFallbackResolution(xPixelsPerInch, yPixelsPerInch: Double);
     procedure GetFallbackResolution(var xPixelsPerInch, yPixelsPerInch: Double);
     procedure CopyPage;
