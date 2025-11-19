@@ -61,7 +61,7 @@ begin
   with pool.Connection.Transaction do
     data := Singleton('select * from blog where id = ?', [id]);
   if data = nil then
-    SetErrorCode(404);
+    ErrorCode := 404;
 end;
 
 initialization

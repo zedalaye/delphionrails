@@ -9,17 +9,16 @@ uses
 type
   TChatWebsocket = class(TApplicationWebsocket)
   public
+    procedure Initialize; override;
     procedure InputMessage(const msg, source: string); override;
-    constructor Create(Version: Integer); override;
   end;
 
 implementation
 
 { TChatWebsocket }
 
-constructor TChatWebsocket.Create(Version: Integer);
+procedure TChatWebsocket.Initialize;
 begin
-  inherited Create(Version);
   RegisterEvent('chatmessage',
     procedure (const event: ISuperObject) begin
       OutputMessage(event.S['msg']);
