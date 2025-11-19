@@ -43,9 +43,9 @@ type
 
 const
 {$IFDEF UNIX}
-  LUA_LIB = 'liblua5.4.7.so';
+  LUA_LIB = 'liblua5.4.8.so';
 {$ELSE}
-  LUA_LIB = 'lua5.4.7.dll';
+  LUA_LIB = 'lua5.4.8.dll';
 {$ENDIF}
 
 const
