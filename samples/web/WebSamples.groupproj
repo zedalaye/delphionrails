@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{35D4A2E1-2B5D-44A7-A09D-DC8FC6483AB7}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="server\DORServer.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="client\client.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="DORServer">
+        <MSBuild Projects="server\DORServer.dproj"/>
+    </Target>
+    <Target Name="DORServer:Clean">
+        <MSBuild Projects="server\DORServer.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="DORServer:Make">
+        <MSBuild Projects="server\DORServer.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="client">
+        <MSBuild Projects="client\client.dproj"/>
+    </Target>
+    <Target Name="client:Clean">
+        <MSBuild Projects="client\client.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="client:Make">
+        <MSBuild Projects="client\client.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="DORServer;client"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="DORServer:Clean;client:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="DORServer:Make;client:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

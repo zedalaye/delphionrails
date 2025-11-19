@@ -7,9 +7,8 @@ program DORServer;
 {$R *.res}
 
 uses
-{$ifdef MADEXCEPT}
-  madExcept,
-{$endif}
+  {$ifdef MADEXCEPT}
+  {$endif }
   dorService,
   mypool in 'mypool.pas',
   application_controller in 'application_controller.pas',
@@ -20,7 +19,8 @@ uses
   application_view in 'application_view.pas',
   application_websocket in 'application_websocket.pas',
   chat_websocket in 'chat_websocket.pas',
-  WebServer in 'WebServer.pas';
+  WebServer in 'WebServer.pas',
+  chat_controller in 'chat_controller.pas';
 
 begin
 {$IFDEF DEBUG}
