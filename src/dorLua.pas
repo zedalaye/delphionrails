@@ -65,9 +65,9 @@ const
 
 const
   LUA_VERSION = 'Lua 5.4';
-  LUA_RELEASE = 'Lua 5.4.7';
+  LUA_RELEASE = 'Lua 5.4.8';
   LUA_VERSION_NUM = 504;
-  LUA_COPYRIGHT = 'Copyright (C) 1994-2024 Lua.org, PUC-Rio';
+  LUA_COPYRIGHT = 'Copyright (C) 1994-2025 Lua.org, PUC-Rio';
   LUA_AUTHORS  = 'R. Ierusalimschy, L. H. de Figueiredo, W. Celes';
 
 
