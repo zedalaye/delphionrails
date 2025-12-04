@@ -18,7 +18,7 @@ unit dorActionController;
 interface
 
 uses
-  SysUtils, Classes, Rtti,
+  SysUtils, Classes, Rtti, Hash, NetEncoding,
   superobject,
   dorSocketStub, dorHTTPStub;
 
@@ -149,22 +149,21 @@ end;
 procedure TActionController.CalcETag;
 var
   stream: TMemoryStream;
-  buffer: array[0..SHA_DIGEST_LENGTH - 1] of AnsiChar;
-  buffer2: array[0..(SHA_DIGEST_LENGTH * 2) - 1] of AnsiChar;
+  buffer: string;
 begin
   stream := TMemoryStream.Create;
   try
     stream.Size := Return.CalcSize;
     Return.SaveTo(stream);
-    SHA1(stream.Memory, stream.Size, PAnsiChar(@buffer));
-    BinToHex(PAnsiChar(@buffer), PAnsiChar(@buffer2), SHA_DIGEST_LENGTH);
 
-    if Request['env'].AsObject.S['if-none-match'] = string(buffer2) then
+    buffer := THashSHA1.GetHashString(stream);
+
+    if Request['env'].AsObject.S['if-none-match'] = buffer then
       ErrorCode := 304
     else
     begin
       Response.AsObject.S['Cache-Control'] := 'max-age=946080000, public';
-      Response.AsObject.S['ETag'] := string(buffer2);
+      Response.AsObject.S['ETag'] := buffer;
     end;
   finally
     stream.Free;

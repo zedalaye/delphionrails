@@ -4,7 +4,7 @@ interface
 
 uses
   WinSock2,
-  SysUtils, Classes, Math, AnsiStrings, Generics.Collections, SyncObjs,
+  SysUtils, Classes, Math, AnsiStrings, Generics.Collections, SyncObjs, Hash, NetEncoding,
   dorHTTP, dorOpenSSL, dorUtils;
 
 type
@@ -375,7 +375,6 @@ var
   value: RawByteString;
   key: RawByteString;
   guid: TGUID;
-  buffer: array[0..SHA_DIGEST_LENGTH - 1] of AnsiChar;
 begin
   FAutoPong := autoPong;
 
@@ -509,20 +508,21 @@ begin
       HTTPWriteLine('Host: ' + domain);
       HTTPWriteLine('Origin: ' + origin);
       HTTPWriteLine('sec-websocket-version: 13');
+
       CreateGUID(guid);
       key := RawByteString(BytesToBase64(PByte(@guid), SizeOf(guid)));
       HTTPWriteLine('sec-websocket-key: ' + key);
 
-      key := AnsiString(key) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-      SHA1(PAnsiChar(key), Length(key), PAnsiChar(@buffer));
-      key := RawByteString(BytesToBase64(PByte(@buffer), SizeOf(buffer)));
+      key := RawByteString(TNetEncoding.Base64String.EncodeBytesToString(
+        THashSHA1.GetHashBytes(string(key) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+      ));
 
       // not synchronized !
       if Assigned(FOnAddField) then
         FOnAddField(
           function (const key: RawByteString; const value: RawByteString): Boolean
           begin
-            HTTPWriteLine(RawbyteString(key) + ': ' + value);
+            HTTPWriteLine(RawByteString(key) + ': ' + value);
             Result := True;
           end
         );

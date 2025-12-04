@@ -21,7 +21,7 @@ uses
 {$IFDEF MSWINDOWS}
   Windows,
 {$ENDIF}
-  SysUtils, StrUtils, Classes, Rtti,
+  SysUtils, StrUtils, Classes, Rtti, Hash, NetEncoding,
 {$IFDEF DEBUG}
   Diagnostics,
 {$ENDIF}
@@ -201,7 +201,8 @@ implementation
 
 uses
   superxmlparser,
-  dorOpenSSL, dorOpenSslHelpers, dorHTTP, dorLua,
+  dorOpenSslHelpers, dorOpenSSL,
+  dorHTTP, dorLua,
   dorActionController, dorActionView, dorActionWebsocket
   {$ifdef madExcept}, madexcept {$endif}
   {$ifdef UNICODE}, AnsiStrings{$endif}
@@ -1498,7 +1499,7 @@ function THTTPStub.Upgrade: Cardinal;
       part1, part2: Cardinal;
       key3: array[0..7] of Byte;
     end;
-    response: array[0..MD5_DIGEST_LENGTH - 1] of Byte;
+    response: TBytes;
   begin
     Result := 0;
     origin := FRequest['env.origin'];
@@ -1524,8 +1525,11 @@ function THTTPStub.Upgrade: Cardinal;
       Exit;
     challenge.part1 := bigendian(keyNumber1 div space1);
 	  challenge.part2 := bigendian(keyNumber2 div space2);
-    if MD5(PByte(@challenge), SizeOf(challenge), PByte(@response)) = nil then
-      Exit;
+
+    var MD5 := THashMD5.Create;
+    MD5.Update(challenge, SizeOf(challenge));
+    response := MD5.HashAsBytes;
+
     WriteLine('HTTP/1.1 101 WebSocket Protocol Handshake');
 	  WriteLine('Upgrade: WebSocket');
 	  WriteLine('Connection: Upgrade');
@@ -1535,7 +1539,7 @@ function THTTPStub.Upgrade: Cardinal;
     if ObjectIsType(protocol, stString) then
       WriteLine('Sec-WebSocket-Protocol: ' + RawByteString(protocol.asstring));
     WriteLine('');
-    Source.Write(response, SizeOf(response), 0);
+    Source.Write(response[0], Length(response), 0);
     Source.Flush;
     Result := WebSocket;
   end;
@@ -1543,8 +1547,7 @@ function THTTPStub.Upgrade: Cardinal;
   function doWebSocketNew: Cardinal;
   var
     key, origin: ISuperObject;
-    ret: RawByteString;
-    buffer: array[0..SHA_DIGEST_LENGTH - 1] of AnsiChar;
+    response: string;
   begin
     Result := 0;
     origin := FRequest['env.sec-websocket-origin'];
@@ -1558,14 +1561,15 @@ function THTTPStub.Upgrade: Cardinal;
     key := FRequest['env.sec-websocket-key'];
     if not ObjectIsType(key, stString) then Exit;
 
-    ret := AnsiString(key.AsString) + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-    SHA1(PAnsiChar(ret), Length(ret), PAnsiChar(@buffer));
-    ret := RawByteString(BytesToBase64(PByte(@buffer), SizeOf(buffer)));
+    response := TNetEncoding.Base64String.EncodeBytesToString(
+      THashSHA1.GetHashBytes(key.AsString + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11')
+    );
+
     WriteLine('HTTP/1.1 101 WebSocket Protocol Handshake');
-	  WriteLine('Upgrade: websocket');
-	  WriteLine('Connection: Upgrade');
-	  WriteLine('Sec-WebSocket-Origin: ' + RawByteString(origin.AsString));
-    WriteLine('Sec-WebSocket-Accept: ' + ret);
+    WriteLine('Upgrade: websocket');
+    WriteLine('Connection: Upgrade');
+    WriteLine('Sec-WebSocket-Origin: ' + RawByteString(origin.AsString));
+    WriteLine('Sec-WebSocket-Accept: ' + RawByteString(response));
     WriteLine('');
     Source.Flush;
     Result := WebSocket;
