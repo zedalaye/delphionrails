@@ -20,7 +20,7 @@ interface
 uses
   Windows, Winsock2, Classes, Generics.Collections,
   superobject,
-  dorOpenSSL, dorOpenSslHelpers, dorUtils;
+  dorUtils, dorOpenSslHelpers, dorOpenSSL;
 
 type
   // forward declarations
@@ -1298,7 +1298,7 @@ begin
   if SSLError(FSsl, SSL_accept(FSsl), 'SSL_accept') <> SSL_ERROR_NONE then
     goto error;
 
-  FX509 := SSL_get_peer_certificate(FSsl);
+  FX509 := SSL_get1_peer_certificate(FSsl);
 
   FConnected := True;
   Exit;
