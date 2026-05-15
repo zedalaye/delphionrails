@@ -270,7 +270,7 @@ begin
   if in_len = 0 then
     raise ECipherError.Create('data must not be empty');
 
-  out_len := in_len + EVP_CIPHER_CTX_block_size(@FCipherContext);
+  out_len := in_len + EVP_CIPHER_CTX_get_block_size(@FCipherContext);
   SetLength(Result, out_len);
 
   CheckErrors(
@@ -291,7 +291,7 @@ function TCipher.final: RawByteString;
 var
   out_len: Integer;
 begin
-  SetLength(Result, EVP_CIPHER_CTX_block_size(@FCipherContext));
+  SetLength(Result, EVP_CIPHER_CTX_get_block_size(@FCipherContext));
   CheckErrors(
     EVP_CipherFinal_ex(
       @FCipherContext,
@@ -304,7 +304,7 @@ end;
 
 procedure TCipher.set_key(const key: RawByteString);
 begin
-  if Length(key) < EVP_CIPHER_CTX_key_length(@FCipherContext) then
+  if Length(key) < EVP_CIPHER_CTX_get_key_length(@FCipherContext) then
     raise ECipherError.Create('key length too short');
 
   CheckErrors(
@@ -321,7 +321,7 @@ end;
 
 procedure TCipher.set_iv(const iv: RawByteString);
 begin
-  if Length(iv) < EVP_CIPHER_CTX_iv_length(@FCipherContext) then
+  if Length(iv) < EVP_CIPHER_CTX_get_iv_length(@FCipherContext) then
     raise ECipherError.Create('key length too short');
 
   CheckErrors(
@@ -343,7 +343,7 @@ end;
 
 function TCipher.GetKeyLength: Integer;
 begin
-  Result := EVP_CIPHER_CTX_key_length(@FCipherContext);
+  Result := EVP_CIPHER_CTX_get_key_length(@FCipherContext);
 end;
 
 procedure TCipher.SetKeyLength(Value: Integer);
@@ -355,7 +355,7 @@ end;
 
 function TCipher.GetIvLength: Integer;
 begin
-  Result := EVP_CIPHER_CTX_iv_length(@FCipherContext);
+  Result := EVP_CIPHER_CTX_get_iv_length(@FCipherContext);
 end;
 
 procedure TCipher.SetPadding(Value: Integer);
@@ -367,7 +367,7 @@ end;
 
 function TCipher.GetBlockSize;
 begin
-  Result := EVP_CIPHER_CTX_block_size(@FCipherContext);
+  Result := EVP_CIPHER_CTX_get_block_size(@FCipherContext);
 end;
 
 { TRand }

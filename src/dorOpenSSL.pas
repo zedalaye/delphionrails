@@ -153,7 +153,7 @@ const
   EVP_MAX_IV_LENGTH    = 16;
   EVP_MAX_BLOCK_LENGTH = 32;
 
-//  PKCS5_SALT_LEN     = 8;
+  PKCS5_SALT_LEN     = 8;
 //  (* Default PKCS#5 iteration count *)
 //  PKCS5_DEFAULT_ITER = 2048;
 
@@ -219,12 +219,12 @@ function EVP_DecryptInit_ex(ctx: PEVP_CIPHER_CTX; const &type: PEVP_CIPHER; impl
 function EVP_DecryptFinal_ex(ctx: PEVP_CIPHER_CTX; outm: PByte; var outl: Integer): Integer; cdecl; external LIB_CRYPTO;
 
 //function EVP_CipherInit(ctx: PEVP_CIPHER_CTX; const &type: PEVP_CIPHER; const key: PByte; const iv: PByte; enc: Integer): Integer; cdecl; external LIB_CRYPTO;
-//function EVP_CipherInit_ex(ctx: PEVP_CIPHER_CTX; const &type: PEVP_CIPHER; impl: PENGINE; const key: PByte; const iv: PByte; enc: Integer): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CipherInit_ex(ctx: PEVP_CIPHER_CTX; const &type: PEVP_CIPHER; impl: PENGINE; const key: PByte; const iv: PByte; enc: Integer): Integer; cdecl; external LIB_CRYPTO;
 
-//function EVP_CipherUpdate(ctx: PEVP_CIPHER_CTX; &out: PByte; var outl: Integer; const &in: PByte; inl: Integer): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CipherUpdate(ctx: PEVP_CIPHER_CTX; &out: PByte; var outl: Integer; const &in: PByte; inl: Integer): Integer; cdecl; external LIB_CRYPTO;
 
 //function EVP_CipherFinal(ctx: PEVP_CIPHER_CTX; outm: PByte; var outl: Integer): Integer; cdecl; external LIB_CRYPTO;
-//function EVP_CipherFinal_ex(ctx: PEVP_CIPHER_CTX; outm: PByte; var outl: Integer): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CipherFinal_ex(ctx: PEVP_CIPHER_CTX; outm: PByte; var outl: Integer): Integer; cdecl; external LIB_CRYPTO;
 
 //function EVP_DigestInit(ctx: PEVP_MD_CTX; const &type: PEVP_MD): Integer; cdecl; external LIB_CRYPTO;
 //function EVP_DigestFinal(ctx: PEVP_MD_CTX; md: PByte; var s: Cardinal): Integer; cdecl; external LIB_CRYPTO;
@@ -265,20 +265,20 @@ function EVP_CIPHER_CTX_new: PEVP_CIPHER_CTX; cdecl; external LIB_CRYPTO;
 //function EVP_CIPHER_CTX_reset(ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
 procedure EVP_CIPHER_CTX_free(ctx: PEVP_CIPHER_CTX); cdecl; external LIB_CRYPTO;
 
-//function EVP_CIPHER_CTX_cipher(const ctx: PEVP_CIPHER_CTX): PEVP_CIPHER; cdecl; external LIB_CRYPTO;
-//function EVP_CIPHER_CTX_block_size(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CIPHER_CTX_cipher(const ctx: PEVP_CIPHER_CTX): PEVP_CIPHER; cdecl; external LIB_CRYPTO;
+function EVP_CIPHER_CTX_get_block_size(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
 //function EVP_CIPHER_CTX_copy(out_: PEVP_CIPHER_CTX; const in_: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
 //function EVP_CIPHER_CTX_cleanup(ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
-function EVP_CIPHER_CTX_key_length(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
-function EVP_CIPHER_CTX_iv_length(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
-//function EVP_CIPHER_CTX_set_key_length(x: PEVP_CIPHER_CTX; keylen: Integer): Integer; cdecl; external LIB_CRYPTO;
-//function EVP_CIPHER_CTX_set_padding(c: PEVP_CIPHER_CTX; pad: Integer): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CIPHER_CTX_get_key_length(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CIPHER_CTX_get_iv_length(const ctx: PEVP_CIPHER_CTX): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CIPHER_CTX_set_key_length(x: PEVP_CIPHER_CTX; keylen: Integer): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CIPHER_CTX_set_padding(c: PEVP_CIPHER_CTX; pad: Integer): Integer; cdecl; external LIB_CRYPTO;
 
-//function EVP_CIPHER_nid(const cipher: PEVP_CIPHER): Integer; cdecl; external LIB_CRYPTO;
+function EVP_CIPHER_get_nid(const cipher: PEVP_CIPHER): Integer; cdecl; external LIB_CRYPTO;
 //function EVP_CIPHER_iv_length(const cipher: PEVP_CIPHER): Integer; cdecl; external LIB_CRYPTO;
 //function EVP_CIPHER_block_size(const cipher: PEVP_CIPHER): Integer; cdecl; external LIB_CRYPTO;
 
-//function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar; inline;
+function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar; inline;
 
 //function EVP_MD_CTX_md(const ctx: PEVP_MD_CTX): PEVP_MD; cdecl; external LIB_CRYPTO;
 //function EVP_MD_CTX_copy(out_: PEVP_MD_CTX; const in_: PEVP_MD_CTX): Integer; cdecl; external LIB_CRYPTO;
@@ -299,11 +299,11 @@ procedure EVP_MD_CTX_free(ctx: PEVP_MD_CTX); cdecl; external LIB_CRYPTO;
 //function EVP_MD_name(e: PEVP_MD): PAnsiChar; inline;
 //function EVP_MD_nid(e: PEVP_MD): Integer; inline;
 
-//function EVP_get_cipherbyname(const name: PAnsiChar): PEVP_CIPHER; cdecl; external LIB_CRYPTO;
-//function EVP_get_digestbyname(const name: PAnsiChar): PEVP_MD; cdecl; external LIB_CRYPTO;
+function EVP_get_cipherbyname(const name: PAnsiChar): PEVP_CIPHER; cdecl; external LIB_CRYPTO;
+function EVP_get_digestbyname(const name: PAnsiChar): PEVP_MD; cdecl; external LIB_CRYPTO;
 
-//function EVP_BytesToKey(const &type: PEVP_CIPHER; const md: PEVP_MD;
-//  const salt, data: Pointer; datal, count: Integer; key, iv: PByte): Integer; cdecl; external LIB_CRYPTO;
+function EVP_BytesToKey(const &type: PEVP_CIPHER; const md: PEVP_MD;
+  const salt, data: Pointer; datal, count: Integer; key, iv: PByte): Integer; cdecl; external LIB_CRYPTO;
 
 (* EVP_PKEY - Key Pairs *)
 
@@ -532,11 +532,11 @@ function EVP_aes_256_cbc_hmac_sha256: PEVP_CIPHER; cdecl; external LIB_CRYPTO;
 
 (* Crypto *)
 
-//procedure OPENSSL_cleanse(ptr: Pointer; len: NativeUInt); cdecl; external LIB_CRYPTO;
+procedure OPENSSL_cleanse(ptr: Pointer; len: NativeUInt); cdecl; external LIB_CRYPTO;
 
 (* Objects *)
 
-//function OBJ_nid2sn(n: Integer): PAnsiChar; cdecl; external LIB_CRYPTO;
+function OBJ_nid2sn(n: Integer): PAnsiChar; cdecl; external LIB_CRYPTO;
 
 (******************************************************************************
  * BIO
@@ -658,14 +658,14 @@ function BIO_new(&type: PBIO_METHOD): PBIO; cdecl; external LIB_CRYPTO;
 //procedure BIO_free(a: PBIO); cdecl; external LIB_CRYPTO;
 procedure BIO_free_all(a: PBIO); cdecl; external LIB_CRYPTO;
 
-//procedure BIO_set_flags(b: PBIO; flags: Integer); cdecl; external LIB_CRYPTO;
+procedure BIO_set_flags(b: PBIO; flags: Integer); cdecl; external LIB_CRYPTO;
 function BIO_new_mem_buf(buf: Pointer; len: Integer): PBIO; cdecl; external LIB_CRYPTO;
-//function BIO_push(b: PBIO; append: PBIO): PBIO; cdecl; external LIB_CRYPTO;
+function BIO_push(b: PBIO; append: PBIO): PBIO; cdecl; external LIB_CRYPTO;
 function BIO_write(b: PBIO; const data: Pointer; len: Integer): Integer; cdecl; external LIB_CRYPTO;
-//function BIO_read(b: PBIO; data: Pointer; len: Integer): Integer; cdecl; external LIB_CRYPTO;
+function BIO_read(b: PBIO; data: Pointer; len: Integer): Integer; cdecl; external LIB_CRYPTO;
 function BIO_ctrl(bp: PBIO; cmd: Integer; larg: LongInt; parg: Pointer): LongInt; cdecl; external LIB_CRYPTO;
 
-//function BIO_flush(b: PBIO): Integer; inline;
+function BIO_flush(b: PBIO): Integer; inline;
 function BIO_get_mem_ptr(b: PBIO; ptr: Pointer): LongInt; inline;
 
 function BIO_s_mem: PBIO_METHOD; cdecl; external LIB_CRYPTO;
@@ -690,7 +690,7 @@ function BIO_s_mem: PBIO_METHOD; cdecl; external LIB_CRYPTO;
 //function BIO_s_file: PBIO_METHOD; cdecl; external LIB_CRYPTO;
 
 //function BIO_f_md: PBIO_METHOD; cdecl; external LIB_CRYPTO;
-//function BIO_f_base64: PBIO_METHOD; cdecl; external LIB_CRYPTO;
+function BIO_f_base64: PBIO_METHOD; cdecl; external LIB_CRYPTO;
 //function BIO_f_cipher: PBIO_METHOD; cdecl; external LIB_CRYPTO;
 //function BIO_f_reliable: PBIO_METHOD; cdecl; external LIB_CRYPTO;
 
@@ -1259,7 +1259,7 @@ function ERR_get_error: LongWord; cdecl; external LIB_CRYPTO;
 
 procedure ERR_clear_error; cdecl; external LIB_CRYPTO;
 
-//function ERR_error_string(e: LongWord; buf: PAnsiChar): PAnsiChar; cdecl; external LIB_CRYPTO;
+function ERR_error_string(e: LongWord; buf: PAnsiChar): PAnsiChar; cdecl; external LIB_CRYPTO;
 procedure ERR_error_string_n(e: LongWord; buf: PAnsiChar; len: Cardinal); cdecl; external LIB_CRYPTO;
 //function ERR_lib_error_string(e: LongWord): PAnsiChar; cdecl; external LIB_CRYPTO;
 //function ERR_func_error_string(e: LongWord): PAnsiChar; cdecl; external LIB_CRYPTO;
@@ -1308,10 +1308,10 @@ end;
 
 (* EVP_CIPHER *)
 
-//function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar;
-//begin
-//	Result := OBJ_nid2sn(EVP_CIPHER_nid(e));
-//end;
+function EVP_CIPHER_name(e: PEVP_CIPHER): PAnsiChar;
+begin
+	Result := OBJ_nid2sn(EVP_CIPHER_get_nid(e));
+end;
 
 (* EVP_MD *)
 
@@ -1394,10 +1394,10 @@ end;
 
 (* BIO *)
 
-//function BIO_flush(b: PBIO): Integer;
-//begin
-//  Result := Integer(BIO_ctrl(b, BIO_CTRL_FLUSH, 0, nil));
-//end;
+function BIO_flush(b: PBIO): Integer;
+begin
+  Result := Integer(BIO_ctrl(b, BIO_CTRL_FLUSH, 0, nil));
+end;
 
 function BIO_get_mem_ptr(b: PBIO; ptr: Pointer): LongInt;
 begin
