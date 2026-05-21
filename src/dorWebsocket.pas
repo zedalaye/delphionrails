@@ -345,7 +345,16 @@ begin
 end;
 
 procedure TWebSocket.Close;
+var
+  payload: array[0..1] of Byte;
 begin
+  if FReadyState = rsOpen then
+  begin
+    // WebSocket CLOSE frame avec code 1000 (Normal Closure)
+    payload[0] := $03; // 1000 = $03E8, big-endian
+    payload[1] := $E8;
+    Output($80 or OPClose, @payload[0], 2);
+  end;
   InternalClose;
 end;
 
@@ -807,6 +816,7 @@ begin
     var
       b, opcode: Byte;
       closecode: Word;
+      closeecho: array[0..1] of Byte;
       state: TState;
       fin, havemask: Boolean;
       payloadLength: Int64;
@@ -861,7 +871,7 @@ begin
                 end;
               stNext:
                 begin
-                  havemask := b and $80 = 1;
+                  havemask := (b and $80) <> 0;
                   payloadLength := b and $7F;
 
                   if (payloadLength < 126) then
@@ -950,7 +960,14 @@ begin
                     if fin and (opcode <> OPContinuation) and (FReadyState = rsOpen) then
                     begin
                       case opcode of
-                        OPClose:  Break;
+                        OPClose:
+                        begin
+                          // Echo CLOSE frame back (RFC 6455 §5.5.1)
+                          closeecho[0] := closecode shr 8;
+                          closeecho[1] := closecode and $FF;
+                          Output($80 or OPClose, @closeecho[0], 2);
+                          Break;
+                        end;
                         OPPing:   HandlePing(stream);
                         OPPong:   HandlePong(stream);
                         OPText:   HandleText(stream);
