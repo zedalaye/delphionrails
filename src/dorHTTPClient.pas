@@ -763,7 +763,7 @@ begin
             strm.Seek(0, soFromBeginning);
             try
               if (strm.Size > 0) then
-                if not DecompressStream(strm, FResponseData, True) then
+                if not DecompressStream(strm, FResponseData, False) then
                   Exit(False);
             finally
               strm.Free;
@@ -951,7 +951,7 @@ begin
       if SameText(encoding, 'deflate') then
       begin
         CompressStream(data, compressed);
-        compressed.Seek(2, soFromBeginning);
+        compressed.Seek(0, soFromBeginning);
       end
       else
       begin

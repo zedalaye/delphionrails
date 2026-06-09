@@ -480,10 +480,12 @@ var
   outBuffer: array[0..bufferSize - 1] of byte;
   inSize: Integer;
   outSize: Integer;
+  skip: Integer;
 label
   error;
 begin
   Result := False;
+  if skipflag then skip := 2 else skip := 0;
 
   FillChar(zstream, SizeOf(zstream), 0);
   if DeflateInit(zstream, level) < Z_OK then
@@ -500,10 +502,15 @@ begin
       if deflate(zstream, Z_NO_FLUSH) < Z_OK then
         goto error;
       outSize := bufferSize - zstream.avail_out;
-      if skipflag then
+      if skip > 0 then
       begin
-        outstream.Write(outbuffer[2], outSize - 2);
-        skipflag := False;
+        if outSize <= skip then
+          Dec(skip, outSize)
+        else
+        begin
+          outStream.Write(outBuffer[skip], outSize - skip);
+          skip := 0;
+        end;
       end
       else
         outStream.Write(outBuffer, outSize);
@@ -518,7 +525,18 @@ begin
     if zresult < Z_OK then
       goto error;
     outSize := bufferSize - zstream.avail_out;
-    outStream.Write(outBuffer, outSize);
+    if skip > 0 then
+    begin
+      if outSize <= skip then
+        Dec(skip, outSize)
+      else
+      begin
+        outStream.Write(outBuffer[skip], outSize - skip);
+        skip := 0;
+      end;
+    end
+    else
+      outStream.Write(outBuffer, outSize);
   until (zresult = Z_STREAM_END) and (zstream.avail_out > 0);
 
   Result := deflateEnd(zstream) >= Z_OK;
@@ -648,10 +666,33 @@ begin
   Result := DecompressStream(inStream, outStream, True, inStream.Size - inStream.Position - 8);
 end;
 
+function dorCRC32(crc: Cardinal; const buf; len: Integer): Cardinal;
+var
+  p: PByte;
+  i, k: Integer;
+begin
+  crc := crc xor $FFFFFFFF;
+  p := @buf;
+  for i := 0 to len - 1 do
+  begin
+    crc := crc xor p^;
+    for k := 0 to 7 do
+      if (crc and 1) <> 0 then
+        crc := (crc shr 1) xor $EDB88320
+      else
+        crc := crc shr 1;
+    Inc(p);
+  end;
+  Result := crc xor $FFFFFFFF;
+end;
+
 function CompressGZipStream(inStream, outStream: TStream; level: Integer): Boolean;
 var
   header: TGzHeader;
   footer: TGzFooter;
+  body: TPooledMemoryStream;
+  buf: array[0..bufferSize - 1] of byte;
+  n, chunk: Integer;
 begin
   FillChar(header, SizeOf(TGzHeader), 0);
   header.ID1 := 31;
@@ -668,14 +709,43 @@ begin
   header.OS := 255; { Unknown }
 {$ifend}
   outstream.Write(header, SizeOf(header));
-  if CompressStream(inStream, outStream, level, True) then
+
+  { CRC32 and uncompressed size (ISIZE) over the original data, for the gzip footer }
+  footer.CRC32 := 0;
+  footer.ISIZE := 0;
+  inStream.Seek(0, soFromBeginning);
+  n := inStream.Read(buf, SizeOf(buf));
+  while n > 0 do
   begin
-    FillChar(footer, SizeOf(TGzFooter), 0);
-    outStream.Write(footer, SizeOf(TGzFooter));
-    Result := True;
-  end
-  else
-    Result := False;
+    footer.CRC32 := dorCRC32(footer.CRC32, buf, n);
+    Inc(footer.ISIZE, Cardinal(n));
+    n := inStream.Read(buf, SizeOf(buf));
+  end;
+
+  { The gzip body is raw DEFLATE: strip the 2-byte zlib header (skipflag) and
+    the 4-byte Adler32 trailer that the zlib stream appends. }
+  inStream.Seek(0, soFromBeginning);
+  body := TPooledMemoryStream.Create;
+  try
+    if not CompressStream(inStream, body, level, True) then
+      Exit(False);
+    chunk := body.Size - 4;
+    if chunk < 0 then
+      chunk := 0;
+    body.Seek(0, soFromBeginning);
+    while chunk > 0 do
+    begin
+      if chunk < SizeOf(buf) then n := chunk else n := SizeOf(buf);
+      body.Read(buf, n);
+      outStream.Write(buf, n);
+      Dec(chunk, n);
+    end;
+  finally
+    body.Free;
+  end;
+
+  outStream.Write(footer, SizeOf(footer));
+  Result := True;
 end;
 
 function StreamToStr(stream: TStream): string;

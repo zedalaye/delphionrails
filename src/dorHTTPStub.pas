@@ -578,7 +578,7 @@ begin
       try
         FRequest.FContent.Seek(0, soFromBeginning);
         if SameText(ContentEncoding, 'deflate') then
-          DecompressStream(FRequest.FContent, stream, True)
+          DecompressStream(FRequest.FContent, stream, False)
         else
           DecompressGZipStream(FRequest.FContent, stream);
         { Exchange request.FContent with stream of decompressed data }
@@ -1445,10 +1445,13 @@ begin
     streamout := TPooledMemoryStream.Create;
     try
       stream.Seek(0, soFromBeginning);
-      CompressStream(stream, streamout, FCompressLevel);
-      // don't send first 2 bytes !
-      WriteLine(format(AnsiString('Content-Length: %d'), [streamout.size - 2]));
-      streamout.Seek(2, soFromBeginning);
+      if SameText(FResponse.AsObject.S['Content-Encoding'], 'gzip') then
+        CompressGZipStream(stream, streamout, FCompressLevel)
+      else
+        { full zlib stream (RFC 1950), as required by Content-Encoding: deflate }
+        CompressStream(stream, streamout, FCompressLevel);
+      WriteLine(format(AnsiString('Content-Length: %d'), [streamout.size]));
+      streamout.Seek(0, soFromBeginning);
       SendIt(streamout);
     finally
       streamout.Free;
@@ -2188,12 +2191,19 @@ end;
 
 class procedure TRequestProcessor.ApplyCompress(var Compress: Boolean;
   const Request, Response: THTTPMessage);
+var
+  ae: string;
 begin
   if Compress then
-    if Pos('deflate', Request.S['env.accept-encoding']) > 0 then
+  begin
+    ae := Request.S['env.accept-encoding'];
+    if Pos('deflate', ae) > 0 then
       Response.AsObject.S['Content-Encoding'] := 'deflate'
+    else if Pos('gzip', ae) > 0 then
+      Response.AsObject.S['Content-Encoding'] := 'gzip'
     else
       Compress := False;
+  end;
 end;
 
 class function TRequestProcessor.RenderScript(const Formats, Session: ISuperObject;
