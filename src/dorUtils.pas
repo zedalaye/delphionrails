@@ -107,6 +107,13 @@ function DecompressStream(inStream, outStream: TStream; addflag: Boolean = False
 function CompressGZipStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION): Boolean;
 function DecompressGZipStream(inStream, outStream: TStream): boolean;
 
+{ permessage-deflate (RFC 7692) payload framing, no context takeover.
+  WSDeflate builds the payload of an RSV1 frame: raw DEFLATE with the zlib
+  header and the trailing 00 00 FF FF sync-flush marker removed. WSInflate
+  reverses it (re-appends the marker before inflating). }
+function WSDeflate(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION): Boolean;
+function WSInflate(inStream, outStream: TStream): Boolean;
+
 function receive(s: longint; var Buf; len, flags: Integer): Integer;
 
 // Base64 functions from <dirk.claessens.dc@belgium.agfa.com> (modified)
@@ -746,6 +753,100 @@ begin
 
   outStream.Write(footer, SizeOf(footer));
   Result := True;
+end;
+
+const
+  Z_SYNC_FLUSH = 2; { not always exported by the ZLib unit }
+
+function WSDeflate(inStream, outStream: TStream; level: Integer): Boolean;
+var
+  zstream: TZStreamRec;
+  inBuffer: array[0..bufferSize - 1] of byte;
+  outBuffer: array[0..bufferSize - 1] of byte;
+  inSize, outSize, n: Integer;
+  ok: Boolean;
+  tmp: TPooledMemoryStream;
+begin
+  Result := False;
+  FillChar(zstream, SizeOf(zstream), 0);
+  if DeflateInit(zstream, level) < Z_OK then
+    Exit;
+  ok := True;
+  tmp := TPooledMemoryStream.Create;
+  try
+    inStream.Seek(0, soFromBeginning);
+    inSize := inStream.Read(inBuffer, bufferSize);
+    while ok and (inSize > 0) do
+    begin
+      zstream.next_in := PByte(@inBuffer);
+      zstream.avail_in := inSize;
+      repeat
+        zstream.next_out := PByte(@outBuffer);
+        zstream.avail_out := bufferSize;
+        if deflate(zstream, Z_NO_FLUSH) < Z_OK then
+        begin
+          ok := False;
+          Break;
+        end;
+        outSize := bufferSize - zstream.avail_out;
+        tmp.Write(outBuffer, outSize);
+      until (zstream.avail_in = 0) and (zstream.avail_out > 0);
+      if ok then
+        inSize := inStream.Read(inBuffer, bufferSize);
+    end;
+
+    { Z_SYNC_FLUSH terminates the message without BFINAL/Adler32; the output
+      ends with the empty stored block 00 00 FF FF. }
+    if ok then
+      repeat
+        zstream.next_out := PByte(@outBuffer);
+        zstream.avail_out := bufferSize;
+        if deflate(zstream, Z_SYNC_FLUSH) < Z_OK then
+        begin
+          ok := False;
+          Break;
+        end;
+        outSize := bufferSize - zstream.avail_out;
+        tmp.Write(outBuffer, outSize);
+      until zstream.avail_out > 0;
+
+    deflateEnd(zstream);
+
+    if ok then
+    begin
+      { drop the 2-byte zlib header and the trailing 00 00 FF FF marker }
+      n := Integer(tmp.Size) - 2 - 4;
+      if n < 0 then
+        n := 0;
+      tmp.Seek(2, soFromBeginning);
+      if n > 0 then
+        outStream.CopyFrom(tmp, n);
+      Result := True;
+    end;
+  finally
+    tmp.Free;
+  end;
+end;
+
+function WSInflate(inStream, outStream: TStream): Boolean;
+const
+  TAIL: array[0..3] of Byte = ($00, $00, $FF, $FF);
+var
+  tmp: TPooledMemoryStream;
+begin
+  tmp := TPooledMemoryStream.Create;
+  try
+    inStream.Seek(0, soFromBeginning);
+    if inStream.Size > 0 then
+      tmp.CopyFrom(inStream, inStream.Size);
+    tmp.Write(TAIL, SizeOf(TAIL));
+    tmp.Seek(0, soFromBeginning);
+    { DecompressStream(addflag=True) prepends a zlib header and tolerates the
+      missing Adler32 of a sync-flushed (non-final) stream. }
+    Result := DecompressStream(tmp, outStream, True);
+  finally
+    tmp.Free;
+  end;
 end;
 
 function StreamToStr(stream: TStream): string;

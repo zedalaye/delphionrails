@@ -63,6 +63,7 @@ type
     class destructor ClassDestroy;
   private
     const BUFFER_SIZE = 1024;
+    const WS_COMPRESS_MIN = 64; { don't bother compressing tiny messages }
   private
     FReadThread: TThread;
     FOnOpen: TProc;
@@ -78,6 +79,7 @@ type
     FSocket: TSocket;
     FLockSend: TCriticalSection;
     FAutoPong: Boolean;
+    FPerMessageDeflate: Boolean; { permessage-deflate negotiated (RFC 7692) }
     // SSL
     FCtx: PSSL_CTX;
     FSsl: PSSL;
@@ -95,6 +97,7 @@ type
     procedure Flush;
     procedure Output(b: Byte; data: Pointer; len: Int64);
     procedure OutputString(b: Byte; const str: string);
+    procedure SendData(opcode: Byte; data: Pointer; len: Int64);
     { /!\ These methods are called within the Read thread }
     procedure HandlePing(payload: TPooledMemoryStream);
     procedure HandlePong(payload: TPooledMemoryStream);
@@ -517,6 +520,7 @@ begin
       HTTPWriteLine('Host: ' + domain);
       HTTPWriteLine('Origin: ' + origin);
       HTTPWriteLine('sec-websocket-version: 13');
+      HTTPWriteLine('sec-websocket-extensions: permessage-deflate; client_no_context_takeover; server_no_context_takeover');
 
       CreateGUID(guid);
       key := RawByteString(BytesToBase64(PByte(@guid), SizeOf(guid)));
@@ -596,6 +600,16 @@ begin
             if Assigned(FOnError) then
               FOnError('Websocket challenge failed');
             Exit;
+          end;
+
+          { Enable permessage-deflate only if the server confirmed it AND grants
+            server_no_context_takeover (our per-message inflate resets each time). }
+          FPerMessageDeflate := False;
+          if dic.TryGetValue('sec-websocket-extensions', value) then
+          begin
+            var ext := LowerCase(string(value));
+            FPerMessageDeflate := (Pos('permessage-deflate', ext) > 0) and
+                                  (Pos('server_no_context_takeover', ext) > 0);
           end;
 
           ReadTimeOut := 0;
@@ -818,7 +832,7 @@ begin
       closecode: Word;
       closeecho: array[0..1] of Byte;
       state: TState;
-      fin, havemask: Boolean;
+      fin, rsv1, havemask: Boolean;
       payloadLength: Int64;
       pos: Integer;
       mask: array[0..3] of Byte;
@@ -853,6 +867,7 @@ begin
         payloadLength := 0;
         opcode := 0;
         fin := False;
+        rsv1 := False;
         closecode := 0;
         havemask := False;
 
@@ -864,7 +879,8 @@ begin
               stStart:
                 begin
                   fin := (b and $80) <> 0;
-                  if (b and $70) <> 0 then Exit; // reserved
+                  rsv1 := (b and $40) <> 0; // permessage-deflate compressed message
+                  if (b and $30) <> 0 then Exit; // RSV2/RSV3 reserved
                   opcode := b and $0F;
                   closecode := 0;
                   state := stNext;
@@ -970,8 +986,32 @@ begin
                         end;
                         OPPing:   HandlePing(stream);
                         OPPong:   HandlePong(stream);
-                        OPText:   HandleText(stream);
-                        OPBinary: HandleBinary(stream);
+                        OPText:
+                          if rsv1 and FPerMessageDeflate then
+                          begin
+                            var dect := TPooledMemoryStream.Create;
+                            try
+                              if WSInflate(stream, dect) then
+                                HandleText(dect);
+                            finally
+                              dect.Free;
+                            end;
+                          end
+                          else
+                            HandleText(stream);
+                        OPBinary:
+                          if rsv1 and FPerMessageDeflate then
+                          begin
+                            var decb := TPooledMemoryStream.Create;
+                            try
+                              if WSInflate(stream, decb) then
+                                HandleBinary(decb);
+                            finally
+                              decb.Free;
+                            end;
+                          end
+                          else
+                            HandleBinary(stream);
                       end;
                       stream.Size := 0;
                     end;
@@ -1008,9 +1048,41 @@ begin
   FReadThread.Start;
 end;
 
-procedure TWebSocket.Send(const data: string);
+procedure TWebSocket.SendData(opcode: Byte; data: Pointer; len: Int64);
+var
+  src, comp: TPooledMemoryStream;
+  B: TBytes;
 begin
-  OutputString($80 or OPText, data)
+  if FPerMessageDeflate and (len >= WS_COMPRESS_MIN) then
+  begin
+    src := TPooledMemoryStream.Create;
+    comp := TPooledMemoryStream.Create;
+    try
+      src.Write(data^, len);
+      { Only send compressed when it actually shrinks (avoids growing
+        incompressible payloads). RSV1 marks the frame as compressed. }
+      if WSDeflate(src, comp) and (comp.Size > 0) and (comp.Size < len) then
+      begin
+        SetLength(B, comp.Size);
+        comp.Seek(0, soFromBeginning);
+        comp.Read(B[0], Length(B));
+        Output($80 or $40 or opcode, @B[0], Length(B)); // FIN + RSV1 + opcode
+        Exit;
+      end;
+    finally
+      src.Free;
+      comp.Free;
+    end;
+  end;
+  Output($80 or opcode, data, len);
+end;
+
+procedure TWebSocket.Send(const data: string);
+var
+  utf8: UTF8String;
+begin
+  utf8 := UTF8String(data);
+  SendData(OPText, PAnsiChar(utf8), Length(utf8));
 end;
 
 procedure TWebSocket.Send(const data: TStream);
@@ -1018,8 +1090,9 @@ var
   B: TBytes;
 begin
   SetLength(B, data.Size - data.Position);
-  data.Read(B[0], Length(B));
-  Output($80 or OPBinary, @B[0], Length(B));
+  if Length(B) > 0 then
+    data.Read(B[0], Length(B));
+  SendData(OPBinary, @B[0], Length(B));
 end;
 
 procedure TWebSocket.SetOnAddField(const value: TOnHTTPAddField);
