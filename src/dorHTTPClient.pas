@@ -920,7 +920,11 @@ begin
     HTTPWriteLine('Host: ' + FDomain);
 
   for pair in FRequestHeaders.Values do
-    HTTPWriteLine(pair.name + ': ' + pair.value);
+    { skip empty-valued headers: setting a header to '' acts as removal, which
+      matters for connections reused from a pool (the keepsocket path does not
+      reload default headers, so a previously-set value would otherwise persist). }
+    if pair.value <> '' then
+      HTTPWriteLine(pair.name + ': ' + pair.value);
 
   cookiecount := 0;
   for cook in FCookies do
