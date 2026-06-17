@@ -103,6 +103,12 @@ type
 function CompressStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION; skipflag: Boolean = False): boolean;
 function DecompressStream(inStream, outStream: TStream; addflag: Boolean = False; maxin: Integer = 0): boolean;
 
+{ True if the 2 bytes look like a valid RFC 1950 zlib header (full deflate
+  stream); False suggests a raw deflate stream (e.g. produced by legacy DOR
+  clients that stripped the zlib header). Used to decode "deflate" bodies
+  tolerantly regardless of which client generation produced them. }
+function IsZlibHeader(cmf, flg: Byte): Boolean;
+
 { Same a above with GZip Header }
 function CompressGZipStream(inStream, outStream: TStream; level: Integer = Z_DEFAULT_COMPRESSION): Boolean;
 function DecompressGZipStream(inStream, outStream: TStream): boolean;
@@ -477,6 +483,15 @@ end;
 function DeflateInit(var stream: TZStreamRec; level: Integer): Integer;
 begin
   result := DeflateInit_(stream, level, ZLIB_VERSION, SizeOf(TZStreamRec));
+end;
+
+function IsZlibHeader(cmf, flg: Byte): Boolean;
+begin
+  { RFC 1950: CM (low nibble of CMF) must be 8 (deflate), CINFO (high nibble)
+    must be <= 7, and (CMF*256 + FLG) must be a multiple of 31. A raw deflate
+    stream practically never satisfies all three at once. }
+  Result := ((cmf and $0F) = 8) and ((cmf shr 4) <= 7) and
+            (((cmf shl 8) or flg) mod 31 = 0);
 end;
 
 function CompressStream(inStream, outStream: TStream; level: Integer; skipflag: Boolean): boolean;

@@ -546,6 +546,8 @@ var
   b: array[0..BLOCK_SIZE] of Byte;
   ContentEncoding: string;
   stream: TPooledMemoryStream;
+  sniff: array[0..1] of Byte;
+  rawdeflate: Boolean;
 
   function max_block_size(total: Integer): Integer; inline;
   begin
@@ -578,7 +580,17 @@ begin
       try
         FRequest.FContent.Seek(0, soFromBeginning);
         if SameText(ContentEncoding, 'deflate') then
-          DecompressStream(FRequest.FContent, stream, False)
+        begin
+          { Tolerate both a conformant zlib stream (current clients) and a raw
+            deflate stream with the zlib header stripped (legacy DOR clients):
+            sniff the first 2 bytes and decode accordingly. addflag=True tells
+            DecompressStream to prepend a synthetic zlib header to raw deflate. }
+          rawdeflate := True;
+          if FRequest.FContent.Read(sniff, 2) = 2 then
+            rawdeflate := not IsZlibHeader(sniff[0], sniff[1]);
+          FRequest.FContent.Seek(0, soFromBeginning);
+          DecompressStream(FRequest.FContent, stream, rawdeflate);
+        end
         else
           DecompressGZipStream(FRequest.FContent, stream);
         { Exchange request.FContent with stream of decompressed data }
@@ -2197,10 +2209,18 @@ begin
   if Compress then
   begin
     ae := Request.S['env.accept-encoding'];
-    if Pos('deflate', ae) > 0 then
-      Response.AsObject.S['Content-Encoding'] := 'deflate'
-    else if Pos('gzip', ae) > 0 then
+    { Prefer gzip over deflate for backward compatibility: legacy DOR clients
+      decode "deflate" by prepending a zlib header to what they assume is a raw
+      stream, which breaks against the now-conformant full zlib stream. Their
+      gzip decode path (unchanged) reads the body as raw deflate and works with
+      our conformant gzip output, so routing through gzip keeps old AND new
+      clients working. Only clients accepting deflate but not gzip (necessarily
+      strict/standard clients) get deflate, for which the conformant stream is
+      correct. }
+    if Pos('gzip', ae) > 0 then
       Response.AsObject.S['Content-Encoding'] := 'gzip'
+    else if Pos('deflate', ae) > 0 then
+      Response.AsObject.S['Content-Encoding'] := 'deflate'
     else
       Compress := False;
   end;
