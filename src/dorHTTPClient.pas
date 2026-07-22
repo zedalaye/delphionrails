@@ -615,6 +615,8 @@ var
   rcv: Integer;
   strm: TStream;
   encoding: TContentEncoding;
+  sniff: array[0..1] of Byte;
+  rawdeflate: Boolean;
   t: DWORD; // linux: timeval
   Total, Rate, Start, Curr, Freq: Int64;
   wait: TProc<Integer>;
@@ -763,8 +765,20 @@ begin
             strm.Seek(0, soFromBeginning);
             try
               if (strm.Size > 0) then
-                if not DecompressStream(strm, FResponseData, False) then
+              begin
+                { Tolere un flux zlib conforme (serveurs a jour, RFC 1950) ET un
+                  flux deflate brut avec l'en-tete zlib retire (anciens serveurs
+                  DoR anterieurs a la conformite RFC) : on renifle les 2 premiers
+                  octets. addflag=True demande a DecompressStream de prefixer un
+                  en-tete zlib synthetique au deflate brut. Symetrique du decodage
+                  cote serveur (dorHTTPStub). }
+                rawdeflate := True;
+                if strm.Read(sniff, 2) = 2 then
+                  rawdeflate := not IsZlibHeader(sniff[0], sniff[1]);
+                strm.Seek(0, soFromBeginning);
+                if not DecompressStream(strm, FResponseData, rawdeflate) then
                   Exit(False);
+              end;
             finally
               strm.Free;
             end;
