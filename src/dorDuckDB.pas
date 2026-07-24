@@ -222,6 +222,11 @@ type
 
   function DuckDBVersion: string;
 
+  // Opens (or creates) a DuckDB database and returns a shareable holder: several
+  // TDBDuckDBConnection.Create(holder) then share the SAME instance (single file
+  // lock), enabling concurrent in-process writer + readers.
+  function DuckDBOpen(const Path: string; const Config: ISuperObject = nil): IDuckDBDatabaseHolder;
+
 implementation
 
 const
@@ -439,19 +444,39 @@ begin
   Result := UTF8ToString(duckdb_library_version);
 end;
 
-// Currency is a fixed point Int64 scaled by 10000: the conversion is exact
-// when scale <= 4 and the rescaled value cannot overflow (width - scale <= 14
-// integer digits, ie. rescaled < 10^18). Otherwise the caller falls back to
-// Double.
+// Currency is a fixed point Int64 scaled by 10000: the conversion is exact when
+// scale <= 4 and the actual 128-bit value, rescaled to 1e-4, fits in an Int64.
+// We test the runtime VALUE, not the declared width: DuckDB types aggregates
+// such as sum(DECIMAL(18,4)) as DECIMAL(38,4), yet the value itself almost
+// always fits a Currency. Keying on the declared width alone would needlessly
+// downgrade every SUM to Double (and lose exactness). Otherwise the caller
+// falls back to Double.
 function TryDecimalToCurrency(const dec: TDuckDBDecimal; out cur: Currency): Boolean;
 const
   Mul: array[0..4] of Int64 = (10000, 1000, 100, 10, 1);
+var
+  v, m: Int64;
 begin
-  Result := (dec.scale <= 4) and (Integer(dec.width) - Integer(dec.scale) <= 14);
-  if Result then
-    // width <= 18 here, so the value fits in the lower 64 bits (upper is only
-    // the sign extension)
-    PInt64(@cur)^ := Int64(dec.value.lower) * Mul[dec.scale];
+  Result := False;
+  if dec.scale > 4 then
+    Exit;
+  // The 128-bit value must fit in Int64: the high word must be the sign
+  // extension of the low word (0 when non-negative, -1 when negative).
+  v := Int64(dec.value.lower);
+  if v < 0 then
+  begin
+    if dec.value.upper <> -1 then
+      Exit;
+  end
+  else
+    if dec.value.upper <> 0 then
+      Exit;
+  // The rescaling v * 10^(4-scale) must not overflow Int64.
+  m := Mul[dec.scale];
+  if (v > High(Int64) div m) or (v < Low(Int64) div m) then
+    Exit;
+  PInt64(@cur)^ := v * m;
+  Result := True;
 end;
 
 function CurrencyToDecimal(const cur: Currency): TDuckDBDecimal;
@@ -825,6 +850,11 @@ end;
 function TDuckDBDatabaseHolder.Handle: TDuckDBDatabase;
 begin
   Result := FDbHandle;
+end;
+
+function DuckDBOpen(const Path: string; const Config: ISuperObject): IDuckDBDatabaseHolder;
+begin
+  Result := TDuckDBDatabaseHolder.Create(Path, Config) as IDuckDBDatabaseHolder;
 end;
 
 { TDBDuckDBConnection }
