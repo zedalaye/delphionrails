@@ -43,9 +43,9 @@ type
 
 const
 {$IFDEF UNIX}
-  LUA_LIB = 'liblua5.4.8.so';
+  LUA_LIB = 'liblua5.4.9.so';
 {$ELSE}
-  LUA_LIB = 'lua5.4.8.dll';
+  LUA_LIB = 'lua5.4.9.dll';
 {$ENDIF}
 
 const
@@ -65,9 +65,9 @@ const
 
 const
   LUA_VERSION = 'Lua 5.4';
-  LUA_RELEASE = 'Lua 5.4.8';
+  LUA_RELEASE = 'Lua 5.4.9';
   LUA_VERSION_NUM = 504;
-  LUA_COPYRIGHT = 'Copyright (C) 1994-2025 Lua.org, PUC-Rio';
+  LUA_COPYRIGHT = 'Copyright (C) 1994-2026 Lua.org, PUC-Rio';
   LUA_AUTHORS  = 'R. Ierusalimschy, L. H. de Figueiredo, W. Celes';
 
 
